@@ -1,0 +1,514 @@
+<?php
+
+use App\Http\Controllers\ProfileController;
+
+use App\Http\Controllers\BilOrderController;
+use App\Http\Controllers\BilPostController;
+use App\Http\Controllers\BilPayController;
+
+use App\Http\Controllers\BLSItemGroupController;
+use App\Http\Controllers\BLSItemController;
+use App\Http\Controllers\BLSCurrencyController;
+use App\Http\Controllers\BLSPaymentTypeController;
+use App\Http\Controllers\BLSCustomerController;
+
+use App\Http\Controllers\ExpPostController;
+
+use App\Http\Controllers\SEXPItemGroupController;
+use App\Http\Controllers\SEXPItemController;
+
+
+use App\Http\Controllers\PROTenderController;
+use App\Http\Controllers\PROPurchaseController;
+
+use App\Http\Controllers\IVRequistionController;
+use App\Http\Controllers\IVIssueController;
+use App\Http\Controllers\IVReceiveController;
+use App\Http\Controllers\IVReconciliationController;
+
+use App\Http\Controllers\SIV_StoreController;
+use App\Http\Controllers\SIV_ProductCategoryController;
+use App\Http\Controllers\SIV_ProductController;
+use App\Http\Controllers\SIV_PackagingController;
+use App\Http\Controllers\SIV_AdjustmentReasonController;
+
+use App\Http\Controllers\SPR_SupplierController;
+
+use App\Http\Controllers\LOCCountryController;
+use App\Http\Controllers\LOCRegionController;
+use App\Http\Controllers\LOCDistrictController;
+use App\Http\Controllers\LOCWardController;
+use App\Http\Controllers\LOCStreetController;
+
+use App\Http\Controllers\FacilityOptionController;
+
+use App\Http\Controllers\UserGroupController;
+use App\Http\Controllers\UserController;
+
+
+use Illuminate\Foundation\Application;
+use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
+
+Route::get('/', function () {
+    return Inertia::render('Welcome', [
+        'canLogin' => Route::has('login'),
+        'canRegister' => Route::has('register'),        
+    ]);
+});
+
+Route::get('/dashboard', function () {
+    return Inertia::render('Dashboard');
+})->middleware(['auth', 'verified'])->name('dashboard');
+
+Route::middleware('auth')->group(function () {
+    // Profile routes
+    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+
+    // Order routes
+    Route::prefix('billing0')->name('billing0.')->group(function () {
+        Route::get('/', [BilOrderController::class, 'index'])->name('index');
+        Route::get('/create', [BilOrderController::class, 'create'])->name('create');
+        Route::post('/', [BilOrderController::class, 'store'])->name('store');
+        Route::get('/{order}/edit', [BilOrderController::class, 'edit'])->name('edit');
+        Route::put('/{order}', [BilOrderController::class, 'update'])->name('update');
+        Route::delete('/{order}', [BilOrderController::class, 'destroy'])->name('destroy');
+    });
+
+     // Post Bills routes
+     Route::prefix('billing1')->name('billing1.')->group(function () {
+        Route::get('/', [BilPostController::class, 'index'])->name('index');
+        Route::get('/create', [BilPostController::class, 'create'])->name('create');
+        Route::post('/', [BilPostController::class, 'store'])->name('store');
+        Route::get('/{order}/edit', [BilPostController::class, 'edit'])->name('edit');
+        Route::put('/{order}', [BilPostController::class, 'update'])->name('update');
+        Route::delete('/{order}', [BilPostController::class, 'destroy'])->name('destroy');
+    
+        // New Route for handling Payments
+        Route::post('/pay', [BilPostController::class, 'pay'])->name('pay');  // POST route with no parameter
+        Route::put('/pay/{order}', [BilPostController::class, 'pay'])->name('pay_update');  // PUT route with {order} param and a different name.
+    
+    });
+
+     // Pay Bills routes
+     Route::prefix('billing2')->name('billing2.')->group(function () {
+        Route::get('/', [BilPayController::class, 'index'])->name('index');        
+        Route::get('/{debtor}/edit', [BilPayController::class, 'edit'])->name('edit');
+
+        // New Route for handling Payments
+        Route::post('/pay', [BilPayController::class, 'pay'])->name('pay');  // POST route with no parameter
+        Route::put('/pay/{debtor}', [BilPayController::class, 'pay'])->name('pay_update');  // PUT route with {order} param and a different name.
+    
+    });
+
+      
+    // expenses routes
+    Route::prefix('expenses0')->name('expenses0.')->group(function () {
+        Route::get('/', [ExpPostController::class, 'index'])->name('index');
+        Route::get('/create', [ExpPostController::class, 'create'])->name('create');
+        Route::post('/', [ExpPostController::class, 'store'])->name('store');
+        Route::get('/{post}/edit', [ExpPostController::class, 'edit'])->name('edit');
+        Route::put('/{post}', [ExpPostController::class, 'update'])->name('update');
+        Route::delete('/{post}', [ExpPostController::class, 'destroy'])->name('destroy');
+    });
+
+       
+    // Tender routes
+    Route::prefix('procurements0')->name('procurements0.')->group(function () {
+        Route::get('/', [PROTenderController::class, 'index'])->name('index');
+        Route::get('/create', [PROTenderController::class, 'create'])->name('create');
+        Route::post('/', [PROTenderController::class, 'store'])->name('store');
+        Route::post('award/{tender}', [PROTenderController::class, 'award'])->name('award');  
+        Route::get('/{tender}/edit', [PROTenderController::class, 'edit'])->name('edit');
+        Route::put('/{tender}', [PROTenderController::class, 'update'])->name('update');
+        Route::put('quotation/{tender}', [PROTenderController::class, 'quotation'])->name('quotation');                
+        Route::delete('/{tender}', [PROTenderController::class, 'destroy'])->name('destroy');
+    });
+
+    // Purchase routes
+    Route::prefix('procurements1')->name('procurements1.')->group(function () {
+        Route::get('/', [PROPurchaseController::class, 'index'])->name('index');
+        Route::get('/create', [PROPurchaseController::class, 'create'])->name('create');
+        Route::post('/', [PROPurchaseController::class, 'store'])->name('store');
+        Route::get('/{purchase}/edit', [PROPurchaseController::class, 'edit'])->name('edit');
+        Route::put('/{purchase}', [PROPurchaseController::class, 'update'])->name('update');
+        Route::put('dispatch/{purchase}', [PROPurchaseController::class, 'dispatch'])->name('dispatch');
+        Route::delete('/{purchase}', [PROPurchaseController::class, 'destroy'])->name('destroy');
+    });
+
+  
+     // Requistion routes
+     Route::prefix('inventory0')->name('inventory0.')->group(function () {
+        Route::get('/', [IVRequistionController::class, 'index'])->name('index');
+        Route::get('/create', [IVRequistionController::class, 'create'])->name('create');
+        Route::post('/', [IVRequistionController::class, 'store'])->name('store');
+        Route::get('/{requistion}/edit', [IVRequistionController::class, 'edit'])->name('edit');
+        Route::put('/{requistion}', [IVRequistionController::class, 'update'])->name('update');
+        Route::delete('/{requistion}', [IVRequistionController::class, 'destroy'])->name('destroy');
+    });
+
+    //Issue routes
+    Route::prefix('inventory1')->name('inventory1.')->group(function () {
+        Route::get('/', [IVIssueController::class, 'index'])->name('index');
+        Route::get('/create', [IVIssueController::class, 'create'])->name('create');
+        Route::post('/', [IVIssueController::class, 'store'])->name('store');
+        Route::get('/{requistion}/edit', [IVIssueController::class, 'edit'])->name('edit');
+        Route::put('/{requistion}', [IVIssueController::class, 'update'])->name('update');
+        Route::delete('/{requistion}', [IVIssueController::class, 'destroy'])->name('destroy');
+    });
+
+    //Issue routes
+    Route::prefix('inventory2')->name('inventory2.')->group(function () {
+        Route::get('/', [IVReceiveController::class, 'index'])->name('index');
+        Route::get('/create', [IVReceiveController::class, 'create'])->name('create');
+        Route::post('/', [IVReceiveController::class, 'store'])->name('store');
+        Route::get('/{requistion}/edit', [IVReceiveController::class, 'edit'])->name('edit');
+        Route::put('/{requistion}', [IVReceiveController::class, 'update'])->name('update');
+        Route::delete('/{requistion}', [IVReceiveController::class, 'destroy'])->name('destroy');
+    });
+
+
+    //routes for Inventory Reconciliation (Version 3)
+    Route::prefix('inventory3')->name('inventory3.')->group(function () {
+
+        // Main index route
+        Route::get('/', [IVReconciliationController::class, 'index'])->name('index');
+
+        // --- Normal Adjustment Routes ---
+        Route::prefix('normal-adjustment')->name('normal-adjustment.')->group(function () {
+            Route::get('/', [IVReconciliationController::class, 'normalAdjustment'])->name('index'); // or .list, .view, .show, etc. depending on what normalAdjustment() does. I used 'index' to be consistent.
+            Route::get('/create', [IVReconciliationController::class, 'createNormalAdjustment'])->name('create');
+            Route::post('/', [IVReconciliationController::class, 'storeNormalAdjustment'])->name('store'); // Corrected typo: 'srore' to 'store'
+            Route::get('/{normaladjustment}/edit', [IVReconciliationController::class, 'editNormalAdjustment'])->name('edit');
+            Route::put('/{normaladjustment}', [IVReconciliationController::class, 'updateNormalAdjustment'])->name('update');  //Simplified route definition
+        });
+
+
+
+        // --- Physical Inventory Routes ---
+        Route::prefix('physical-inventory')->name('physical-inventory.')->group(function () {
+            Route::get('/', [IVReconciliationController::class, 'physicalInventory'])->name('index');  // Consistent naming
+            Route::get('/create', [IVReconciliationController::class, 'createPhysicalInventory'])->name('create');
+            Route::post('/', [IVReconciliationController::class, 'storePhysicalInventory'])->name('store'); // Commented out, as in the original
+            Route::get('/{physicalinventory}/edit', [IVReconciliationController::class, 'editPhysicalInventory'])->name('edit');
+            Route::put('/{physicalinventory}', [IVReconciliationController::class, 'updatePhysicalInventory'])->name('update');  //Simplified route definition
+       
+        });
+
+
+        
+    });
+
+
+    // Routes for Billing Setup (Version 3)
+    Route::prefix('systemconfiguration0')->name('systemconfiguration0.')->group(function () {
+
+        // Main index route
+        Route::get('/', function () {
+            return Inertia::render('SystemConfiguration/BillingSetup/Index');
+        })->name('index'); // Added a proper route name for the index.
+
+
+         // --- currencies Routes ---
+         Route::prefix('currencies')->name('currencies.')->group(function () {
+            Route::get('/', [BLSCurrencyController::class, 'index'])->name('index'); // Lists item groups
+            Route::get('/create', [BLSCurrencyController::class, 'create'])->name('create'); // Show form to create new item group
+            Route::post('/', [BLSCurrencyController::class, 'store'])->name('store'); // Store new item group
+            Route::get('/{itemgroup}/edit', [BLSCurrencyController::class, 'edit'])->name('edit'); // Show form to edit item group
+            Route::put('/{itemgroup}', [BLSCurrencyController::class, 'update'])->name('update'); // Update item group
+        });
+
+
+        // --- paymenttypes Routes ---
+        Route::prefix('paymenttypes')->name('paymenttypes.')->group(function () {
+            Route::get('/', [BLSPaymentTypeController::class, 'index'])->name('index'); // Lists item groups
+            Route::get('/create', [BLSPaymentTypeController::class, 'create'])->name('create'); // Show form to create new item group
+            Route::post('/', [BLSPaymentTypeController::class, 'store'])->name('store'); // Store new item group
+            Route::get('/{paymenttype}/edit', [BLSPaymentTypeController::class, 'edit'])->name('edit'); // Show form to edit item group
+            Route::put('/{paymenttype}', [BLSPaymentTypeController::class, 'update'])->name('update'); // Update item group
+            Route::delete('/{paymenttype}', [BLSPaymentTypeController::class, 'destroy'])->name('destroy');
+            Route::get('/search', [BLSPaymentTypeController::class, 'search'])->name('search');
+        });
+
+        // --- pricecategories Routes ---
+        Route::prefix('pricecategories')->name('pricecategories.')->group(function () {
+            Route::get('/', [BLSPaymentTypeController::class, 'index'])->name('index'); // Lists item groups
+            Route::get('/create', [BLSPaymentTypeController::class, 'create'])->name('create'); // Show form to create new item group
+            Route::post('/', [BLSPaymentTypeController::class, 'store'])->name('store'); // Store new item group
+            Route::get('/{pricecategory}/edit', [BLSPaymentTypeController::class, 'edit'])->name('edit'); // Show form to edit item group
+            Route::put('/{pricecategory}', [BLSPaymentTypeController::class, 'update'])->name('update'); // Update item group
+        });
+
+        // --- Itemgroups Routes ---
+        Route::prefix('itemgroups')->name('itemgroups.')->group(function () {
+            Route::get('/', [BLSItemGroupController::class, 'index'])->name('index'); 
+            Route::get('/create', [BLSItemGroupController::class, 'create'])->name('create');
+            Route::post('/', [BLSItemGroupController::class, 'store'])->name('store'); 
+            Route::get('/{itemgroup}/edit', [BLSItemGroupController::class, 'edit'])->name('edit');
+            Route::put('/{itemgroup}', [BLSItemGroupController::class, 'update'])->name('update');
+            Route::delete('/{itemgroup}', [BLSItemGroupController::class, 'destroy'])->name('destroy');
+            Route::get('/search', [BLSItemGroupController::class, 'search'])->name('search'); 
+        });
+
+        // --- Items Routes ---
+        Route::prefix('items')->name('items.')->group(function () {
+            Route::get('/', [BLSItemController::class, 'index'])->name('index'); 
+            Route::get('/create', [BLSItemController::class, 'create'])->name('create');
+            Route::post('/', [BLSItemController::class, 'store'])->name('store'); 
+            Route::get('/{item}/edit', [BLSItemController::class, 'edit'])->name('edit'); 
+            Route::put('/{item}', [BLSItemController::class, 'update'])->name('update'); 
+            Route::get('/search', [BLSItemController::class, 'search'])->name('search'); 
+        });
+
+         // --- customers Routes ---
+         Route::prefix('customers')->name('customers.')->group(function () {
+            Route::get('/', [BLSCustomerController::class, 'index'])->name('index'); 
+            Route::get('/create', [BLSCustomerController::class, 'create'])->name('create'); 
+            Route::post('/', [BLSCustomerController::class, 'store'])->name('store'); 
+            Route::post('/directstore', [BLSCustomerController::class, 'directstore'])->name('directstore');
+            Route::get('/{customer}/edit', [BLSCustomerController::class, 'edit'])->name('edit'); 
+            Route::put('/{customer}', [BLSCustomerController::class, 'update'])->name('update');
+            Route::get('/search', [BLSCustomerController::class, 'search'])->name('search'); 
+        });
+
+
+    });
+
+    
+    // Routes for Expenses Setup (Version 3)
+    Route::prefix('systemconfiguration1')->name('systemconfiguration1.')->group(function () {
+
+        // Main index route
+        Route::get('/', function () {
+            return Inertia::render('SystemConfiguration/ExpensesSetup/Index');
+        })->name('index'); // Added a proper route name for the index.
+
+
+         // --- itemgroups Routes ---
+        Route::prefix('itemgroups')->name('itemgroups.')->group(function () {
+            Route::get('/', [SEXPItemGroupController::class, 'index'])->name('index'); 
+            Route::get('/create', [SEXPItemGroupController::class, 'create'])->name('create'); 
+            Route::post('/', [SEXPItemGroupController::class, 'store'])->name('store'); 
+            Route::get('/{itemgroup}/edit', [SEXPItemGroupController::class, 'edit'])->name('edit'); 
+            Route::put('/{itemgroup}', [SEXPItemGroupController::class, 'update'])->name('update'); 
+            Route::delete('/{itemgroup}', [SEXPItemGroupController::class, 'destroy'])->name('destroy');
+            Route::get('/search', [SEXPItemGroupController::class, 'search'])->name('search'); 
+        });
+
+          // --- items Routes ---
+        Route::prefix('items')->name('items.')->group(function () {
+            Route::get('/', [SEXPItemController::class, 'index'])->name('index');
+            Route::get('/create', [SEXPItemController::class, 'create'])->name('create');
+            Route::post('/', [SEXPItemController::class, 'store'])->name('store');
+            Route::get('/{item}/edit', [SEXPItemController::class, 'edit'])->name('edit');
+            Route::put('/{item}', [SEXPItemController::class, 'update'])->name('update'); 
+            Route::delete('/{item}', [SEXPItemController::class, 'destroy'])->name('destroy');
+            Route::get('/search', [SEXPItemController::class, 'search'])->name('search'); 
+        });
+        
+
+    });
+
+
+    // Routes for Inventory Setup (Version 3)
+    Route::prefix('systemconfiguration2')->name('systemconfiguration2.')->group(function () {
+
+        // Main index route
+        Route::get('/', function () {
+            return Inertia::render('SystemConfiguration/InventorySetup/Index');
+        })->name('index'); // Added a proper route name for the index.
+
+
+         // --- stores Routes ---
+        Route::prefix('stores')->name('stores.')->group(function () {
+            Route::get('/', [SIV_StoreController::class, 'index'])->name('index'); 
+            Route::get('/create', [SIV_StoreController::class, 'create'])->name('create'); 
+            Route::post('/', [SIV_StoreController::class, 'store'])->name('store'); 
+            Route::get('/{store}/edit', [SIV_StoreController::class, 'edit'])->name('edit'); 
+            Route::put('/{store}', [SIV_StoreController::class, 'update'])->name('update'); 
+            Route::delete('/{store}', [SIV_StoreController::class, 'destroy'])->name('destroy');
+            Route::get('/search', [SIV_StoreController::class, 'search'])->name('search');            
+        });
+
+        // --- Product categories Routes ---
+        Route::prefix('categories')->name('categories.')->group(function () {
+            Route::get('/', [SIV_ProductCategoryController::class, 'index'])->name('index');
+            Route::get('/create', [SIV_ProductCategoryController::class, 'create'])->name('create');
+            Route::post('/', [SIV_ProductCategoryController::class, 'store'])->name('store');
+            Route::get('/{category}/edit', [SIV_ProductCategoryController::class, 'edit'])->name('edit');
+            Route::put('/{category}', [SIV_ProductCategoryController::class, 'update'])->name('update'); 
+            Route::delete('/{category}', [SIV_ProductCategoryController::class, 'destroy'])->name('destroy');
+            Route::get('/search', [SIV_ProductCategoryController::class, 'search'])->name('search');
+        });
+
+        // --- Product Routes ---
+        Route::prefix('products')->name('products.')->group(function () {
+            Route::get('/', [SIV_ProductController::class, 'index'])->name('index');
+            Route::get('/create', [SIV_ProductController::class, 'create'])->name('create');
+            Route::post('/', [SIV_ProductController::class, 'store'])->name('store');
+            Route::get('/{product}/edit', [SIV_ProductController::class, 'edit'])->name('edit');
+            Route::put('/{product}', [SIV_ProductController::class, 'update'])->name('update'); 
+            Route::delete('/{product}', [SIV_ProductController::class, 'destroy'])->name('destroy');
+            Route::get('/search', [SIV_ProductController::class, 'search'])->name('search');
+        });
+
+        // --- Unit Routes ---
+        Route::prefix('units')->name('units.')->group(function () {
+            Route::get('/', [SIV_PackagingController::class, 'index'])->name('index');
+            Route::get('/create', [SIV_PackagingController::class, 'create'])->name('create');
+            Route::post('/', [SIV_PackagingController::class, 'store'])->name('store');
+            Route::get('/{unit}/edit', [SIV_PackagingController::class, 'edit'])->name('edit');
+            Route::put('/{unit}', [SIV_PackagingController::class, 'update'])->name('update'); 
+            Route::delete('/{unit}', [SIV_PackagingController::class, 'destroy'])->name('destroy');
+            Route::get('/search', [SIV_PackagingController::class, 'search'])->name('search');
+        });
+
+        // --- Supplier Routes ---
+        Route::prefix('suppliers')->name('suppliers.')->group(function () {
+            Route::get('/', [SPR_SupplierController::class, 'index'])->name('index');
+            Route::get('/create', [SPR_SupplierController::class, 'create'])->name('create');
+            Route::post('/', [SPR_SupplierController::class, 'store'])->name('store');
+            Route::post('/directstore', [SPR_SupplierController::class, 'directstore'])->name('directstore');
+            Route::get('/{supplier}/edit', [SPR_SupplierController::class, 'edit'])->name('edit');
+            Route::put('/{supplier}', [SPR_SupplierController::class, 'update'])->name('update'); 
+            Route::delete('/{supplier}', [SPR_SupplierController::class, 'destroy'])->name('destroy');
+            Route::get('/search', [SPR_SupplierController::class, 'search'])->name('search'); 
+        });
+
+        // --- Adjustment Reason Routes ---
+        Route::prefix('adjustmentreasons')->name('adjustmentreasons.')->group(function () {
+            Route::get('/', [SIV_AdjustmentReasonController::class, 'index'])->name('index');
+            Route::get('/create', [SIV_AdjustmentReasonController::class, 'create'])->name('create');
+            Route::post('/', [SIV_AdjustmentReasonController::class, 'store'])->name('store');
+            Route::get('/{adjustmentreason}/edit', [SIV_AdjustmentReasonController::class, 'edit'])->name('edit');
+            Route::put('/{adjustmentreason}', [SIV_AdjustmentReasonController::class, 'update'])->name('update'); 
+            Route::delete('/{adjustmentreason}', [SIV_AdjustmentReasonController::class, 'destroy'])->name('destroy');
+            Route::get('/search', [SIV_AdjustmentReasonController::class, 'search'])->name('search');
+        });
+        
+
+    });
+
+
+    // Routes for Location Setup (Version 3)
+    Route::prefix('systemconfiguration3')->name('systemconfiguration3.')->group(function () {
+
+        // Main index route
+        Route::get('/', function () {
+            return Inertia::render('SystemConfiguration/LocationSetup/Index');
+        })->name('index'); // Added a proper route name for the index.
+
+
+         // --- countries Routes ---
+        Route::prefix('countries')->name('countries.')->group(function () {
+            Route::get('/', [LOCCountryController::class, 'index'])->name('index'); 
+            Route::get('/create', [LOCCountryController::class, 'create'])->name('create'); 
+            Route::post('/', [LOCCountryController::class, 'store'])->name('store'); 
+            Route::get('/{country}/edit', [LOCCountryController::class, 'edit'])->name('edit'); 
+            Route::put('/{country}', [LOCCountryController::class, 'update'])->name('update'); 
+            Route::delete('/{country}', [LOCCountryController::class, 'destroy'])->name('destroy');
+            Route::get('/search', [LOCCountryController::class, 'search'])->name('search'); 
+        });
+
+        // --- Product regions Routes ---
+        Route::prefix('regions')->name('regions.')->group(function () {
+            Route::get('/', [LOCRegionController::class, 'index'])->name('index');
+            Route::get('/create', [LOCRegionController::class, 'create'])->name('create');
+            Route::post('/', [LOCRegionController::class, 'store'])->name('store');
+            Route::get('/{region}/edit', [LOCRegionController::class, 'edit'])->name('edit');
+            Route::put('/{region}', [LOCRegionController::class, 'update'])->name('update'); 
+            Route::delete('/{region}', [LOCRegionController::class, 'destroy'])->name('destroy');
+        });
+
+        // --- District Routes ---
+        Route::prefix('districts')->name('districts.')->group(function () {
+            Route::get('/', [LOCDistrictController::class, 'index'])->name('index');
+            Route::get('/create', [LOCDistrictController::class, 'create'])->name('create');
+            Route::post('/', [LOCDistrictController::class, 'store'])->name('store');
+            Route::get('/{district}/edit', [LOCDistrictController::class, 'edit'])->name('edit');
+            Route::put('/{district}', [LOCDistrictController::class, 'update'])->name('update'); 
+            Route::delete('/{district}', [LOCDistrictController::class, 'destroy'])->name('destroy');
+        });
+
+        // --- Ward Routes ---
+        Route::prefix('wards')->name('wards.')->group(function () {
+            Route::get('/', [LOCWardController::class, 'index'])->name('index');
+            Route::get('/create', [LOCWardController::class, 'create'])->name('create');
+            Route::post('/', [LOCWardController::class, 'store'])->name('store');
+            Route::get('/{ward}/edit', [LOCWardController::class, 'edit'])->name('edit');
+            Route::put('/{ward}', [LOCWardController::class, 'update'])->name('update'); 
+            Route::delete('/{ward}', [LOCWardController::class, 'destroy'])->name('destroy');
+        });
+
+        // --- Street Routes ---
+        Route::prefix('streets')->name('streets.')->group(function () {
+            Route::get('/', [LOCStreetController::class, 'index'])->name('index');
+            Route::get('/create', [LOCStreetController::class, 'create'])->name('create');
+            Route::post('/', [LOCStreetController::class, 'store'])->name('store');
+            Route::get('/{street}/edit', [LOCStreetController::class, 'edit'])->name('edit');
+            Route::put('/{street}', [LOCStreetController::class, 'update'])->name('update'); 
+            Route::delete('/{street}', [LOCStreeetController::class, 'destroy'])->name('destroy');
+        });   
+        
+
+    });
+
+
+    // Routes for Facility Setup (Version 3)
+    Route::prefix('systemconfiguration4')->name('systemconfiguration4.')->group(function () {
+
+        // Main index route
+        Route::get('/', function () {
+            return Inertia::render('SystemConfiguration/FacilitySetup/Index');
+        })->name('index'); // Added a proper route name for the index.
+
+         // --- facilityoption Routes ---
+         Route::prefix('facilityoptions')->name('facilityoptions.')->group(function () {
+            Route::get('/', [FacilityOptionController::class, 'index'])->name('index');
+            Route::get('/create', [FacilityOptionController::class, 'create'])->name('create');
+            Route::post('/', [FacilityOptionController::class, 'store'])->name('store');
+            Route::get('/{facilityoption}/edit', [FacilityOptionController::class, 'edit'])->name('edit');
+            Route::put('/{facilityoption}', [FacilityOptionController::class, 'update'])->name('update'); 
+            Route::delete('/{facilityoption}', [FacilityOptionController::class, 'destroy'])->name('destroy');
+            Route::get('/search', [FacilityOptionController::class, 'search'])->name('search');
+        });   
+
+    });
+
+
+    // Routes for User Management(Version 3)
+    Route::prefix('usermanagement')->name('usermanagement.')->group(function () {
+
+        // Main index route
+        Route::get('/', function () {
+            return Inertia::render('UserManagement/Index');
+        })->name('index'); // Added a proper route name for the index.
+
+         // --- usergroup Routes ---
+         Route::prefix('usergroups')->name('usergroups.')->group(function () {
+            Route::get('/', [UserGroupController::class, 'index'])->name('index');
+            Route::get('/create', [UserGroupController::class, 'create'])->name('create');
+            Route::post('/', [UserGroupController::class, 'store'])->name('store');
+            Route::get('/{usergroup}/edit', [UserGroupController::class, 'edit'])->name('edit');
+            Route::put('/{usergroup}', [UserGroupController::class, 'update'])->name('update'); 
+            Route::delete('/{usergroup}', [UserGroupController::class, 'destroy'])->name('destroy');
+        });   
+
+         // --- user Routes ---
+         Route::prefix('users')->name('users.')->group(function () {
+            Route::get('/', [UserController::class, 'index'])->name('index');
+            Route::get('/create', [UserController::class, 'create'])->name('create');
+            Route::post('/', [UserController::class, 'store'])->name('store');
+            Route::get('/{user}/edit', [UserController::class, 'edit'])->name('edit');
+            Route::put('/{user}', [UserController::class, 'update'])->name('update'); 
+            Route::delete('/{user}', [UserController::class, 'destroy'])->name('destroy');
+        });   
+
+    });
+    
+});
+
+
+require __DIR__.'/auth.php';
