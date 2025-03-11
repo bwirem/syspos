@@ -28,7 +28,7 @@ export default function WelcomeSupport({ auth }) {
                     <header className="grid grid-cols-1 md:grid-cols-3 items-center gap-4 py-10 text-center md:text-left">
                         {/* Logo and Title (Combined) */}
                         <div className="md:col-start-2 flex flex-col items-center">
-                            <h1 className={`text-4xl md:text-5xl font-bold text-${primaryColor}`}>Welcome to SysPos</h1> {/* Use the primary color */}
+                            <h1 className={`text-4xl md:text-5xl font-bold text-${primaryColor}`}>SysPos</h1> {/* Use the primary color */}
                         </div>
 
                         {/* Navigation */}
@@ -68,10 +68,10 @@ export default function WelcomeSupport({ auth }) {
                                 </div>
                                 <div className="pt-3 sm:pt-5">
                                     <h2 className="text-xl font-semibold text-black">
-                                        Your Health, Simplified
+                                        Your Business, Simplified
                                     </h2>
-                                    <p className="mt-4 text-sm/relaxed text-gray-700 ">
-                                        Take control of your health with SysPos. Securely manage your medical records, get real-time updates, and easily share with doctors.
+                                    <p className="mt-4 text-sm/relaxed text-gray-700">
+                                        Take control of your business with SysPos. Securely manage your records, get real-time updates, and easily share with partners.
                                     </p>
                                 </div>
                             </div>
@@ -82,7 +82,7 @@ export default function WelcomeSupport({ auth }) {
                                 </div>
                                 <div className="pt-3 sm:pt-5">
                                     <h2 className="text-xl font-semibold text-black">
-                                        We're Here to Help
+                                        We're Here for Support
                                     </h2>
                                     <p className="mt-4 text-sm/relaxed text-gray-700">
                                         Get instant support for any questions. Our team is dedicated to making your SysPos experience seamless.
