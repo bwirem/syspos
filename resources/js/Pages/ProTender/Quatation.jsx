@@ -238,14 +238,15 @@ export default function Quotation({ tender }) {
             formData.append(`tenderquotations[${index}][item_name]`, item.item_name);
             formData.append(`tenderquotations[${index}][filename]`, item.filename);
             formData.append(`tenderquotations[${index}][url]`, item.url);
-
+            formData.append(`tenderquotations[${index}][type]`, item.type);
+            formData.append(`tenderquotations[${index}][size]`, item.size);
+            formData.append(`tenderquotations[${index}][description]`, item.filename); 
             
 
             // Ensure file upload works properly
             if (item.file) {
                 formData.append(`tenderquotations[${index}][type]`, item.file.type);
-                formData.append(`tenderquotations[${index}][size]`, item.file.size);
-                formData.append(`tenderquotations[${index}][description]`, item.filename);                
+                formData.append(`tenderquotations[${index}][size]`, item.file.size);                           
                 formData.append(`tenderquotations[${index}][file]`, item.file, item.filename);  // Use filename here
             }
 
