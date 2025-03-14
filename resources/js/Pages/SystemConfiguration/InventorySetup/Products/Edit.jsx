@@ -201,7 +201,7 @@ export default function Edit({ product }) {
                                         checked={data.hasexpiry}
                                         onChange={(e) => setData('hasexpiry', e.target.checked)}
                                     />
-                                    <label htmlFor="hasexpiry" className="ml-2 text-sm font-medium text-gray-700">Add to Cart</label>
+                                    <label htmlFor="hasexpiry" className="ml-2 text-sm font-medium text-gray-700">Has Expiry</label>
                                 </div>
 
                                 <div className="relative flex-1 flex products-center">
@@ -211,7 +211,7 @@ export default function Edit({ product }) {
                                         checked={data.expirynotice}
                                         onChange={(e) => setData('expirynotice', e.target.checked)}
                                     />
-                                    <label htmlFor="expirynotice" className="ml-2 text-sm font-medium text-gray-700">Add to Cart</label>
+                                    <label htmlFor="expirynotice" className="ml-2 text-sm font-medium text-gray-700">Expiry Notice</label>
                                 </div>
 
                                 <div className="relative flex-1 flex products-center">
@@ -221,7 +221,7 @@ export default function Edit({ product }) {
                                         checked={data.display}
                                         onChange={(e) => setData('display', e.target.checked)}
                                     />
-                                    <label htmlFor="display" className="ml-2 text-sm font-medium text-gray-700">Add to Cart</label>
+                                    <label htmlFor="display" className="ml-2 text-sm font-medium text-gray-700">Display</label>
                                 </div>
                             </div>
 
@@ -271,7 +271,7 @@ export default function Edit({ product }) {
                                     className="bg-blue-600 text-white rounded p-2 flex products-center space-x-2"
                                 >
                                     <FontAwesomeIcon icon={faSave} />
-                                    <span>{isSaving ? 'Saving...' : 'Save Product'}</span>
+                                    <span>{isSaving ? 'Saving...' : 'Save'}</span>
                                 </button>
                             </div>
                         </form>

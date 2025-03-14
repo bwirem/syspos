@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class SIV_Product extends Model
 {
@@ -22,10 +23,6 @@ class SIV_Product extends Model
         'prevcost',
         'costprice',
         'averagecost',
-        'price1',                      
-        'price2',                            
-        'price3',                              
-        'price4', 
         'addtocart',                    
         'defaultqty',                          
         'hasexpiry',                        
@@ -33,4 +30,12 @@ class SIV_Product extends Model
         'display',                              
         'reorderlevel', 
     ];
+
+    /**
+     * Define a one-to-one relationship with BLSItem.
+     */
+    public function blsItem(): HasOne
+    {
+        return $this->hasOne(BLSItem::class, 'product_id');
+    }
 }

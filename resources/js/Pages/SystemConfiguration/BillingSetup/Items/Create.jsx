@@ -14,11 +14,11 @@ export default function Create() {
     // Form Handling
     const { data, setData, post, errors, processing, reset } = useForm({
         name: '',
-        price1: '',
-        price2: '',
-        price3: '',
-        price4: '',
-        defaultqty: '',
+        price1: '0.0',
+        price2: '0.0',
+        price3: '0.0',
+        price4: '0.0',
+        defaultqty: '1',
         addtocart: false,
         itemgroup_id: '',
     });
@@ -119,7 +119,7 @@ export default function Create() {
                                 </button>
                                 <button type="submit" disabled={processing || isSaving} className="bg-blue-600 text-white rounded p-2 flex items-center space-x-2">
                                     <FontAwesomeIcon icon={faSave} />
-                                    <span>{isSaving ? 'Saving...' : 'Save Item'}</span>
+                                    <span>{isSaving ? 'Saving...' : 'Save'}</span>
                                 </button>
                             </div>
                         </form>

@@ -2,6 +2,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\SIV_Product;
+use App\Models\BLSItem; 
+use App\Models\BLSItemGroup; 
 use Illuminate\Http\Request;
 
 class SIV_ProductController extends Controller
@@ -48,25 +50,49 @@ class SIV_ProductController extends Controller
             'prevcost' => 'nullable|numeric|min:0',
             'averagecost' => 'nullable|numeric|min:0',
 
-            'addtocart' => 'boolean',
-            'hasexpiry' => 'boolean',
-            'expirynotice' => 'boolean',
-            'display' => 'boolean',
+            'addtocart' => 'sometimes|boolean',
+            'hasexpiry' => 'sometimes|boolean',
+            'expirynotice' => 'sometimes|boolean',
+            'display' => 'sometimes|boolean',
             
             'defaultqty' => 'nullable|integer|min:1',
             'reorderlevel' => 'nullable|integer|min:1',
-           
+        
             'category_id' => 'required|exists:siv_productcategories,id',
             'package_id' => 'required|exists:siv_packagings,id',  
         ]);     
 
+        // Ensure proper boolean casting (avoid errors when checkboxes are unchecked)
+        $validated['addtocart'] = $request->boolean('addtocart');
+        $validated['hasexpiry'] = $request->boolean('hasexpiry');
+        $validated['expirynotice'] = $request->boolean('expirynotice');
+        $validated['display'] = $request->boolean('display');
+
+        // Assign default values for nullable fields
+        $validated['defaultqty'] = $validated['defaultqty'] ?? 1;
+        $validated['reorderlevel'] = $validated['reorderlevel'] ?? 1;
+
         // Create the product
-        SIV_Product::create($validated);
+        $product = SIV_Product::create($validated);       
+        $itemGroup = BLSItemGroup::firstOrCreate(['name' => 'Inventory']);  
+
+        // Create the item
+        BLSItem::create([
+            'name' => $validated['name'],            
+            'price1' => 0,
+            'price2' => 0,
+            'price3' => 0,
+            'price4' => 0, 
+            'addtocart' => $validated['addtocart'],
+            'defaultqty' => $validated['defaultqty'],
+            'itemgroup_id' => $itemGroup->id,  
+            'product_id' => $product->id,   
+        ]);   
 
         return redirect()->route('systemconfiguration2.products.index')
             ->with('success', 'Product created successfully.');
     }
-
+    
     /**
      * Show the form for editing the specified product.
      */
@@ -90,20 +116,48 @@ class SIV_ProductController extends Controller
             'prevcost' => 'nullable|numeric|min:0',
             'averagecost' => 'nullable|numeric|min:0',
 
-            'addtocart' => 'boolean',
-            'hasexpiry' => 'boolean',
-            'expirynotice' => 'boolean',
-            'display' => 'boolean',
+            'addtocart' => 'sometimes|boolean',
+            'hasexpiry' => 'sometimes|boolean',
+            'expirynotice' => 'sometimes|boolean',
+            'display' => 'sometimes|boolean',
             
             'defaultqty' => 'nullable|integer|min:1',
             'reorderlevel' => 'nullable|integer|min:1',
-           
+        
             'category_id' => 'required|exists:siv_productcategories,id',
             'package_id' => 'required|exists:siv_packagings,id',  
         ]);    
 
+        // Ensure proper boolean casting
+        $validated['addtocart'] = $request->boolean('addtocart');
+        $validated['hasexpiry'] = $request->boolean('hasexpiry');
+        $validated['expirynotice'] = $request->boolean('expirynotice');
+        $validated['display'] = $request->boolean('display');
+
+        // Assign default values for nullable fields
+        $validated['defaultqty'] = $validated['defaultqty'] ?? 1;
+        $validated['reorderlevel'] = $validated['reorderlevel'] ?? 1;
+
         // Update the product
         $product->update($validated);
+
+        // Find the related item group
+        $itemGroup = BLSItemGroup::firstOrCreate(['name' => 'Inventory']);
+
+        // Update the related BLSItem
+        $product->blsItem()->updateOrCreate(
+            ['product_id' => $product->id],
+            [
+                'name' => $validated['name'],            
+                'price1' => 0,
+                'price2' => 0,
+                'price3' => 0,
+                'price4' => 0, 
+                'addtocart' => $validated['addtocart'],
+                'defaultqty' => $validated['defaultqty'],
+                'itemgroup_id' => $itemGroup->id,  
+            ]
+        );
 
         return redirect()->route('systemconfiguration2.products.index')
             ->with('success', 'Product updated successfully.');

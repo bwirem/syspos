@@ -80,29 +80,56 @@ class BLSItemController extends Controller
             'price1' => 'required|numeric|min:0',
             'price2' => 'nullable|numeric|min:0',
             'price3' => 'nullable|numeric|min:0',
-            'price4' => 'nullable|numeric|min:0',
-            'defaultqty' => 'nullable|integer|min:1',
+            'price4' => 'nullable|numeric|min:0', // Fixed here
+            'defaultqty' => 'required|integer|min:1',
             'addtocart' => 'boolean',
             'itemgroup_id' => 'required|exists:bls_itemgroups,id',
         ]);
-
+    
+        // Ensure boolean values are set correctly
+        $validated['addtocart'] = $request->boolean('addtocart');
+    
+        // If item is linked to stock (has product_id), update only certain fields
+        if ($item->product_id) {
+            $updateData = [
+                'price1' => $validated['price1'],
+                'price2' => $validated['price2'] ?? null,
+                'price3' => $validated['price3'] ?? null,
+                'price4' => $validated['price4'] ?? null,
+                'addtocart' => $validated['addtocart'],
+                'defaultqty' => $validated['defaultqty'] ?? null,
+            ];
+        } else {
+            // Update all fields if not linked to stock
+            $updateData = $validated;
+        }
+    
         // Update the item
-        $item->update($validated);
-
-        return redirect()->route('blsitems.index')
+        $item->update($updateData);
+    
+        return redirect()->route('systemconfiguration0.items.index')
             ->with('success', 'Item updated successfully.');
     }
+    
 
     /**
      * Remove the specified item from storage.
      */
     public function destroy(BLSItem $item)
     {
-        $blsitem->delete();
+        // Check if the item is linked to stock
+        if ($item->product_id) {
+            return redirect()->route('systemconfiguration0.items.index')
+                ->with('error', 'Cannot delete item linked to stock.');
+        }
 
-        return redirect()->route('blsitems.index')
+        // If not linked, proceed with deletion
+        $item->delete();
+
+        return redirect()->route('systemconfiguration0.items.index')
             ->with('success', 'Item deleted successfully.');
     }
+
 
     /**
      * Search for items based on query.

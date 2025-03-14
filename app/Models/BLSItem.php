@@ -22,7 +22,8 @@ class BLSItem extends Model
         'price3',                             
         'price4', 
         'defaultqty',                
-        'addtocart',             
+        'addtocart', 
+        'product_id',       
     ];
 
     public function itemgroup()
