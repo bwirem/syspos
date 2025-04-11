@@ -1,9 +1,14 @@
 <?php
 namespace App\Http\Controllers;
 
-use App\Models\User
-;
+use App\Models\User;
+use App\Models\UserGroup;
+use App\Models\SIV_Store;
+
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
@@ -33,7 +38,11 @@ class UserController extends Controller
      */
     public function create()
     {
-        return inertia('UserManagement/Users/Create');
+        return inertia('UserManagement/Users/Create', [         
+            'userGroups' => UserGroup::all(),
+            'stores' => SIV_Store::all(),
+        ]);
+        
     }
 
     /**
@@ -41,14 +50,29 @@ class UserController extends Controller
      */
     public function store(Request $request)
     {
-        // Validate input
         $validated = $request->validate([
-            'name' => 'required|string|max:255',            
-            'usergroup_id' => 'nullable|exists:sexp_usergroups,id',
+            'name' => 'required|string|max:255',
+            'email' => 'required|string|email|unique:users,email',
+            'password' => 'required|string|min:8',
+            'usergroup_id' => 'required|exists:usergroups,id',
+            'store_id' => 'required|exists:siv_stores,id',
+            'selectedStores' => 'array',
+            'selectedStores.*' => 'exists:siv_stores,id', // Validate each store ID
         ]);
 
-        // Create the user
-        User::create($validated);
+        $validated['password'] = Hash::make($validated['password']);
+
+        $user = User::create([
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'password' => $validated['password'],
+            'usergroup_id' => $validated['usergroup_id'],
+            'store_id' => $validated['store_id'], // Store the primary store
+        ]);
+
+        // Attach the selected stores
+        $user->stores()->attach($validated['selectedStores']);
+
 
         return redirect()->route('usermanagement.users.index')
             ->with('success', 'User created successfully.');
@@ -59,8 +83,13 @@ class UserController extends Controller
      */
     public function edit(User $user)
     {
+        //$user->load('stores'); // Eager load the relationship
+
         return inertia('UserManagement/Users/Edit', [
             'user' => $user,
+            'userGroups' => UserGroup::all(),
+            'stores' => SIV_Store::all(),
+            'assignedStoreIds' => $user->stores->pluck('id'), // Send assigned store IDs
         ]);
     }
 
@@ -69,18 +98,58 @@ class UserController extends Controller
      */
     public function update(Request $request, User $user)
     {
-        // Validate input
         $validated = $request->validate([
-            'name' => 'required|string|max:255',            
-            'usergroup_id' => 'nullable|exists:sexp_usergroups,id',
+            'name' => 'required|string|max:255',
+            'email' => [
+                'required',
+                'string',
+                'email',
+                Rule::unique('users')->ignore($user->id),
+            ],
+            'usergroup_id' => 'required|exists:usergroups,id',
+            'store_id' => 'required|exists:siv_stores,id',
+            'selectedStores' => 'array', 
+            'selectedStores.*' => 'exists:siv_stores,id', 
         ]);
 
-        // Update the user
-        $user->update($validated);
+        $user->update([
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'usergroup_id' => $validated['usergroup_id'],
+            'store_id' => $validated['store_id'],
+        ]);
+
+        //Sync the selected stores using the correct pivot table name
+       $user->stores()->sync($validated['selectedStores']);
 
         return redirect()->route('usermanagement.users.index')
             ->with('success', 'User updated successfully.');
     }
+  
+    /**
+     * Show the form for resetting the password of the specified user.
+     */
+    public function resetPassword(Request $request, User $user)
+    {
+        // Validate input
+        $validated = $request->validate([
+            'password' => 'required|string|min:8',
+        ]);
+
+        // Hash the password
+        $validated['password'] = Hash::make($validated['password']);
+
+        Log::info('Start processing purchase update:', ['user' => $user, 'request_data' => $request->all()]);
+
+        // Update the user
+        $user->update($validated);
+
+        // Return a success response in JSON format
+        return response()->json([
+            'message' => 'Password reset successfully.',
+        ], 200);
+    }
+
 
     /**
      * Remove the specified user from storage.

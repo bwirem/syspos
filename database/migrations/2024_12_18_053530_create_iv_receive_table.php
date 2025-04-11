@@ -14,8 +14,11 @@ return new class extends Migration
         Schema::create('iv_receive', function (Blueprint $table) {
             $table->id();
             $table->date('transdate');
-            $table->timestamp('sysdate')->useCurrent();           
-            $table->foreignId('fromstore_id')->constrained('siv_stores')->onDelete('cascade'); 
+            $table->timestamp('sysdate')->useCurrent();    
+                   
+            $table->unsignedBigInteger('fromstore_id')->nullable(); // Store/Customer/Supplier
+            $table->unsignedTinyInteger('fromstore_type')->nullable(); // enum: StoreType
+
             $table->foreignId('tostore_id')->constrained('siv_stores')->onDelete('cascade');      
             $table->integer('stage')->default(1); // Set the default value for 'stage'
             $table->index('stage'); // Add an index for 'stage'

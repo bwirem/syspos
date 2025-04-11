@@ -31,7 +31,7 @@ export default function Edit({ facilityoption }) {
         e.preventDefault();
 
         setIsSaving(true);
-        put(route('systemconfiguration4.facilityoptions.update', facilityoption.id), {
+        put(route('systemconfiguration5.facilityoptions.update', facilityoption.id), {
             onSuccess: () => {
                 setIsSaving(false);
                 resetForm();
@@ -79,7 +79,7 @@ export default function Edit({ facilityoption }) {
                             <div className="flex justify-end space-x-4 mt-6">
                                 <button
                                     type="button"
-                                    onClick={() => Inertia.get(route('systemconfiguration4.facilityoptions.index'))}
+                                    onClick={() => Inertia.get(route('systemconfiguration5.facilityoptions.index'))}
                                     className="bg-gray-300 text-gray-700 rounded p-2 flex items-center space-x-2"
                                 >
                                     <FontAwesomeIcon icon={faTimesCircle} />

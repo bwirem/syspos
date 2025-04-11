@@ -23,7 +23,7 @@ class BILSaleItem extends Model
 
     public function item()
     {
-        return $this->belongsTo(BLSItem::class, 'item_id', 'id');
+        return $this->belongsTo(BLSItem::class, 'item_id', 'id')->with('product');
     }
 
 }

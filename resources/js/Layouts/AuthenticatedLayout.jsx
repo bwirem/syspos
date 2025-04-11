@@ -24,11 +24,12 @@ import { faBoxOpen as faInventorySetupIcon } from '@fortawesome/free-solid-svg-i
 import { faMapMarkerAlt as faLocationSetupIcon } from '@fortawesome/free-solid-svg-icons'; // New icon for Location Setup
 import "@fortawesome/fontawesome-svg-core/styles.css";
 
+import usePermissionsStore from "../stores/usePermissionsStore";
 
 // Constants for CSS classes
-const navLinkClasses =
-    'flex items-center p-2 text-gray-300 hover:bg-gray-700 hover:text-white rounded-md';
+const navLinkClasses = 'flex items-center p-2 text-gray-300 hover:bg-gray-700 hover:text-white rounded-md';
 const caretClasses = (isOpen) => `caret ${isOpen ? 'rotate-180' : ''}`;
+
 
 // Icon Map
 const iconMap = {
@@ -71,7 +72,6 @@ const iconMap = {
     facility_setup: faBuilding      // <--- ADDED facility_setup mapping
 
 };
-
 
 // SidebarNavLink Component
 function SidebarNavLink({ href, icon, children }) {
@@ -130,30 +130,27 @@ function MenuButton({ children, onClick, className }) {
 
 // Main Component
 export default function AuthenticatedLayout({ header, children }) {
+  
+    const { modules, moduleItems,fetchPermissions } = usePermissionsStore();
+
     const user = usePage().props.auth.user;
-    const [showingNavigationDropdown, setShowingNavigationDropdown] =
-        useState(false);
-    const [sidebarVisible, setSidebarVisible] = useState(window.innerWidth >= 640);
-    const [sidebarState, setSidebarState] = useState({
-        billing: false,
-        expenses: false,
-        procurements: false,
-        inventory: false,
-        material: false,
-        accounting: false,
-        reporting: false,
-        // adminTools: false, // REMOVED: No longer a single "Administrative Tools" section
-        systemConfig: false, // NEW: State for "System Configuration"
-        userManagement: false, // NEW: State for "User Management"
-        security: false,      // NEW: State for "Security"
-    });
+    const [showingNavigationDropdown, setShowingNavigationDropdown] = useState(false);
+    const [sidebarVisible, setSidebarVisible] = useState(window.innerWidth >= 640);   
+    const [sidebarState, setSidebarState] = useState({});
 
     useEffect(() => {
-        const handleResize = () => setSidebarVisible(window.innerWidth >= 640);
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
+        fetchPermissions(); // Fetch permissions on mount
     }, []);
 
+   
+    useEffect(() => {
+              
+        const initialState = {};
+        modules.forEach(module => {
+            initialState[module.modulekey] = false; // Set initial state to false
+        });
+        setSidebarState(initialState);
+    }, []);
 
     const toggleSidebarSection = (section) => {
         setSidebarState((prevState) => ({
@@ -162,182 +159,31 @@ export default function AuthenticatedLayout({ header, children }) {
         }));
     };
 
-
-    const sidebarMenuItems = [
-        {
-            label: 'Home',
-            icon: iconMap.home,
-            isOpen: true,
-            toggleOpen: () => { },
-            href: '/dashboard',
-        },
-        {
-            label: 'Sales and Billing',
-            icon: iconMap.add_shopping_cart,
-            isOpen: sidebarState.billing,
-            toggleOpen: () => toggleSidebarSection('billing'),
-            children: (
-                <>
-                    <SidebarNavLink href="/billing0" icon={iconMap.add_shopping_cart}>
-                        Order
-                    </SidebarNavLink>
-                    <SidebarNavLink href="/billing1" icon={iconMap.post_add}>
-                        Post Bills
-                    </SidebarNavLink>
-                    <SidebarNavLink href="/billing2" icon={iconMap.paid}>
-                        Pay Bills
-                    </SidebarNavLink>
-                    <SidebarNavLink href="/billing3" icon={iconMap.sales_history}>
-                        Sales History
-                    </SidebarNavLink>
-                    <SidebarNavLink href="/billing4" icon={iconMap.payments_history}>
-                        Payments History
-                    </SidebarNavLink>
-                    <SidebarNavLink href="/billing5" icon={iconMap.void_history}>
-                        Void History
-                    </SidebarNavLink>
-                </>
-            ),
-        },
-        {
-            label: 'Expenses',
-            icon: iconMap.attach_money,
-            isOpen: sidebarState.expenses,
-            toggleOpen: () => toggleSidebarSection('expenses'),
-            children: (
-                <>
-                    <SidebarNavLink href="/expenses0" icon={iconMap.post_add}>
-                        Post Expenses
-                    </SidebarNavLink>
-                    <SidebarNavLink href="/expenses1" icon={iconMap.history}>
-                        Expenses History
-                    </SidebarNavLink>
-                </>
-            ),
-        },
-        {
-            label: 'Procurements',
-            icon: iconMap.inventory,
-            isOpen: sidebarState.procurements,
-            toggleOpen: () => toggleSidebarSection('procurements'),
-            children: (
-                <>
-                    <SidebarNavLink href="/procurements0" icon={iconMap.request_quote}>
-                        Tender and Quotation
-                    </SidebarNavLink>
-                    <SidebarNavLink href="/procurements1" icon={iconMap.shopping_cart}>
-                        Purchase and Receiving
-                    </SidebarNavLink>
-                </>
-            ),
-        },
-        {
-            label: 'Inventory',
-            icon: iconMap.storage,
-            isOpen: sidebarState.inventory,
-            toggleOpen: () => toggleSidebarSection('inventory'),
-            children: (
-                <>
-                    <SidebarNavLink href="/inventory0" icon={iconMap.store}>
-                        Internal Requisitions
-                    </SidebarNavLink>
-                    <SidebarNavLink href="/inventory1" icon={iconMap.local_shipping}>
-                        Goods Issuance
-                    </SidebarNavLink>
-                    <SidebarNavLink href="/inventory2" icon={iconMap.goods_receiving}>
-                        Goods Receiving
-                    </SidebarNavLink>
-                    <SidebarNavLink href="/inventory3" icon={iconMap.inventory_reconciliation}>
-                        Inventory Reconciliation
-                    </SidebarNavLink>
-                    <SidebarNavLink href="/inventory4" icon={iconMap.stock_history}>
-                        Stock History
-                    </SidebarNavLink>
-                </>
-            ),
-        },
-        {
-            label: 'Material Conversion',
-            icon: iconMap.sync_alt,
-            isOpen: sidebarState.material,
-            toggleOpen: () => toggleSidebarSection('material'),
-            children: (
-                <>
-                    <SidebarNavLink href="/conversion0" icon={iconMap.autorenew}>
-                        Request Materials
-                    </SidebarNavLink>
-                </>
-            ),
-        },
-        {
-            label: 'Financial Accounting',
-            icon: iconMap.account_balance,
-            isOpen: sidebarState.accounting,
-            toggleOpen: () => toggleSidebarSection('accounting'),
-            children: (
-                <SidebarNavLink href="/general-ledger" icon={iconMap.menu_book}>
-                    General Ledger
-                </SidebarNavLink>
-            ),
-        },
-        {
-            label: 'Reporting/Analytics',
-            icon: iconMap.analytics,
-            isOpen: sidebarState.reporting,
-            toggleOpen: () => toggleSidebarSection('reporting'),
-            children: (
-                <SidebarNavLink href="/reportingAnalytics0" icon={iconMap.description}>
-                    Reports
-                </SidebarNavLink>
-            ),
-        },
-        // --- Begin Administrative Sections ---
-        {
-            label: 'System Configuration',
-            icon: faCogs, // Using faCogs for a general settings icon
-            isOpen: sidebarState.systemConfig,
-            toggleOpen: () => toggleSidebarSection('systemConfig'),
-            children: (
-                <>
-                    <SidebarNavLink href="/systemconfiguration0" icon={iconMap.billing_setup}>Billing Setup</SidebarNavLink>
-                    <SidebarNavLink href="/systemconfiguration1" icon={iconMap.expenses_setup}>Expenses Setup</SidebarNavLink>
-                    <SidebarNavLink href="/systemconfiguration2" icon={iconMap.inventory_setup}>Inventory Setup</SidebarNavLink>
-                    <SidebarNavLink href="/systemconfiguration3" icon={iconMap.location_setup}>Location Setup</SidebarNavLink>
-                    <SidebarNavLink href="/systemconfiguration4" icon={iconMap.facility_setup}>Facility Setup</SidebarNavLink>
-                </>
-            ),
-        },
-        {
-            label: 'User Management',
-            icon: iconMap.manage_accounts,
-            isOpen: sidebarState.userManagement,
-            toggleOpen: () => toggleSidebarSection('userManagement'),
-            href: "/usermanagement", // Direct link, as it doesn't have children in this structure
-        },
-        {
-            label: 'Security',
-            icon: iconMap.security_settings,
-            isOpen: sidebarState.security,
-            toggleOpen: () => toggleSidebarSection('security'),
-            href: "/security", // Direct link
-        },
-        // --- End Administrative Sections ---
-
-    ];
+    const sidebarMenuItems = modules.map(module => ({
+        label: module.moduletext,
+        icon: iconMap[module.icon] || null, // Get the icon for the module
+        isOpen: sidebarState[module.modulekey],
+        toggleOpen: () => toggleSidebarSection(module.modulekey),
+        children: moduleItems[module.modulekey].map(item => ({
+            label: item.text,
+            icon: iconMap[item.icon] || null, // Get the icon for the item
+            href: `/${item.key}`,
+        })),
+    }));
 
     return (
-        <div className="min-h-screen flex bg-gray-100">
+        <div className="min-h-screen flex bg-gray-100">            
+
             {/* Sidebar */}
             <div
-                className={`sidebar transition-all duration-300 ease-in-out ${sidebarVisible ? 'block' : 'hidden'
-                    } sm:block bg-gray-800 text-white border-r border-gray-700  overflow-y-auto`}
+                className={`sidebar transition-all duration-300 ease-in-out ${sidebarVisible ? 'block' : 'hidden'} sm:block bg-gray-800 text-white border-r border-gray-700 overflow-y-auto`}
                 style={{ maxHeight: '100vh' }}
             >
                 <div className="flex items-center justify-center p-4">
                     <Link href="/">
                         <div className="flex items-center">
                             <img
-                                src="/img/poslogo.png"  /*  Make sure the path is correct! */
+                                src="/img/poslogo.png"
                                 alt="Application Logo"
                                 className="w-8 h-8 mr-2"
                             />
@@ -355,17 +201,23 @@ export default function AuthenticatedLayout({ header, children }) {
                                 label={item.label}
                                 isOpen={item.isOpen}
                                 toggleOpen={item.toggleOpen}
-                                children={item.children}
-                                href={item.href}
+                                children={item.children && item.isOpen ? (
+                                    <>
+                                        {item.children.map((child) => (
+                                            <SidebarNavLink key={child.label} href={child.href} icon={child.icon}>
+                                                {child.label}
+                                            </SidebarNavLink>
+                                        ))}
+                                    </>
+                                ) : null}
                             />
                         ))}
                     </ul>
                 </nav>
             </div>
 
-
             {/* Main Content */}
-            <div className="flex-1 flex flex-col h-screen overflow-hidden"> {/* Changed to h-screen and overflow-hidden for container*/}
+            <div className="flex-1 flex flex-col h-screen overflow-hidden">
                 <nav className="border-b border-gray-200 bg-white">
                     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                         <div className="flex h-16 justify-between">
@@ -409,7 +261,7 @@ export default function AuthenticatedLayout({ header, children }) {
 
                                         <Dropdown.Content>
                                             <Dropdown.Link href={route('profile.edit')}>
-                                                <FontAwesomeIcon icon={faUser} className="mr-2" />  Profile
+                                                <FontAwesomeIcon icon={faUser} className="mr-2" /> Profile
                                             </Dropdown.Link>
                                             <Dropdown.Link
                                                 href={route('logout')}
@@ -438,8 +290,7 @@ export default function AuthenticatedLayout({ header, children }) {
                     </div>
 
                     <div
-                        className={`${showingNavigationDropdown ? 'block' : 'hidden'
-                            } sm:hidden`}
+                        className={`${showingNavigationDropdown ? 'block' : 'hidden'} sm:hidden`}
                     >
                         <div className="border-t border-gray-200 pb-1 pt-4">
                             <div className="px-4">
@@ -452,22 +303,22 @@ export default function AuthenticatedLayout({ header, children }) {
                             </div>
 
                             <div className="mt-3 space-y-1">
-                                <ResponsiveNavLink href={route('profile.edit')}>
+                                <SidebarNavLink href={route('profile.edit')}>
                                     <FontAwesomeIcon icon={faUser} className="mr-2" /> Profile
-                                </ResponsiveNavLink>
-                                <ResponsiveNavLink
+                                </SidebarNavLink>
+                                <SidebarNavLink
                                     method="post"
                                     href={route('logout')}
                                     as="button"
                                 >
                                     <FontAwesomeIcon icon={faSignOutAlt} className="mr-2" /> Log Out
-                                </ResponsiveNavLink>
+                                </SidebarNavLink>
                             </div>
                         </div>
                     </div>
                 </nav>
 
-                <main className="flex-1 h-full overflow-y-auto"> {/* Changed to h-full and overflow-y-auto for content area */}
+                <main className="flex-1 h-full overflow-y-auto">
                     <div className="p-4 h-full">
                         {children}
                     </div>

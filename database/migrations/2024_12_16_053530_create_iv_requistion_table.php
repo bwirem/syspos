@@ -16,10 +16,12 @@ return new class extends Migration
             $table->date('transdate');
             $table->timestamp('sysdate')->useCurrent();           
             $table->foreignId('fromstore_id')->constrained('siv_stores')->onDelete('cascade'); 
-            $table->foreignId('tostore_id')->constrained('siv_stores')->onDelete('cascade');       
+            
+            $table->unsignedBigInteger('tostore_id')->nullable(); // ID of store, customer, or supplier
+            $table->unsignedTinyInteger('tostore_type')->nullable(); // Uses App\Enums\StoreType     
+             
             $table->integer('stage')->default(1); // Set the default value for 'stage'
-            $table->index('stage'); // Add an index for 'stage'
-            $table->integer('restore_stage')->default(1); // Restore stage'
+            $table->index('stage'); // Add an index for 'stage'           
             $table->decimal('total', 10, 2); // Total order amount
             $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
             $table->timestamps();

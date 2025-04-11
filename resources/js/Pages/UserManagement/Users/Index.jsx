@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Head, Link, useForm, router } from "@inertiajs/react";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faSearch, faPlus, faEdit, faTrash } from "@fortawesome/free-solid-svg-icons";
+import { faHome,faSearch, faPlus, faEdit, faTrash } from "@fortawesome/free-solid-svg-icons";
 import "@fortawesome/fontawesome-svg-core/styles.css";
 
 import Modal from '@/Components/CustomModal';
@@ -89,13 +89,21 @@ export default function Index({ auth, users, filters }) {
                             />
                         </div>
 
+                        
+                            <Link
+                                href={route("usermanagement.users.create")}
+                                className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm flex users-center"
+                            >
+                                <FontAwesomeIcon icon={faPlus} className="mr-1" /> Create
+                            </Link>
 
-                        <Link
-                            href={route("usermanagement.users.create")}
-                            className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm flex users-center"
-                        >
-                            <FontAwesomeIcon icon={faPlus} className="mr-1" /> Create
-                        </Link>
+                            <Link
+                                href={route("usermanagement.index")}
+                                className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm flex items-center"
+                            >
+                                <FontAwesomeIcon icon={faHome} className="mr-1" /> Home
+                            </Link>                        
+
                     </div>
                     
                 </div>

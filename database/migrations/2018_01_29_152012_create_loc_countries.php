@@ -16,7 +16,7 @@ return new class extends Migration
         if (!Schema::hasTable('loc_countries')) {
             Schema::create('loc_countries', function (Blueprint $table) {
                 $table->id(); 
-                $table->string('description')->unique();
+                $table->string('name')->unique();
                 $table->timestamps();
             });
         }

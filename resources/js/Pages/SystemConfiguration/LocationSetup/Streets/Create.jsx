@@ -1,34 +1,46 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import Modal from '@/Components/CustomModal';
-import { Head, useForm } from '@inertiajs/react';
-import { Inertia } from '@inertiajs/inertia';
-import axios from 'axios';
+import { Head, Link, useForm } from '@inertiajs/react';
 import { useState, useEffect } from 'react';
-
-// Font Awesome
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSave, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
 
-export default function Create() {
-    // Form Handling
+export default function Create({ regions, districts, wards }) {
     const { data, setData, post, errors, processing, reset } = useForm({
         name: '',
-        price1: '',
-        price2: '',
-        price3: '',
-        price4: '',
-        defaultqty: '',
-        addtocart: false,
-        streetgroup_id: '',
+        ward_id: '',
     });
 
-    // State Management
+    const [filteredDistricts, setFilteredDistricts] = useState([]); // To Store District
+    const [filteredWards, setFilteredWards] = useState([]);
     const [modalState, setModalState] = useState({ isOpen: false, message: '', isAlert: false });
     const [isSaving, setIsSaving] = useState(false);
-    const [streetGroups, setStreetGroups] = useState([]);
+    const [selectedRegionId, setSelectedRegionId] = useState(null);
+    const [selectedDistrictId, setSelectedDistrictId] = useState(null);
 
-    // Handlers
+    useEffect(() => {
+        // Update filtered district when a region changes
+        if (selectedRegionId) {
+            setFilteredDistricts(districts.filter(d => d.region_id == selectedRegionId));
+        } else {
+            setFilteredDistricts([]);
+        }
+        setSelectedDistrictId(null); // Reset District Selection
+        setData('ward_id', ''); // Reset ward
+        setFilteredWards([]); // Clear wards
+    }, [selectedRegionId, districts, setData]);
+
+    useEffect(() => {
+        // Update filtered wards when a district changes
+        if (selectedDistrictId) {
+            setFilteredWards(wards.filter(w => w.district_id == selectedDistrictId));
+        } else {
+            setFilteredWards([]);
+        }
+        setData('ward_id', ''); // Reset ward selection
+    }, [selectedDistrictId, wards, setData]);
+
     const handleModalClose = () => setModalState({ isOpen: false, message: '', isAlert: false });
     const showAlert = (message) => setModalState({ isOpen: true, message, isAlert: true });
     const resetForm = () => { reset(); showAlert('Street created successfully!'); };
@@ -36,18 +48,29 @@ export default function Create() {
     const handleSubmit = (e) => {
         e.preventDefault();
         setIsSaving(true);
-        post(route('systemconfiguration3.streets.store'), {
+        post(route('systemconfiguration4.streets.store'), data, {
             onSuccess: () => { setIsSaving(false); resetForm(); },
             onError: () => { setIsSaving(false); showAlert('An error occurred while saving the street.'); },
         });
     };
 
-    // Fetch street groups
-    useEffect(() => {
-        axios.get(route('systemconfiguration3.streetgroups.search'))
-            .then(response => setStreetGroups(response.data.groups))
-            .catch(() => showAlert('Failed to fetch street groups.'));
-    }, []);
+    const handleRegionChange = (e) => {
+        const regionId = e.target.value;
+        setSelectedRegionId(regionId);
+        setSelectedDistrictId(null); // Reset District Selection
+        setData('ward_id', ''); // Reset ward
+        setFilteredWards([]); // Clear wards
+    };
+
+    const handleDistrictChange = (e) => {
+        const districtId = e.target.value;
+        setSelectedDistrictId(districtId);
+        setData('ward_id', ''); // Reset ward
+    };
+
+    const handleWardChange = (e) => {
+        setData('ward_id', e.target.value);
+    };
 
     return (
         <AuthenticatedLayout header={<h2 className="text-xl font-semibold leading-tight text-gray-800">New Street</h2>}>
@@ -56,70 +79,79 @@ export default function Create() {
                 <div className="mx-auto max-w-3xl sm:px-6 lg:px-8">
                     <div className="bg-white p-6 shadow sm:rounded-lg">
                         <form onSubmit={handleSubmit} className="space-y-6">
-                            {/* Name and Street Group */}
+                            {/* Region and District */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
+                                    <label className="block text-sm font-medium text-gray-700">Region</label>
+                                    <select value={selectedRegionId || ''} onChange={handleRegionChange} className="w-full border p-2 rounded text-sm">
+                                        <option value="">Select Region</option>
+                                        {regions.map(region => <option key={region.id} value={region.id}>{region.name}</option>)}
+                                    </select>
+                                    {errors.region_id && <p className="text-sm text-red-600">{errors.region_id}</p>}
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">District</label>
+                                    <select
+                                        value={selectedDistrictId || ''} // Use local state
+                                        onChange={handleDistrictChange}
+                                        className="w-full border p-2 rounded text-sm"
+                                        disabled={!selectedRegionId}
+                                    >
+                                        <option value="">Select District</option>
+                                        {filteredDistricts.map(district => (
+                                            <option key={district.id} value={district.id}>{district.name}</option>
+                                        ))}
+                                    </select>
+                                    {errors.district_id && <p className="text-sm text-red-600">{errors.district_id}</p>}
+                                </div>
+                            </div>
+
+                            {/* Name and Wards*/}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Ward</label>
+                                    <select
+                                        value={data.ward_id}
+                                        onChange={handleWardChange}
+                                        className="w-full border p-2 rounded text-sm"
+                                        disabled={!selectedDistrictId} // Disable if no district is selected
+                                    >
+                                        <option value="">Select Ward</option>
+                                        {filteredWards.map(ward => <option key={ward.id} value={ward.id}>{ward.name}</option>)}
+                                    </select>
+                                    {errors.ward_id && <p className="text-sm text-red-600">{errors.ward_id}</p>}
+                                </div>
+
+                                <div>
                                     <label className="block text-sm font-medium text-gray-700">Name</label>
-                                    <input type="text" value={data.name} onChange={(e) => setData('name', e.target.value)} className={`w-full border p-2 rounded text-sm ${errors.name ? 'border-red-500' : ''}`} placeholder="Enter name..." />
+                                    <input
+                                        type="text"
+                                        value={data.name}
+                                        onChange={(e) => setData('name', e.target.value)}
+                                        className={`w-full border p-2 rounded text-sm ${errors.name ? 'border-red-500' : ''}`}
+                                        placeholder="Enter name..."
+                                    />
                                     {errors.name && <p className="text-sm text-red-600">{errors.name}</p>}
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">Street Group</label>
-                                    <select value={data.streetgroup_id} onChange={(e) => setData('streetgroup_id', e.target.value)} className="w-full border p-2 rounded text-sm">
-                                        <option value="">Select Street Group</option>
-                                        {streetGroups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
-                                    </select>
-                                    {errors.streetgroup_id && <p className="text-sm text-red-600">{errors.streetgroup_id}</p>}
-                                </div>
                             </div>
 
-                            {/* Prices */}
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                {["price1", "price2", "price3", "price4"].map((price, index) => (
-                                    <div key={index}>
-                                        <label className="block text-sm font-medium text-gray-700">Price {index + 1}</label>
-                                        <input type="number" value={data[price]} onChange={(e) => setData(price, e.target.value)} className={`w-full border p-2 rounded text-sm ${errors[price] ? 'border-red-500' : ''}`} placeholder="Enter price..." />
-                                        {errors[price] && <p className="text-sm text-red-600">{errors[price]}</p>}
-                                    </div>
-                                ))}                               
-                            </div>
-
-                            <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">                              
-                                {/* Default Quantity and Add to Cart on the same row */}
-                                <div className="relative flex-1">
-                                    <label htmlFor="defaultqty" className="block text-sm font-medium text-gray-700 mr-2">Default Quantity</label>
-                                    <input
-                                        id="defaultqty"
-                                        type="number"
-                                        placeholder="Enter quantity..."
-                                        value={data.defaultqty}
-                                        onChange={(e) => setData('defaultqty', e.target.value)}
-                                        className={`w-full border p-2 rounded text-sm ${errors.defaultqty ? 'border-red-500' : ''}`}
-                                    />
-                                    {errors.defaultqty && <p className="text-sm text-red-600 mt-1">{errors.defaultqty}</p>}
-                                </div>
-
-                                <div className="relative flex-1 flex streets-center">
-                                    <input
-                                        id="addtocart"
-                                        type="checkbox"
-                                        checked={data.addtocart}
-                                        onChange={(e) => setData('addtocart', e.target.checked)}
-                                    />
-                                    <label htmlFor="addtocart" className="ml-2 text-sm font-medium text-gray-700">Add to Cart</label>
-                                </div>
-                            </div>
-
-                            
                             {/* Buttons */}
                             <div className="flex justify-end space-x-4">
-                                <button type="button" onClick={() => Inertia.get(route('systemconfiguration3.streets.index'))} className="bg-gray-300 text-gray-700 rounded p-2 flex streets-center space-x-2">
+                                <Link
+                                    href={route('systemconfiguration4.streets.index')}
+                                    className="bg-gray-300 text-gray-700 rounded p-2 flex items-center space-x-2"
+                                >
                                     <FontAwesomeIcon icon={faTimesCircle} />
                                     <span>Cancel</span>
-                                </button>
-                                <button type="submit" disabled={processing || isSaving} className="bg-blue-600 text-white rounded p-2 flex streets-center space-x-2">
+                                </Link>
+                                <button
+                                    type="submit"
+                                    disabled={processing || isSaving}
+                                    className="bg-blue-600 text-white rounded p-2 flex items-center space-x-2"
+                                >
                                     <FontAwesomeIcon icon={faSave} />
-                                    <span>{isSaving ? 'Saving...' : 'Save Street'}</span>
+                                    <span>{isSaving ? 'Saving...' : 'Save'}</span>
                                 </button>
                             </div>
                         </form>
@@ -128,7 +160,13 @@ export default function Create() {
             </div>
 
             {/* Alert Modal */}
-            <Modal isOpen={modalState.isOpen} onClose={handleModalClose} title={modalState.isAlert ? "Alert" : "Confirm Action"} message={modalState.message} isAlert={modalState.isAlert} />
+            <Modal
+                isOpen={modalState.isOpen}
+                onClose={handleModalClose}
+                title={modalState.isAlert ? "Alert" : "Confirm Action"}
+                message={modalState.message}
+                isAlert={modalState.isAlert}
+            />
         </AuthenticatedLayout>
     );
 }

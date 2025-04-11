@@ -16,14 +16,6 @@ class BLSPaymentType extends Model
     // Add attributes to $fillable array for mass assignment
     protected $fillable = [      
         'name', 
-        'preventoverpay',                   
-        'checkdepositbalance',              
-        'ischeque',                          
-        'allowrefund',                       
-        'visibilitysales',                   
-        'visibilitydebtorpayments',         
-        'commission',                        
-        'advancepay',                        
-        'paymentreference',
+        'chart_of_account_id'
     ];
 }

@@ -1,5 +1,5 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, useForm } from '@inertiajs/react';
+import { Head, useForm, Link } from '@inertiajs/react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus, faTrash, faSave, faTimesCircle, faMoneyBill } from '@fortawesome/free-solid-svg-icons';
@@ -19,7 +19,7 @@ const debounce = (func, delay) => {
 };
 
 
-export default function Create() {
+export default function Create({fromstore}) {
     const { data, setData, post, errors, processing, reset } = useForm({
         customer_name: '',
         customer_id: null,
@@ -50,11 +50,7 @@ export default function Create() {
     const [newCustomerModalLoading, setNewCustomerModalLoading] = useState(false);
     const [newCustomerModalSuccess, setNewCustomerModalSuccess] = useState(false);
 
-    const [storeSearchQuery, setStoreSearchQuery] = useState('');
-    const [storeSearchResults, setStoreSearchResults] = useState([]);
-    const [showStoreDropdown, setShowStoreDropdown] = useState(false);
-    const storeDropdownRef = useRef(null);
-    const storeSearchInputRef = useRef(null);
+    
     const [storeIDError, setStoreIDError] = useState(null);
 
     const [modalState, setModalState] = useState({
@@ -108,23 +104,7 @@ export default function Create() {
                 setCustomerSearchResults([]);
             });
     }, []);
-
-    const fetchStores = useCallback((query) => {
-        if (!query.trim()) {
-            setStoreSearchResults([]);
-            return;
-        }
-
-        axios.get(route('systemconfiguration2.stores.search'), { params: { query } })
-            .then((response) => {
-                setStoreSearchResults(response.data.stores.slice(0, 5));
-            })
-            .catch((error) => {
-                console.error('Error fetching stores:', error);
-                showAlert('Failed to fetch stores. Please try again later.');
-                setStoreSearchResults([]);
-            });
-    }, []);
+  
 
     const fetchPaymentMethods = useCallback(async () => {
         setPaymentMethodsLoading(true);
@@ -146,8 +126,7 @@ export default function Create() {
 
     const debouncedItemSearch = useMemo(() => debounce(fetchItems, 300), [fetchItems]);
     const debouncedCustomerSearch = useMemo(() => debounce(fetchCustomers, 300), [fetchCustomers]);
-    const debouncedStoreSearch = useMemo(() => debounce(fetchStores, 300), [fetchStores]);
-
+    
     useEffect(() => {
         if (itemSearchQuery.trim()) {
             debouncedItemSearch(itemSearchQuery);
@@ -164,13 +143,7 @@ export default function Create() {
         }
     }, [customerSearchQuery, debouncedCustomerSearch]);
 
-    useEffect(() => {
-        if (storeSearchQuery.trim()) {
-            debouncedStoreSearch(storeSearchQuery);
-        } else {
-            setStoreSearchResults([]);
-        }
-    }, [storeSearchQuery, debouncedStoreSearch]);
+    
 
     useEffect(() => {
         setData('orderitems', orderItems);
@@ -201,16 +174,7 @@ export default function Create() {
         document.addEventListener('mousedown', handleClickOutsideCustomer);
         return () => document.removeEventListener('mousedown', handleClickOutsideCustomer);
     }, []);
-
-    useEffect(() => {
-        const handleClickOutsideStore = (event) => {
-            if (storeDropdownRef.current && !storeDropdownRef.current.contains(event.target)) {
-                setShowStoreDropdown(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutsideStore);
-        return () => document.removeEventListener('mousedown', handleClickOutsideStore);
-    }, []);
+    
 
     useEffect(() => {
         fetchPaymentMethods();
@@ -335,14 +299,7 @@ export default function Create() {
         setCustomerSearchQuery(query);
         setData('customer_name', query);
         setShowCustomerDropdown(!!query.trim());
-    };
-
-    const handleStoreSearchChange = (e) => {
-        const query = e.target.value;
-        setStoreSearchQuery(query);
-        setData('store_name', query);
-        setShowStoreDropdown(!!query.trim());
-    };
+    };   
 
     const handleClearSearch = () => {
         setItemSearchQuery('');
@@ -363,17 +320,7 @@ export default function Create() {
         setData('customer_name', '');
         setData('customer_id', null);
     };
-
-    const handleClearStoreSearch = () => {
-        setStoreSearchQuery('');
-        setStoreSearchResults([]);
-        setShowStoreDropdown(false);
-        if (storeSearchInputRef.current) {
-            storeSearchInputRef.current.focus();
-        }
-        setData('store_name', '');
-        setData('store_id', null);
-    };
+   
 
     const selectCustomer = (selectedCustomer) => {
         setData('customer_name', selectedCustomer.name);
@@ -381,15 +328,7 @@ export default function Create() {
         setCustomerSearchQuery('');
         setCustomerSearchResults([]);
         setShowCustomerDropdown(false);
-    };
-
-    const selectStore = (selectedStore) => {
-        setData('store_name', selectedStore.name);
-        setData('store_id', selectedStore.id);
-        setStoreSearchQuery('');
-        setStoreSearchResults([]);
-        setShowStoreDropdown(false);
-    };
+    };    
 
      const handlePayBillsClick = () => {
         setPaymentModalOpen(true);
@@ -593,50 +532,32 @@ export default function Create() {
                                             )}
                                         </ul>
                                     )}
+
+                                    {errors.customer_id && <p className="text-sm text-red-600 mt-1">{errors.customer_id}</p>}
+
                                 </div>
-                                <div className="relative flex-1" ref={storeDropdownRef}>
+                                <div className="relative flex-1">
                                     <div className="flex items-center h-10">
                                         <label htmlFor="store_name" className="block text-sm font-medium text-gray-700 mr-2">
                                             Store Name
                                         </label>
                                     </div>
-                                        <input
-                                            type="text"
-                                            placeholder="Search store..."
-                                            value={data.store_name}
-                                            onChange={handleStoreSearchChange}
-                                            onFocus={() => setShowStoreDropdown(!!storeSearchQuery.trim())}
-                                            className="w-full border p-2 rounded text-sm pr-10"
-                                            ref={storeSearchInputRef}
-                                            autocomplete="new-password"
-                                        />
-                                        {storeSearchQuery && (
-                                            <button
-                                                type="button"
-                                                onClick={handleClearStoreSearch}
-                                                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                                            >
-                                                <FontAwesomeIcon icon={faTimesCircle} />
-                                            </button>
-                                        )}
-                                        {showStoreDropdown && (
-                                            <ul className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded shadow-md max-h-48 overflow-y-auto">
-                                                {storeSearchResults.length > 0 ? (
-                                                    storeSearchResults.map((store) => (
-                                                        <li
-                                                            key={store.id}
-                                                            className="p-2 hover:bg-gray-100 cursor-pointer"
-                                                            onClick={() => selectStore(store)}
-                                                        >
-                                                            {store.name}
-                                                        </li>
-                                                    ))
-                                                ) : (
-                                                    <li className="p-2 text-gray-500">No stores found.</li>
-                                                )}
-                                            </ul>
-                                        )}
-                                  </div>
+                                    <select
+                                        id="store_id"
+                                        value={data.store_id}
+                                        onChange={(e) => setData("store_id", e.target.value)}
+                                        className={`w-full border p-2 rounded text-sm ${errors.store_id ? "border-red-500" : ""}`}
+                                    >
+                                        <option value="">Select From Store...</option>
+                                        {fromstore.map(store => (
+                                            <option key={store.id} value={store.id}>
+                                                {store.name} 
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {errors.store_id && <p className="text-sm text-red-600 mt-1">{errors.store_id}</p>}
+                                        
+                                </div>
                             </div>
 
                             <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
@@ -650,24 +571,7 @@ export default function Create() {
                                                 maximumFractionDigits: 2,
                                             })}
                                     </div>
-                                </div>
-                                <div className="flex-1">
-                                    <label htmlFor="stage" className="block text-sm font-medium text-gray-700">
-                                        Stage
-                                    </label>
-                                    <select
-                                        id="stage"
-                                        value={data.stage}
-                                        onChange={(e) => setData('stage', e.target.value)}
-                                        className={`mt-1 block w-full border-gray-300 rounded shadow-sm focus:ring-blue-500 focus:border-blue-500 ${errors.stage ? 'border-red-500' : ''}`}
-                                    >
-                                        <option value="3">Approved</option>
-                                        <option value="4">Profoma</option>
-                                        <option value="5">Completed</option>
-                                        <option value="6">Cancelled</option>
-                                    </select>
-                                    {errors.stage && <p className="text-sm text-red-600 mt-1">{errors.stage}</p>}
-                                </div>
+                                </div>                                
                             </div>
 
                             <div className="flex items-center space-x-4 mb-2 py-1">
@@ -764,25 +668,34 @@ export default function Create() {
                                         ))}
                                     </tbody>
                                 </table>
+                                {Array.isArray(errors.orderitems) && errors.orderitems.length > 0 && (
+                                    <p className="text-sm text-red-600 mt-1">
+                                        {errors.orderitems[0]?.message}
+                                    </p>
+                                )}
+
                             </div>
 
                             <div className="flex justify-end space-x-4 mt-6">
-                                <button
-                                    type="button"
-                                    onClick={() => Inertia.get(route('billing1.index'))}
+                                <Link
+                                    href={route('billing1.index')}  // Using the route for navigation
+                                    method="get"  // Optional, if you want to define the HTTP method (GET is default)
+                                    preserveState={true}  // Keep the page state (similar to `preserveState: true` in the button)
                                     className="bg-gray-300 text-gray-700 rounded p-2 flex items-center space-x-2"
                                 >
                                     <FontAwesomeIcon icon={faTimesCircle} />
                                     <span>Cancel</span>
-                                </button>
+                                </Link>
+
                                 <button
                                     type="submit"
                                     disabled={processing || isSaving}
                                     className="bg-blue-600 text-white rounded p-2 flex items-center space-x-2"
                                 >
                                     <FontAwesomeIcon icon={faSave} />
-                                    <span>{isSaving ? 'Saving...' : 'Save Order'}</span>
+                                    <span>{isSaving ? 'Saving...' : 'Save'}</span>
                                 </button>
+
                                 <button
                                     type="button"
                                     disabled={processing || isSaving}

@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\BILOrder;
 use App\Models\BILOrderItem;
+use App\Models\SIV_Store;
+
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -30,8 +32,8 @@ class BilOrderController extends Controller
          if ($request->filled('stage')) {
              $query->where('stage', $request->stage);
          }
-
-         $query->where('stage', '<=', '3');
+        
+         $query->whereBetween('stage', [1, 2]);
      
          // Paginate and sort orders
          $orders = $query->orderBy('created_at', 'desc')->paginate(10);
@@ -48,7 +50,9 @@ class BilOrderController extends Controller
      */
     public function create()
     {
-        return inertia('BilOrders/Create');
+        return inertia('BilOrders/Create', [
+            'fromstore' => SIV_Store::all(), // Assuming you have a Store model
+        ]);
     }
 
     /**
@@ -111,6 +115,7 @@ class BilOrderController extends Controller
 
         return inertia('BilOrders/Edit', [
             'order' => $order,
+            'fromstore' => SIV_Store::all(), // Assuming you have a Store model
         ]);
     }
 

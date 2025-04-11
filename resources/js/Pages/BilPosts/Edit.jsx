@@ -1,5 +1,5 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, useForm } from '@inertiajs/react';
+import { Head, useForm , Link } from '@inertiajs/react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus, faTrash, faSave, faTimesCircle, faMoneyBill } from '@fortawesome/free-solid-svg-icons';
@@ -19,7 +19,7 @@ const debounce = (func, delay) => {
 };
 
 
-export default function Edit({ order }) {
+export default function Edit({ order, fromstore }) {
     const { data, setData, put, errors, processing, reset } = useForm({
         customer_name: order.customer.name,
         customer_id: order.customer_id,
@@ -44,13 +44,6 @@ export default function Edit({ order }) {
     const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
     const customerDropdownRef = useRef(null);
     const customerSearchInputRef = useRef(null);
-
-
-    const [storeSearchQuery, setStoreSearchQuery] = useState(data.store_name);
-    const [storeSearchResults, setStoreSearchResults] = useState([]);
-    const [showStoreDropdown, setShowStoreDropdown] = useState(false);
-    const storeDropdownRef = useRef(null);
-    const storeSearchInputRef = useRef(null);
 
 
     const [modalState, setModalState] = useState({
@@ -106,23 +99,7 @@ export default function Edit({ order }) {
                 setCustomerSearchResults([]);
             });
     }, []);
-
-    const fetchStores = useCallback((query) => {
-        if (!query.trim()) {
-            setStoreSearchResults([]);
-            return;
-        }
-
-        axios.get(route('systemconfiguration2.stores.search'), { params: { query } })
-            .then((response) => {
-                setStoreSearchResults(response.data.stores.slice(0, 5));
-            })
-            .catch((error) => {
-                console.error('Error fetching stores:', error);
-                showAlert('Failed to fetch stores. Please try again later.');
-                setStoreSearchResults([]);
-            });
-    }, []);
+  
 
     const fetchPaymentMethods = useCallback(async () => {
         setPaymentMethodsLoading(true);
@@ -145,8 +122,7 @@ export default function Edit({ order }) {
 
     const debouncedSearch = useMemo(() => debounce(fetchItems, 300), [fetchItems]);
     const debouncedCustomerSearch = useMemo(() => debounce(fetchCustomers, 300), [fetchCustomers]);
-    const debouncedStoreSearch = useMemo(() => debounce(fetchStores, 300), [fetchStores]);
-
+   
     useEffect(() => {
         if (itemSearchQuery.trim()) {
             debouncedSearch(itemSearchQuery);
@@ -162,14 +138,7 @@ export default function Edit({ order }) {
             setCustomerSearchResults([]);
         }
     }, [customerSearchQuery, debouncedCustomerSearch]);
-
-    useEffect(() => {
-        if (storeSearchQuery.trim()) {
-            debouncedStoreSearch(storeSearchQuery);
-        } else {
-            setStoreSearchResults([]);
-        }
-    }, [storeSearchQuery, debouncedStoreSearch]);
+    
 
     useEffect(() => {
         setData('orderitems', orderItems);
@@ -204,16 +173,7 @@ export default function Edit({ order }) {
         document.addEventListener('mousedown', handleClickOutsideCustomer);
         return () => document.removeEventListener('mousedown', handleClickOutsideCustomer);
     }, []);
-
-    useEffect(() => {
-        const handleClickOutsideStore = (event) => {
-            if (storeDropdownRef.current && !storeDropdownRef.current.contains(event.target)) {
-                setShowStoreDropdown(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutsideStore);
-        return () => document.removeEventListener('mousedown', handleClickOutsideStore);
-    }, []);
+    
 
      useEffect(() => {
         fetchPaymentMethods();
@@ -330,20 +290,12 @@ export default function Edit({ order }) {
         setShowItemDropdown(!!query.trim());
     };
 
-      const handleCustomerSearchChange = (e) => {
-          const query = e.target.value;
-          setCustomerSearchQuery(query);
-          setShowCustomerDropdown(!!query.trim());
-           setData('customer_name', query);
-      };
-
-
-     const handleStoreSearchChange = (e) => {
-          const query = e.target.value;
-          setStoreSearchQuery(query);
-          setShowStoreDropdown(!!query.trim());
-            setData('store_name', query);
-      };
+    const handleCustomerSearchChange = (e) => {
+        const query = e.target.value;
+        setCustomerSearchQuery(query);
+        setShowCustomerDropdown(!!query.trim());
+        setData('customer_name', query);
+    };
 
     const handleClearItemSearch = () => {
         setItemSearchQuery('');
@@ -362,15 +314,7 @@ export default function Edit({ order }) {
             customerSearchInputRef.current.focus();
         }
     };
-
-      const handleClearStoreSearch = () => {
-        setStoreSearchQuery('');
-        setStoreSearchResults([]);
-        setShowStoreDropdown(false);
-           if (storeSearchInputRef.current) {
-            storeSearchInputRef.current.focus();
-        }
-    };
+     
 
     const selectCustomer = (selectedCustomer) => {
          setData('customer_name', selectedCustomer.name);
@@ -379,123 +323,116 @@ export default function Edit({ order }) {
         setCustomerSearchResults([]);
         setShowCustomerDropdown(false);
     };
+       
 
-       const selectStore = (selectedStore) => {
-         setData('store_name', selectedStore.name);
-         setData('store_id', selectedStore.id);
-         setStoreSearchQuery(selectedStore.name);
-        setStoreSearchResults([]);
-        setShowStoreDropdown(false);
+    const handlePayBillsClick = () => {
+        setPaymentModalOpen(true);
     };
 
-      const handlePayBillsClick = () => {
-        setPaymentModalOpen(true);
-      };
+    const handlePaymentModalClose = () => {
+        setPaymentModalOpen(false);
+        // Reset payment modal fields
+        setTotalPaid('');
+        setSaleType('');
+        setPaymentMethod('');
+        setPaidAmount('');
+        setAmountDisplay('');
+        setPaymentErrors({});
+    };
 
-        const handlePaymentModalClose = () => {
-          setPaymentModalOpen(false);
-           // Reset payment modal fields
-          setTotalPaid('');
-          setSaleType('');
-          setPaymentMethod('');
-          setPaidAmount('');
-          setAmountDisplay('');
-          setPaymentErrors({});
-        };
+    const handlePaymentModalConfirm = async () => {
+        // Basic Validation
+        const errors = {};
+        if (!totalPaid && saleType !== "credit") {
+            errors.totalPaid = 'Total paid is required';
+        }
+    
+        if (!saleType) {
+            errors.saleType = 'Sale type is required';
+        }
+    
+        if (!paymentMethod && saleType !== "credit") {
+            errors.paymentMethod = 'Payment method is required';
+        }
+        if (!paidAmount && saleType !== "credit") {
+            errors.paidAmount = 'Paid amount is required';
+        }
+    
+        setPaymentErrors(errors);
+    
+        // Proceed only if there are no errors
+        if (Object.keys(errors).length === 0) {
+            try {
+            // Prepare the payload for the API request
+            const payload = {
+                customer_id: data.customer_id,  
+                store_id: data.store_id,      
+                stage: data.stage, 
+                total: data.total,              
+                orderitems: orderItems.map(item => ({
+                    item_id: item.item_id,
+                    quantity: item.quantity,
+                    price: item.price
+                })),
+                payment_method: saleType !== "credit" ? paymentMethod : null,
+                paid_amount: saleType !== "credit" ? paidAmount : 0,
+                total_paid: saleType !== "credit" ? totalPaid : 0,                    
+                sale_type: saleType
+            };
 
-        const handlePaymentModalConfirm = async () => {
-            // Basic Validation
-            const errors = {};
-            if (!totalPaid && saleType !== "credit") {
-              errors.totalPaid = 'Total paid is required';
-            }
-        
-            if (!saleType) {
-              errors.saleType = 'Sale type is required';
-            }
-        
-            if (!paymentMethod && saleType !== "credit") {
-              errors.paymentMethod = 'Payment method is required';
-            }
-            if (!paidAmount && saleType !== "credit") {
-              errors.paidAmount = 'Paid amount is required';
-            }
-        
-            setPaymentErrors(errors);
-        
-            // Proceed only if there are no errors
-            if (Object.keys(errors).length === 0) {
-              try {
-                // Prepare the payload for the API request
-                const payload = {
-                   customer_id: data.customer_id,  
-                   store_id: data.store_id,      
-                   stage: data.stage, 
-                   total: data.total,              
-                    orderitems: orderItems.map(item => ({
-                        item_id: item.item_id,
-                        quantity: item.quantity,
-                        price: item.price
-                    })),
-                    payment_method: saleType !== "credit" ? paymentMethod : null,
-                    paid_amount: saleType !== "credit" ? paidAmount : 0,
-                    total_paid: saleType !== "credit" ? totalPaid : 0,                    
-                    sale_type: saleType
-                };
+            if (saleType !== 'credit') {
+                // Find the selected payment method object
+                const selectedPaymentMethod = paymentMethods.find(method => method.name === paymentMethod);
 
-                if (saleType !== 'credit') {
-                    // Find the selected payment method object
-                    const selectedPaymentMethod = paymentMethods.find(method => method.name === paymentMethod);
-   
-                    if (selectedPaymentMethod) {
-                        payload.payment_method = selectedPaymentMethod.id; // Set the ID instead of the name
-                    }else {
-                        showAlert('Invalid Payment Method. Please try again.');
-                        return;
-                    }
+                if (selectedPaymentMethod) {
+                    payload.payment_method = selectedPaymentMethod.id; // Set the ID instead of the name
+                }else {
+                    showAlert('Invalid Payment Method. Please try again.');
+                    return;
                 }
+            }
 
-                setIsSaving(true);
+            setIsSaving(true);
+            
+            let response = await axios.put(route('billing1.pay_update', { order: order.id }), payload);
                 
-                let response = await axios.put(route('billing1.pay_update', { order: order.id }), payload);
-                  
-                  if (response.data && response.data.success) {
+                if (response.data && response.data.success) {
+                setIsSaving(false);
+                setPaymentModalOpen(false);
+                
+                    // Reset payment modal fields
+                setTotalPaid('');
+                setSaleType('');
+                setPaymentMethod('');
+                setPaidAmount('');
+                setAmountDisplay('');
+                setPaymentErrors({});
+                Inertia.get(route('billing1.index')); // Redirect using Inertia.get
+                }else {
                     setIsSaving(false);
-                    setPaymentModalOpen(false);
-                   
-                     // Reset payment modal fields
-                   setTotalPaid('');
-                   setSaleType('');
-                   setPaymentMethod('');
-                   setPaidAmount('');
-                   setAmountDisplay('');
-                   setPaymentErrors({});
-                   Inertia.get(route('billing1.index')); // Redirect using Inertia.get
-                  }else {
-                     setIsSaving(false);
-                    showAlert('Payment processing failed. Please try again.');
-                    console.error('Payment processing failed:', response.data.message || 'Unknown error');
-                }
-              } catch (error) {
-                  setIsSaving(false);
-                console.error('Error during payment processing:', error);
-                showAlert('An error occurred during payment processing.');
-              }
+                showAlert('Payment processing failed. Please try again.');
+                console.error('Payment processing failed:', response.data.message || 'Unknown error');
             }
-          };
+            } catch (error) {
+                setIsSaving(false);
+            console.error('Error during payment processing:', error);
+            showAlert('An error occurred during payment processing.');
+            }
+        }
+    };
 
-       const handlePaidAmountChange = (e) => {
-            const value = e.target.value;
-             setPaidAmount(value);
+    const handlePaidAmountChange = (e) => {
+        const value = e.target.value;
+            setPaidAmount(value);
 
-          // Calculate the difference between total due and paid amount for amount display
-            const dueAmount = parseFloat(totalDue) || 0;
-             const paidValue = parseFloat(value) || 0;
-             const diff = (paidValue).toFixed(2);
+        // Calculate the difference between total due and paid amount for amount display
+        const dueAmount = parseFloat(totalDue) || 0;
+            const paidValue = parseFloat(value) || 0;
+            const diff = (paidValue).toFixed(2);
 
-             setAmountDisplay(diff);
+            setAmountDisplay(diff);
 
-        };
+    };
 
         return (
             <AuthenticatedLayout
@@ -549,46 +486,26 @@ export default function Edit({ order }) {
                                         )}
                                     </div>
     
-                                      <div className="relative flex-1" ref={storeDropdownRef}>
+                                    <div className="relative flex-1" >
                                         <label htmlFor="store_name" className="block text-sm font-medium text-gray-700">
                                           Store Name
                                         </label>
-                                            <input
-                                                type="text"
-                                                value={storeSearchQuery}
-                                                onChange={handleStoreSearchChange}
-                                                onFocus={() => setShowStoreDropdown(!!storeSearchQuery.trim())}
-                                                className="w-full border p-2 rounded text-sm pr-10"
-                                                ref={storeSearchInputRef}
-                                                autocomplete="new-password"
-                                            />
-                                            {storeSearchQuery && (
-                                                <button
-                                                    type="button"
-                                                    onClick={handleClearStoreSearch}
-                                                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                                                >
-                                                    <FontAwesomeIcon icon={faTimesCircle} />
-                                                </button>
-                                            )}
-                                            {showStoreDropdown && (
-                                                <ul className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded shadow-md max-h-48 overflow-y-auto">
-                                                    {storeSearchResults.length > 0 ? (
-                                                        storeSearchResults.map((store) => (
-                                                            <li
-                                                                key={store.id}
-                                                                className="p-2 hover:bg-gray-100 cursor-pointer"
-                                                                onClick={() => selectStore(store)}
-                                                            >
-                                                                {store.name}
-                                                            </li>
-                                                        ))
-                                                    ) : (
-                                                        <li className="p-2 text-gray-500">No stores found.</li>
-                                                    )}
-                                                </ul>
-                                            )}
-                                        </div>
+                                        <select
+                                            id="store_id"
+                                            value={data.store_id}
+                                            onChange={(e) => setData("store_id", e.target.value)}
+                                            className={`w-full border p-2 rounded text-sm ${errors.store_id ? "border-red-500" : ""}`}
+                                        >
+                                            <option value="">Select From Store...</option>
+                                            {fromstore.map(store => (
+                                                <option key={store.id} value={store.id}>
+                                                    {store.name} 
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {errors.store_id && <p className="text-sm text-red-600 mt-1">{errors.store_id}</p>}
+                                           
+                                    </div>
                                 </div>
     
                                 <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
@@ -603,25 +520,8 @@ export default function Edit({ order }) {
                                                     maximumFractionDigits: 2,
                                                 })}
                                         </div>
-                                    </div>
-    
-                                    <div className="flex-1">
-                                        <label htmlFor="stage" className="block text-sm font-medium text-gray-700">
-                                            Stage
-                                        </label>
-                                        <select
-                                            id="stage"
-                                            value={data.stage}
-                                            onChange={(e) => setData('stage', e.target.value)}
-                                            className={`mt-1 block w-full border-gray-300 rounded shadow-sm focus:ring-blue-500 focus:border-blue-500 ${errors.stage ? 'border-red-500' : ''}`}
-                                        >
-                                            <option value="3">Approved</option>
-                                            <option value="4">Profoma</option>
-                                            <option value="5">Completed</option>
-                                            <option value="6">Cancelled</option>
-                                        </select>
-                                        {errors.stage && <p className="text-sm text-red-600 mt-1">{errors.stage}</p>}
-                                    </div>
+                                    </div>    
+                                  
                                 </div>
     
                                 <div className="flex items-center space-x-4 mb-2 py-1">
@@ -723,22 +623,25 @@ export default function Edit({ order }) {
                                     </table>
                                 </div>
     
-                                <div className="flex justify-end space-x-4 mt-6">
-                                    <button
-                                        type="button"
-                                        onClick={() => Inertia.get(route('billing1.index'))}
+                                <div className="flex justify-end space-x-4 mt-6">                                   
+                                    
+                                    <Link
+                                        href={route('billing1.index')}  // Using the route for navigation
+                                        method="get"  // Optional, if you want to define the HTTP method (GET is default)
+                                        preserveState={true}  // Keep the page state (similar to `preserveState: true` in the button)
                                         className="bg-gray-300 text-gray-700 rounded p-2 flex items-center space-x-2"
                                     >
                                         <FontAwesomeIcon icon={faTimesCircle} />
                                         <span>Cancel</span>
-                                    </button>
+                                    </Link>
+
                                     <button
                                         type="submit"
                                         disabled={processing || isSaving}
                                         className="bg-blue-600 text-white rounded p-2 flex items-center space-x-2"
                                     >
                                         <FontAwesomeIcon icon={faSave} />
-                                        <span>{isSaving ? 'Saving...' : 'Save Order'}</span>
+                                        <span>{isSaving ? 'Saving...' : 'Save'}</span>
                                     </button>
                                     <button
                                         type="button"

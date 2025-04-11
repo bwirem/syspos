@@ -14,12 +14,7 @@ return new class extends Migration
         Schema::create('bls_paymenttypes', function (Blueprint $table) {
             $table->id();
             $table->string('name'); 
-            $table->integer('preventoverpay');          
-            $table->integer('ischeque');
-            $table->integer('allowrefund');
-            $table->integer('visibilitysales');
-            $table->integer('visibilitydebtorpayments');            
-            $table->integer('paymentreference');  
+            $table->foreignId('chart_of_account_id')->nullable()->constrained('chart_of_accounts')->onDelete('set null');                    
             $table->timestamps(); 
         });
     }

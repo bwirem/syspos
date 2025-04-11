@@ -1,10 +1,9 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, useForm } from '@inertiajs/react';
+import { Head, useForm,Link } from '@inertiajs/react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlus, faTrash, faSave, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
+import { faPlus, faTrash, faSave, faTimesCircle,faCheck} from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
-import { Inertia } from '@inertiajs/inertia';
 import axios from 'axios';
 
 import Modal from '../../Components/CustomModal.jsx'; 
@@ -20,7 +19,7 @@ const debounce = (func, delay) => {
 };
 
 
-export default function Edit({ order }) {
+export default function Edit({ order ,fromstore}) {
     const { data, setData, put, errors, processing, reset } = useForm({
         customer_name: order.customer.name,
         customer_id: order.customer_id,
@@ -45,14 +44,11 @@ export default function Edit({ order }) {
     const [customerSearchResults, setCustomerSearchResults] = useState([]);
     const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
     const customerDropdownRef = useRef(null);
-    const customerSearchInputRef = useRef(null);
-
-    // Store Search State
-    const [storeSearchQuery, setStoreSearchQuery] = useState(data.store_name);
-    const [storeSearchResults, setStoreSearchResults] = useState([]);
-    const [showStoreDropdown, setShowStoreDropdown] = useState(false);
-    const storeDropdownRef = useRef(null);
-    const storeSearchInputRef = useRef(null);
+    const customerSearchInputRef = useRef(null);  
+    
+    const [submitModalOpen, setSubmitModalOpen] = useState(false);
+    const [submitModalLoading, setSubmitModalLoading] = useState(false);
+    const [submitModalSuccess, setSubmitModalSuccess] = useState(false);
 
 
     const [modalState, setModalState] = useState({
@@ -101,31 +97,13 @@ export default function Edit({ order }) {
             });
     }, []);
 
-    // Fetch Stores dynamically
-    const fetchStores = useCallback((query) => {
-        if (!query.trim()) {
-            setStoreSearchResults([]);
-            return;
-        }
-
-        axios.get(route('systemconfiguration2.stores.search'), { params: { query } })
-            .then((response) => {
-                setStoreSearchResults(response.data.stores.slice(0, 5));
-            })
-            .catch((error) => {
-                console.error('Error fetching stores:', error);
-                showAlert('Failed to fetch stores. Please try again later.');
-                setStoreSearchResults([]);
-            });
-    }, []);
-
+   
 
     // Debounced search handler
     const debouncedSearch = useMemo(() => debounce(fetchItems, 300), [fetchItems]);
     // Debounced customer search handler
     const debouncedCustomerSearch = useMemo(() => debounce(fetchCustomers, 300), [fetchCustomers]);
-    // Debounced store search handler
-    const debouncedStoreSearch = useMemo(() => debounce(fetchStores, 300), [fetchStores]);
+   
 
     useEffect(() => {
         if (itemSearchQuery.trim()) {
@@ -142,15 +120,7 @@ export default function Edit({ order }) {
         } else {
             setCustomerSearchResults([]);
         }
-    }, [customerSearchQuery, debouncedCustomerSearch]);
-
-    useEffect(() => {
-        if (storeSearchQuery.trim()) {
-            debouncedStoreSearch(storeSearchQuery);
-        } else {
-            setStoreSearchResults([]);
-        }
-    }, [storeSearchQuery, debouncedStoreSearch]);
+    }, [customerSearchQuery, debouncedCustomerSearch]);   
 
 
     useEffect(() => {
@@ -190,16 +160,7 @@ export default function Edit({ order }) {
         return () => document.removeEventListener('mousedown', handleClickOutsideCustomer);
     }, []);
 
-    // Handle click outside store dropdown
-    useEffect(() => {
-        const handleClickOutsideStore = (event) => {
-            if (storeDropdownRef.current && !storeDropdownRef.current.contains(event.target)) {
-                setShowStoreDropdown(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutsideStore);
-        return () => document.removeEventListener('mousedown', handleClickOutsideStore);
-    }, []);
+    
 
 
     const handleOrderItemChange = (index, field, value) => {
@@ -322,13 +283,7 @@ export default function Edit({ order }) {
            setData('customer_name', query);
       };
 
-
-     const handleStoreSearchChange = (e) => {
-          const query = e.target.value;
-          setStoreSearchQuery(query);
-          setShowStoreDropdown(!!query.trim());
-            setData('store_name', query);
-      };
+   
 
     const handleClearItemSearch = () => {
         setItemSearchQuery('');
@@ -349,15 +304,7 @@ export default function Edit({ order }) {
         }
     };
 
-      const handleClearStoreSearch = () => {
-        setStoreSearchQuery('');
-        setStoreSearchResults([]);
-        setShowStoreDropdown(false);
-           if (storeSearchInputRef.current) {
-            storeSearchInputRef.current.focus();
-        }
-    };
-
+   
 
     const selectCustomer = (selectedCustomer) => {
          setData('customer_name', selectedCustomer.name);
@@ -367,13 +314,49 @@ export default function Edit({ order }) {
         setShowCustomerDropdown(false);
     };
 
-       const selectStore = (selectedStore) => {
-         setData('store_name', selectedStore.name);
-         setData('store_id', selectedStore.id);
-         setStoreSearchQuery(selectedStore.name);
-        setStoreSearchResults([]);
-        setShowStoreDropdown(false);
+    
+    const handleSubmitClick = () => {
+        if (data.requistionitems.length === 0) {
+            showAlert('Please add at least one guarantor before submitting.');
+            return;
+        }       
+
+        setSubmitModalOpen(true);       
+        setSubmitModalLoading(false); // Reset loading state
+        setSubmitModalSuccess(false); // Reset success state
     };
+
+    
+    const handleSubmitModalClose = () => {
+        setSubmitModalOpen(false);        
+        setSubmitModalLoading(false); // Reset loading state
+        setSubmitModalSuccess(false); // Reset success state
+    };
+
+    const handleSubmitModalConfirm = () => {        
+    
+        const formData = new FormData();
+        formData.append('remarks', data.remarks);
+    
+        setSubmitModalLoading(true); // Set loading state
+    
+        put(route('inventory1.update', requistion.id), formData, {
+            forceFormData: true,
+            onSuccess: () => {
+                setSubmitModalLoading(false);
+                reset(); // Reset form data
+                setSubmitModalSuccess(true); // Set success state
+                handleSubmitModalClose(); // Close the modal on success
+            },
+            onError: (errors) => {
+                setSubmitModalLoading(false);
+                console.error('Submission errors:', errors);
+            },
+        });
+    };
+   
+
+     
 
     return (
         <AuthenticatedLayout
@@ -428,46 +411,27 @@ export default function Edit({ order }) {
                                     )}
                                 </div>
 
-                                  <div className="relative flex-1" ref={storeDropdownRef}>
+                                <div className="relative flex-1">
                                     <label htmlFor="store_name" className="block text-sm font-medium text-gray-700">
                                       Store Name
                                     </label>
-                                        <input
-                                            type="text"
-                                            value={storeSearchQuery}
-                                            onChange={handleStoreSearchChange}
-                                            onFocus={() => setShowStoreDropdown(!!storeSearchQuery.trim())}
-                                            className="w-full border p-2 rounded text-sm pr-10"
-                                            ref={storeSearchInputRef}
-                                            autocomplete="new-password"
-                                        />
-                                        {storeSearchQuery && (
-                                            <button
-                                                type="button"
-                                                onClick={handleClearStoreSearch}
-                                                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                                            >
-                                                <FontAwesomeIcon icon={faTimesCircle} />
-                                            </button>
-                                        )}
-                                        {showStoreDropdown && (
-                                            <ul className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded shadow-md max-h-48 overflow-y-auto">
-                                                {storeSearchResults.length > 0 ? (
-                                                    storeSearchResults.map((store) => (
-                                                        <li
-                                                            key={store.id}
-                                                            className="p-2 hover:bg-gray-100 cursor-pointer"
-                                                            onClick={() => selectStore(store)}
-                                                        >
-                                                            {store.name}
-                                                        </li>
-                                                    ))
-                                                ) : (
-                                                    <li className="p-2 text-gray-500">No stores found.</li>
-                                                )}
-                                            </ul>
-                                        )}
-                                    </div>
+
+                                    <select
+                                        id="store_id"
+                                        value={data.store_id}
+                                        onChange={(e) => setData("store_id", e.target.value)}
+                                        className={`w-full border p-2 rounded text-sm ${errors.store_id ? "border-red-500" : ""}`}
+                                    >
+                                        <option value="">Select From Store...</option>
+                                        {fromstore.map(store => (
+                                            <option key={store.id} value={store.id}>
+                                                {store.name} 
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {errors.store_id && <p className="text-sm text-red-600 mt-1">{errors.store_id}</p>}                                       
+                                       
+                                </div>
                             </div>
 
                             {/* Order Summary and Stage*/}
@@ -607,27 +571,61 @@ export default function Edit({ order }) {
 
                             {/* Submit Button */}
                             <div className="flex justify-end space-x-4 mt-6">
-                                <button
-                                    type="button"
-                                    onClick={() => Inertia.get(route('billing0.index'))}
+                                
+                                <Link
+                                    href={route('billing0.index')}  // Using the route for navigation
+                                    method="get"  // Optional, if you want to define the HTTP method (GET is default)
+                                    preserveState={true}  // Keep the page state (similar to `preserveState: true` in the button)
                                     className="bg-gray-300 text-gray-700 rounded p-2 flex items-center space-x-2"
                                 >
                                     <FontAwesomeIcon icon={faTimesCircle} />
                                     <span>Cancel</span>
-                                </button>
+                                </Link>
                                 <button
                                     type="submit"
                                     disabled={processing || isSaving}
                                     className="bg-blue-600 text-white rounded p-2 flex items-center space-x-2"
                                 >
                                     <FontAwesomeIcon icon={faSave} />
-                                    <span>{isSaving ? 'Saving...' : 'Save Order'}</span>
+                                    <span>{isSaving ? 'Saving...' : 'Save'}</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={handleSubmitClick}
+                                    className="bg-green-500 text-white rounded p-2 flex items-center space-x-2 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
+                                >
+                                    <FontAwesomeIcon icon={faCheck} />
+                                    <span>Submit</span>
                                 </button>
                             </div>
                         </form>
                     </div>
                 </div>
             </div>
+
+            {/* Submit Confirmation Modal */}
+            <Modal
+                isOpen={submitModalOpen}
+                onClose={handleSubmitModalClose}
+                onConfirm={handleSubmitModalConfirm}
+                title="Issuance Confirmation"
+                confirmButtonText={submitModalLoading ? 'Loading...' : (submitModalSuccess ? "Success" : 'Submit')}
+                confirmButtonDisabled={submitModalLoading || submitModalSuccess}
+            >
+                <div>
+                    <p>
+                        Are you sure you want to issue the goods to <strong>
+                            {data.customer_type === 'individual' ? (
+                                `${data.first_name} ${data.other_names ? data.other_names + ' ' : ''}${data.surname}`
+                            ) : (
+                                data.company_name
+                            )}
+                        </strong>?
+                    </p>                    
+                </div>
+            </Modal>
+
             <Modal
                 isOpen={modalState.isOpen}
                 onClose={handleModalClose}

@@ -1,5 +1,5 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head } from '@inertiajs/react';
+import { Head,Link } from '@inertiajs/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     faCog,          // Settings
@@ -44,8 +44,8 @@ export default function Index() {
                                     <p className="text-gray-600">Currencies</p>
                                     <h3 className="text-2xl font-bold">{currencyCount}</h3>
                                     <div className="mt-2">
-                                        <a href={route('systemconfiguration0.currencies.index')} className="text-red-500 hover:underline">Manage Currencies</a>
-                                    </div>
+                                        <Link href={route('systemconfiguration0.currencies.index')} className="text-red-500 hover:underline">Manage Currencies</Link>
+                                    </div>                                    
                                 </div>
                             </div>
                         </div>
@@ -60,7 +60,7 @@ export default function Index() {
                                     <p className="text-gray-600">Payment Types</p>
                                     <h3 className="text-2xl font-bold">{paymentTypeCount}</h3>
                                     <div className="mt-2">
-                                        <a href={route('systemconfiguration0.paymenttypes.index')} className="text-green-500 hover:underline">Manage Payment Types</a>
+                                        <Link href={route('systemconfiguration0.paymenttypes.index')} className="text-green-500 hover:underline">Manage Payment Types</Link>
                                     </div>
                                 </div>
                             </div>
@@ -76,8 +76,9 @@ export default function Index() {
                                     <p className="text-gray-600">Price Categories</p>
                                     <h3 className="text-2xl font-bold">{priceCategoryCount}</h3>
                                     <div className="mt-2">
-                                        <a href={route('systemconfiguration0.pricecategories.index')} className="text-orange-500 hover:underline">Manage Price Categories</a>
+                                        <Link href={route('systemconfiguration0.pricecategories.index')} className="text-orange-500 hover:underline">Manage Price Categories</Link>
                                     </div>
+                                    
                                 </div>
                             </div>
                         </div>
@@ -92,7 +93,7 @@ export default function Index() {
                                     <p className="text-gray-600">Billing Item Group</p>
                                     <h3 className="text-2xl font-bold">{itemGroupCount}</h3>
                                     <div className="mt-2">
-                                        <a href={route('systemconfiguration0.itemgroups.index')} className="text-purple-500 hover:underline">Manage Billing Item Group</a>
+                                        <Link href={route('systemconfiguration0.itemgroups.index')} className="text-purple-500 hover:underline">Manage Billing Item Group</Link>
                                     </div>
                                 </div>
                             </div>
@@ -110,7 +111,7 @@ export default function Index() {
                                     <p className="text-gray-600">Billing Items</p>
                                     <h3 className="text-2xl font-bold">{billingItemCount}</h3>
                                     <div className="mt-2">
-                                        <a href={route('systemconfiguration0.items.index')} className="text-green-500 hover:underline">Manage Billing Items</a>
+                                        <Link href={route('systemconfiguration0.items.index')} className="text-green-500 hover:underline">Manage Billing Items</Link>
                                     </div>
                                 </div>
                             </div>
@@ -126,7 +127,7 @@ export default function Index() {
                                     <p className="text-gray-600">Customers</p>
                                     <h3 className="text-2xl font-bold">{customerCount}</h3>
                                     <div className="mt-2">
-                                        <a href={route('systemconfiguration0.customers.index')} className="text-blue-500 hover:underline">Manage Customers</a>
+                                        <Link href={route('systemconfiguration0.customers.index')} className="text-blue-500 hover:underline">Manage Customers</Link>
                                     </div>
                                 </div>
                             </div>

@@ -9,6 +9,7 @@ import {
     faPlaceOfWorship,       // Ward (Place/Location Icon)
     faRoad,          // Street (Road Icon)
 } from '@fortawesome/free-solid-svg-icons';
+import { Link } from '@inertiajs/react';  // Import Link
 
 export default function Index() { // Pass data as props
     // Destructure the data prop
@@ -38,7 +39,7 @@ export default function Index() { // Pass data as props
                                     <p className="text-gray-600">Country</p>
                                     <h3 className="text-2xl font-bold">{nocountry}</h3>
                                     <div className="mt-2">                                        
-                                        <a href={route('systemconfiguration3.countries.index')} className="text-purple-500 hover:underline">Manage Countries</a>
+                                        <Link href={route('systemconfiguration4.countries.index')} className="text-purple-500 hover:underline">Manage Countries</Link>
                                     </div>
                                 </div>
                             </div>
@@ -54,7 +55,8 @@ export default function Index() { // Pass data as props
                                     <p className="text-gray-600">Region</p>
                                     <h3 className="text-2xl font-bold">{noregion}</h3>
                                     <div className="mt-2">                                      
-                                        <a href={route('systemconfiguration3.regions.index')} className="text-purple-500 hover:underline">Manage Regions</a>
+
+                                        <Link href={route('systemconfiguration4.regions.index')} className="text-purple-500 hover:underline">Manage Regions</Link>
                                     </div>
                                 </div>
                             </div>
@@ -70,7 +72,7 @@ export default function Index() { // Pass data as props
                                     <p className="text-gray-600">District</p>
                                     <h3 className="text-2xl font-bold">{nodistrict}</h3>
                                     <div className="mt-2">
-                                        <a href={route('systemconfiguration3.districts.index')} className="text-purple-500 hover:underline">Manage Districts</a>
+                                        <Link href={route('systemconfiguration4.districts.index')} className="text-purple-500 hover:underline">Manage Districts</Link>
                                     </div>
                                 </div>
                             </div>
@@ -86,7 +88,7 @@ export default function Index() { // Pass data as props
                                     <p className="text-gray-600">Ward</p>
                                     <h3 className="text-2xl font-bold">{noward}</h3>
                                     <div className="mt-2">                                     
-                                        <a href={route('systemconfiguration3.wards.index')} className="text-purple-500 hover:underline">Manage Wards</a>
+                                        <Link href={route('systemconfiguration4.wards.index')} className="text-purple-500 hover:underline">Manage Wards</Link>
                                     </div>
                                 </div>
                             </div>
@@ -104,7 +106,7 @@ export default function Index() { // Pass data as props
                                     <p className="text-gray-600">Street</p>
                                     <h3 className="text-2xl font-bold">{nostreet}</h3>
                                     <div className="mt-2">                                   
-                                        <a href={route('systemconfiguration3.streets.index')} className="text-purple-500 hover:underline">Manage Streets</a>
+                                        <Link href={route('systemconfiguration4.streets.index')} className="text-purple-500 hover:underline">Manage Streets</Link>
                                     </div>
                                 </div>
                             </div>

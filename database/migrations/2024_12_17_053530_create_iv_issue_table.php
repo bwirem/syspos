@@ -15,8 +15,11 @@ return new class extends Migration
             $table->id();
             $table->date('transdate');
             $table->timestamp('sysdate')->useCurrent();           
-            $table->foreignId('fromstore_id')->constrained('siv_stores')->onDelete('cascade'); 
-            $table->foreignId('tostore_id')->constrained('siv_stores')->onDelete('cascade');            
+            $table->foreignId('fromstore_id')->constrained('siv_stores')->onDelete('cascade');
+
+            $table->unsignedBigInteger('tostore_id')->nullable(); // can point to store/customer/supplier
+            $table->unsignedTinyInteger('tostore_type')->nullable(); // StoreType enum
+                 
             $table->integer('stage')->default(1); // Set the default value for 'stage'
             $table->index('stage'); // Add an index for 'stage'
             $table->decimal('total', 10, 2); // Total order amount   

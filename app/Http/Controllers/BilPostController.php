@@ -25,6 +25,11 @@ use App\Models\{
 
     BILVoidedSale,
     BILCollection,
+
+    IVRequistion,
+    IVRequistionItem,
+
+    SIV_Store,
 };
 
 use App\Enums\{
@@ -32,7 +37,8 @@ use App\Enums\{
     BillingTransTypes,
     InvoiceStatus,
     PaymentSources,
-    InvoiceTransTypes
+    InvoiceTransTypes,
+    StoreType
 };
 
 class BilPostController extends Controller
@@ -56,8 +62,8 @@ class BilPostController extends Controller
          if ($request->filled('stage')) {
              $query->where('stage', $request->stage);
          }
-
-         $query->where('stage', '>=', '3');
+       
+         $query->whereBetween('stage', [3, 4]);
      
          // Paginate and sort orders
          $orders = $query->orderBy('created_at', 'desc')->paginate(10);
@@ -74,7 +80,9 @@ class BilPostController extends Controller
      */
     public function create()
     {
-        return inertia('BilPosts/Create');
+        return inertia('BilPosts/Create',[           
+            'fromstore' => SIV_Store::all(), // Assuming you have a Store model
+        ]);
     }
 
     /**
@@ -137,6 +145,7 @@ class BilPostController extends Controller
 
         return inertia('BilPosts/Edit', [
             'order' => $order,
+            'fromstore' => SIV_Store::all(), // Assuming you have a Store model
         ]);
     }
 
@@ -220,21 +229,7 @@ class BilPostController extends Controller
          return redirect()->route('billing1.index')->with('success', 'Order updated successfully.');
      }
      
-     
     
-    /**
-     * Remove the specified order from storage.
-     */
-    public function destroy(BILOrder $order)
-    {
-        // Delete the order and associated items
-        $order->orderitems()->delete();
-        $order->delete();
-
-        return redirect()->route('billing1.index')
-            ->with('success', 'Order deleted successfully.');
-    }
-
     // ... other methods
 
     public function pay(Request $request, $order = null)
@@ -433,8 +428,7 @@ class BilPostController extends Controller
 
             $TransDescription1 = "Sales";
             $TransDescription2 = "Payment";
-            $DebtorType = "Individual";
-            
+            $DebtorType = "Individual";            
 
             // Create the sale record
             $sale = BILSale::create([
@@ -455,6 +449,45 @@ class BilPostController extends Controller
             foreach ($data['orderitems'] as $item) {
                 $sale->items()->create($item);
             }
+
+            $saleId = $sale->id;            
+
+            $sale = BILSale::with('items.item.product')->find($saleId);
+
+            if($sale){
+
+                $requistion = IVRequistion::create([
+                    'transdate' => $transdate,
+                    'tostore_id' =>$data['customer_id'],
+                    'tostore_type'  => StoreType::Customer->value, // Specify it's a customer
+                    'fromstore_id' => $data['store_id'],
+                    'stage' => 3,// Send to inventory Issues
+                    'total' => 0, // Set an initial total (will update later)
+                    'user_id' => Auth::id(),
+                ]);    
+        
+                // Create associated requistion items
+                foreach ($sale->items as $saleItem) {
+                    $product = $saleItem->item->product;
+
+                    if ($product) {
+                        $requistion->requistionitems()->create([
+                            'product_id' => $product->id,
+                            'quantity' => $saleItem->quantity,
+                            'price' => $product->costprice,
+                        ]);
+                    }
+                }
+        
+                // Reload the relationship to ensure all items are fetched
+                $requistion->load('requistionitems');
+        
+                // Compute the total based on updated requistion items
+                $calculatedTotal = $requistion->requistionitems->sum(fn($item) => $item->quantity * $item->price);
+        
+                // Update requistion with the correct total
+                $requistion->update(['total' => $calculatedTotal]);  
+            }           
 
             //invoice if any
             if ($invoiceNo) {

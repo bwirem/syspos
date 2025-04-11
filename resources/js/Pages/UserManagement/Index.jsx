@@ -1,3 +1,4 @@
+import { Link } from '@inertiajs/react'; // Import Link component
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head } from '@inertiajs/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -8,16 +9,16 @@ import {
     faShieldAlt,
     faKey,
     faFingerprint,
-    faExclamationTriangle // ADD THIS LINE!
+    faExclamationTriangle
 } from '@fortawesome/free-solid-svg-icons';
 
-export default function SecuritySettings() { // Component name changed to SecuritySettings
+export default function SecuritySettings() {
     // Placeholder counts
-    const userCount = 0; // Replace with actual value
-    const roleCount = 0; // Replace with actual value
-    const permissionCount = 0; // Replace with actual value
-    const securityPolicyCount = 0; // Replace with actual value
-    const alertCount = 0; // Replace with actual value
+    const userCount = 0;
+    const roleCount = 0;
+    const permissionCount = 0;
+    const securityPolicyCount = 0;
+    const alertCount = 0;
 
     return (
         <AuthenticatedLayout
@@ -42,7 +43,7 @@ export default function SecuritySettings() { // Component name changed to Securi
                                     <p className="text-gray-600">User Management</p>
                                     <h3 className="text-2xl font-bold">{userCount}</h3>
                                     <div className="mt-2">
-                                        <a href={route('usermanagement.users.index')} className="text-purple-500 hover:underline">Manage Users</a>
+                                        <Link href={route('usermanagement.users.index')} className="text-purple-500 hover:underline">Manage Users</Link>
                                     </div>
                                 </div>
                             </div>
@@ -57,8 +58,8 @@ export default function SecuritySettings() { // Component name changed to Securi
                                 <div className="ml-4">
                                     <p className="text-gray-600">Role Management</p>
                                     <h3 className="text-2xl font-bold">{roleCount}</h3>
-                                    <div className="mt-2">                                     
-                                        <a href={route('usermanagement.usergroups.index')} className="text-purple-500 hover:underline">Manage Roles</a>
+                                    <div className="mt-2">
+                                        <Link href={route('usermanagement.usergroups.index')} className="text-purple-500 hover:underline">Manage Roles</Link>
                                     </div>
                                 </div>
                             </div>
@@ -74,7 +75,7 @@ export default function SecuritySettings() { // Component name changed to Securi
                                     <p className="text-gray-600">Permission Management</p>
                                     <h3 className="text-2xl font-bold">{permissionCount}</h3>
                                     <div className="mt-2">
-                                        <a href="/permission-management" className="text-green-500 hover:underline">Manage Permissions</a>
+                                        <Link href={route('usermanagement.userpermission.index')} className="text-purple-500 hover:underline">Manage Permissions</Link>
                                     </div>
                                 </div>
                             </div>
@@ -90,7 +91,7 @@ export default function SecuritySettings() { // Component name changed to Securi
                                     <p className="text-gray-600">Security Policies</p>
                                     <h3 className="text-2xl font-bold">{securityPolicyCount}</h3>
                                     <div className="mt-2">
-                                        <a href="/security-policies" className="text-yellow-500 hover:underline">Manage Policies</a>
+                                        <Link href="/security-policies" className="text-yellow-500 hover:underline">Manage Policies</Link>
                                     </div>
                                 </div>
                             </div>
@@ -108,7 +109,7 @@ export default function SecuritySettings() { // Component name changed to Securi
                                     <p className="text-gray-600">Alerts</p>
                                     <h3 className="text-2xl font-bold">{alertCount}</h3>
                                     <div className="mt-2">
-                                        <a href="/alerts" className="text-orange-500 hover:underline">View Alerts</a>
+                                        <Link href="/alerts" className="text-orange-500 hover:underline">View Alerts</Link>
                                     </div>
                                 </div>
                             </div>
@@ -124,7 +125,7 @@ export default function SecuritySettings() { // Component name changed to Securi
                                     <p className="text-gray-600">Security Keys</p>
                                     <h3 className="text-2xl font-bold">N/A</h3>
                                     <div className="mt-2">
-                                        <a href="/security-keys" className="text-purple-500 hover:underline">Manage Keys</a>
+                                        <Link href="/security-keys" className="text-purple-500 hover:underline">Manage Keys</Link>
                                     </div>
                                 </div>
                             </div>
@@ -140,7 +141,7 @@ export default function SecuritySettings() { // Component name changed to Securi
                                     <p className="text-gray-600">Biometric Security</p>
                                     <h3 className="text-2xl font-bold">N/A</h3>
                                     <div className="mt-2">
-                                        <a href="/biometric-security" className="text-teal-500 hover:underline">Manage Biometric</a>
+                                        <Link href="/biometric-security" className="text-teal-500 hover:underline">Manage Biometric</Link>
                                     </div>
                                 </div>
                             </div>

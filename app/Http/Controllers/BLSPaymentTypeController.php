@@ -2,6 +2,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\BLSPaymentType;
+use App\Models\ChartOfAccount;
 use Illuminate\Http\Request;
 
 class BLSPaymentTypeController extends Controller
@@ -33,7 +34,10 @@ class BLSPaymentTypeController extends Controller
      */
     public function create()
     {
-        return inertia('SystemConfiguration/BillingSetup/PaymentTypes/Create');
+        $chartofaccounts = ChartOfAccount::all(); // No pagination
+        return inertia('SystemConfiguration/BillingSetup/PaymentTypes/Create', [
+            'chartofaccounts' => $chartofaccounts,
+        ]);
     }
 
     /**
@@ -44,12 +48,7 @@ class BLSPaymentTypeController extends Controller
         // Validate input
         $validated = $request->validate([
             'name' => 'required|string|max:255',   
-            'preventoverpay' => 'boolean',
-            'ischeque' => 'boolean',
-            'allowrefund' => 'boolean',
-            'visibilitysales' => 'boolean',
-            'visibilitydebtorpayments' => 'boolean',
-            'paymentreference' => 'boolean',
+            'chart_of_account_id' => 'required|exists:chart_of_accounts,id',            
         ]);
 
         // Create the paymenttype
@@ -64,8 +63,10 @@ class BLSPaymentTypeController extends Controller
      */
     public function edit(BLSPaymentType $paymenttype)
     {
+        $chartofaccounts = ChartOfAccount::all(); // No pagination
         return inertia('SystemConfiguration/BillingSetup/PaymentTypes/Edit', [
             'paymenttype' => $paymenttype,
+            'chartofaccounts' => $chartofaccounts,
         ]);
     }
 
@@ -77,12 +78,7 @@ class BLSPaymentTypeController extends Controller
         // Validate input
         $validated = $request->validate([
             'name' => 'required|string|max:255',  
-            'preventoverpay' => 'boolean',
-            'ischeque' => 'boolean',
-            'allowrefund' => 'boolean',
-            'visibilitysales' => 'boolean',
-            'visibilitydebtorpayments' => 'boolean',
-            'paymentreference' => 'boolean',         
+            'chart_of_account_id' => 'required|exists:chart_of_accounts,id', 
         ]);
 
         // Update the paymenttype

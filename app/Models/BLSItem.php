@@ -31,4 +31,10 @@ class BLSItem extends Model
         return $this->belongsTo(BLSItemGroup::class, 'itemgroup_id', 'id');
     }
 
+    public function product()
+    {
+        return $this->belongsTo(SIV_Product::class, 'product_id', 'id');
+    }   
+
+
 }

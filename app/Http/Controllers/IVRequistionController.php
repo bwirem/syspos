@@ -4,10 +4,18 @@ namespace App\Http\Controllers;
 
 use App\Models\IVRequistion;
 use App\Models\IVRequistionItem;
+
+use App\Models\SIV_Store;
+use App\Models\BLSCustomer;
+use App\Enums\StoreType;
+
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
+
+use Illuminate\Support\Facades\Log;
+
 
 
 class IVRequistionController extends Controller
@@ -111,13 +119,29 @@ class IVRequistionController extends Controller
      */
     public function edit(IVRequistion $requistion)
     {
-        // Eager load requistion items and their related items
-        $requistion->load(['fromstore', 'tostore', 'requistionitems.item']); 
+        $requistion->load(['fromstore', 'requistionitems.item']);
+       
+        switch ($requistion->tostore_type->value) {
+            case StoreType::Store->value:
+                $store = SIV_Store::find($requistion->tostore_id);
+                $requistion->setRelation('tostore', $store);                
+                break;
 
+            case StoreType::Customer->value:
+                $customer = BLSCustomer::find($requistion->tostore_id);                
+                $requistion->setRelation('tostore', $customer);                   
+                break;          
+
+            default:
+                $requistion->setRelation('tostore', null);               
+                break;
+        }
+             
         return inertia('IvRequisition/Edit', [
             'requistion' => $requistion,
         ]);
     }
+
 
 
     /**

@@ -12,12 +12,18 @@ use App\Models\BILProductExpiryDates;
 use App\Models\BILProductTransactions;
 use App\Models\SIV_Product; // Assuming you have this Product model
 use App\Models\SIV_Store;    // Assuming you have a Store Model
+use App\Models\BLSCustomer;  // Assuming you have a Customer Model
+
+use App\Enums\StoreType;
+
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Validation\Rules\Enum;
+
 use Carbon\Carbon;
 use Exception;
 use Throwable;
@@ -41,136 +47,198 @@ class IVIssueController extends Controller
             });
         }
 
+        if ($request->filled('fromstore')) {
+            $query->where('fromstore_id', $request->fromstore);
+        }
+        
+
         if ($request->filled('stage')) {
             $query->where('stage', $request->stage);
         }
 
-        $query->where('stage', '>=', 2);
+        $query->whereBetween('stage', [2, 3]);
 
         $requistions = $query->orderBy('created_at', 'desc')->paginate(10);
 
+        // Dynamically load the appropriate tostore relation
+        $requistions->getCollection()->transform(function ($requistion) {
+            switch ($requistion->tostore_type->value) {
+                case StoreType::Store->value:
+                    $requistion->setRelation('tostore', SIV_Store::find($requistion->tostore_id));
+                    break;
+
+                case StoreType::Customer->value:
+                    $requistion->setRelation('tostore', BLSCustomer::find($requistion->tostore_id));
+                    break;
+
+                default:
+                    $requistion->setRelation('tostore', null);
+            }
+
+            return $requistion;
+        });
+
         return inertia('IvIssue/Index', [
             'requistions' => $requistions,
-            'filters' => $request->only(['search', 'stage']),
+            'filters' => $request->only(['search', 'stage', 'fromstore']), // <-- ADDED
+            'fromstore' => SIV_Store::all(['id', 'name']), // or wherever your store list comes from
         ]);
+        
     }
+
 
     /**
      * Show the form for editing the specified requistion.
      */
     public function edit(IVRequistion $requistion)
     {
-        $requistion->load(['fromstore', 'tostore', 'requistionitems.item']);
+       
+        $requistion->load(['fromstore', 'requistionitems.item']); // Eager load necessary relationships
+        $tostoreData = [];
+        
+        // Ensure to access the value of the enum when comparing
+        $tostoreTypeValue = $requistion->tostore_type->value; // Get the value of the enum       
+       
+        
+        switch ($tostoreTypeValue) {
+            case StoreType::Store->value:
+                // Find the store based on tostore_id
+                $store = SIV_Store::find($requistion->tostore_id);
+                
+                // Set the tostore relation for the requistion model
+                $requistion->setRelation('tostore', $store);
+                
+                
+                // Load all SIV stores for the store type
+                $tostoreData = SIV_Store::all();
+                break;
+        
+            case StoreType::Customer->value:
+                // Find the customer based on tostore_id
+                $store = BLSCustomer::find($requistion->tostore_id);                
+                
+                // Set the tostore relation for the requistion model
+                $requistion->setRelation('tostore', $store);   
+        
+               
+                // Load all BLS customers for the customer type
+                $tostoreData = BLSCustomer::all();           
+                break;          
+        
+            default:
+                // Set null if the tostore_type doesn't match any case
+                $requistion->setRelation('tostore', null);   
+                break;
+        }
+        
+        
+        // Return the view with the requisition and the correct store data
 
-        return inertia('IvIssue/Issue', [
-            'requistion' => $requistion,
-        ]);
+        if($requistion->stage ==2){
+
+            return inertia('IvIssue/Approve', [           
+                'requistion' => $requistion,
+                'fromstore' => SIV_Store::all(), // Pass the correct data to the view
+                'tostore' => $tostoreData, // Pass the correct data to the view
+            ]);
+
+        }else{
+
+            return inertia('IvIssue/Issue', [
+                'requistion' => $requistion,
+                'fromstore' => SIV_Store::all(), // Pass the correct data to the view
+                'tostore' => $tostoreData, // Pass the correct data to the view
+            ]);
+
+        }    
+                
     }
 
     /**
      * Update the specified requistion in storage.
      */
     public function update(Request $request, IVRequistion $requistion)
-    {
-        $validated = $request->validate([
-            'to_store_id' => 'required|exists:siv_stores,id',
-            'from_store_id' => 'required|exists:siv_stores,id',
-            'total' => 'required|numeric|min:0',
-            'stage' => 'required|integer|min:1',
-            'requistionitems' => 'required|array',
-            'requistionitems.*.id' => 'nullable|exists:iv_requistionitems,id',
-            'requistionitems.*.item_id' => 'required|exists:siv_products,id',
-            'requistionitems.*.quantity' => 'required|numeric|min:0',
-            'requistionitems.*.price' => 'required|numeric|min:0',
-            'delivery_no' => 'nullable|string', // Add delivery_no validation
-            'expiry_date' => 'nullable|date',   // Add expiry_date validation
-            'double_entry' => 'boolean', // Add double_entry validation
-        ]);
+    {     
 
-        $doubleEntry = $validated['double_entry'] ?? true; // Default to true if not provided
-        $transferType = 'StoreToStore'; // You might determine this dynamically.
+        if($requistion->stage == 2){
 
-        DB::beginTransaction();
+            $requistion->update([ 'stage' => 3,]);          
+            return redirect()->route('inventory1.edit', ['requistion' =>$requistion->id])->with('success', 'Requistion updated successfully.');
 
-        try {
-            $this->processeRequistion($validated, $requistion);
-           
-            $this->performIssuance($validated);
+        }else{
 
-            if ($transferType === 'StoreToStore' && $doubleEntry) {
-                $this->performReception($validated); // Pass $validated directly
-            }
-
-            DB::commit();
-            return redirect()->route('inventory1.index')->with('success', 'Requistion updated successfully.');
-
-        } catch (ModelNotFoundException $e) {
-            DB::rollBack();
-            return response()->json(['message' => 'Record not found: ' . $e->getMessage()], 404);
-        } catch (Throwable $e) {
-            DB::rollBack();
-            Log::error('Stock transaction failed: ' . $e->getMessage() . ' in ' . $e->getFile() . ' on line ' . $e->getLine());
-            return response()->json(['message' => 'An error occurred while processing the stock transaction.'], 500);
-        }
-    }
-
-
-
-    private function processeRequistion($validated, $requistion): void
-    {
-        // Retrieve existing item IDs
-        $oldItemIds = $requistion->requistionitems()->pluck('id')->toArray();
-        $existingItemIds = [];
-        $newItems = [];
-
-        foreach ($validated['requistionitems'] as $item) {
-            $existingItemIds[] = $item['id'] ?? null;  // Use null coalescing operator
-            if (empty($item['id'])) {
-                $newItems[] = $item;
-            }
-        }
-
-        // Delete removed items
-        $itemsToDelete = array_diff($oldItemIds, array_filter($existingItemIds)); // Filter out null values
-        $requistion->requistionitems()->whereIn('id', $itemsToDelete)->delete();
-
-        // Add new items
-        foreach ($newItems as $item) {
-            $requistion->requistionitems()->create([
-                'product_id' => $item['item_id'],
-                'quantity' => $item['quantity'],
-                'price' => $item['price'],
+            $request->validate([
+                'tostore_type' => ['required', new Enum(StoreType::class)], // Ensure tostore_type is valid
             ]);
-        }
+            
+            $rules = [
+                'tostore_type' => ['required', new Enum(StoreType::class)],
+                'from_store_id' => 'required|exists:siv_stores,id',
+                'total' => 'required|numeric|min:0',
+                'stage' => 'required|integer|min:1',
+                'requistionitems' => 'required|array',
+                'requistionitems.*.id' => 'nullable|exists:iv_requistionitems,id',
+                'requistionitems.*.item_id' => 'required|exists:siv_products,id',
+                'requistionitems.*.quantity' => 'required|numeric|min:0',
+                'requistionitems.*.price' => 'required|numeric|min:0',
+                'delivery_no' => 'nullable|string',
+                'expiry_date' => 'nullable|date',
+                'double_entry' => 'boolean',
+            ];
+            
+            // Conditionally apply validation depending on tostore_type
+            switch ($request->tostore_type) {
+                case StoreType::Store->value:
+                    $rules['to_store_id'] = 'required|exists:siv_stores,id';
+                    break;
+                case StoreType::Customer->value:
+                    $rules['to_store_id'] = 'required|exists:bls_customers,id';
+                    break;
+            }
+            
+            $validated = $request->validate($rules);
+            
 
-        // Update existing items.  Use firstOrFail() for better error handling
-        foreach ($validated['requistionitems'] as $item) {
-            if (!empty($item['id'])) {
-                $requistionItem = IVRequistionItem::where('id', $item['id'])->where('iv_requistion_id', $requistion->id)->firstOrFail();
-                $requistionItem->update([
-                    'product_id' => $item['item_id'],
-                    'quantity' => $item['quantity'],
-                    'price' => $item['price'],
-                ]);
+            $doubleEntry = $validated['double_entry'] ?? true; // Default to true if not provided
+            $transferType = 'StoreToStore'; // You might determine this dynamically.
+
+            DB::beginTransaction();
+
+            try {
+
+              
+                $this->performIssuance($validated);
+
+                if ($transferType === 'StoreToStore' && $doubleEntry) {
+                    $this->performReception($validated); // Pass $validated directly
+                }
+
+                $requistion->update([ 'stage' => 4,]);            
+
+                DB::commit();
+                return redirect()->route('inventory1.index')->with('success', 'Requistion updated successfully.');
+
+            } catch (ModelNotFoundException $e) {
+                DB::rollBack();
+                return response()->json(['message' => 'Record not found: ' . $e->getMessage()], 404);
+            } catch (Throwable $e) {
+                DB::rollBack();
+                Log::error('Stock transaction failed: ' . $e->getMessage() . ' in ' . $e->getFile() . ' on line ' . $e->getLine());
+                return response()->json(['message' => 'An error occurred while processing the stock transaction.'], 500);
             }
         }
-
-        // Calculate total and update requistion
-        $calculatedTotal = $requistion->requistionitems()->sum(DB::raw('quantity * price'));  // More robust calculation
-        $requistion->update([
-            'tostore_id' => $validated['to_store_id'],
-            'fromstore_id' => $validated['from_store_id'],
-            'stage' => 3,
-            'total' => $calculatedTotal,
-            'user_id' => Auth::id(),
-        ]);
     }
 
+ 
 
     private function performIssuance($validated): void
     {
         $fromstore_id = $validated['from_store_id'];
         $tostore_id = $validated['to_store_id'];
+        $tostore_type = $validated['tostore_type']; // Get the tostore type
+        $total = $validated['total'];
+
+
         $expiryDate = $validated['expiry_date'] ?? null; // Use validated expiry date
         $transDate = Carbon::now();
         $deliveryNo = $validated['delivery_no'] ?? ''; // Use validated delivery number
@@ -182,7 +250,9 @@ class IVIssueController extends Controller
             'transdate' => $transDate,
             'fromstore_id' => $fromstore_id,
             'tostore_id' => $tostore_id,
-            'stage' => 3,
+            'tostore_type' => $tostore_type, // Use the validated tostore type
+            'total' => $total,
+            'stage' => 4,
             'user_id' => Auth::id(),
         ]);
 
@@ -249,6 +319,8 @@ class IVIssueController extends Controller
     {
         $fromstore_id = $validated['from_store_id'];
         $tostore_id = $validated['to_store_id'];
+        $tostore_type = $validated['tostore_type']; // Get the tostore type
+        $total = $validated['total'];
         $expiryDate = $validated['expiry_date'] ?? null;
         $transDate = Carbon::now();
         $deliveryNo = $validated['delivery_no'] ?? '';
@@ -261,7 +333,9 @@ class IVIssueController extends Controller
             'transdate' => $transDate,
             'fromstore_id' => $fromstore_id,
             'tostore_id' => $tostore_id,
-            'stage' => 3,
+            'tostore_type' => $tostore_type, // Use the validated tostore type
+            'total' => $total,
+            'stage' => 4,
             'user_id' => Auth::id(),
         ]);
 
@@ -273,10 +347,7 @@ class IVIssueController extends Controller
                 $productExpiry = BILProductExpiryDates::where('store_id', $tostore_id)
                     ->where('product_id', $item['item_id'])
                     ->where('expirydate', $expiryDate)
-                    ->first();
-
-        
-            
+                    ->first();            
 
                 if ($productExpiry) {
                     $productExpiry->increment('quantity', $item['quantity']);

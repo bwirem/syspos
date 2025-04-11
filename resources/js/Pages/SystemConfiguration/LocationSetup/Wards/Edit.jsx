@@ -1,23 +1,15 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, useForm } from '@inertiajs/react';
+import { Head, Link, useForm } from '@inertiajs/react';
 import { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSave, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
-import { Inertia } from '@inertiajs/inertia';
-import axios from 'axios';
 import Modal from '@/Components/CustomModal';
 
-export default function Edit({ ward }) {
+export default function Edit({ ward, regions, districts }) {
     const { data, setData, put, errors, processing, reset } = useForm({
         name: ward.name,
-        price1: ward.price1,
-        price2: ward.price2,
-        price3: ward.price3,
-        price4: ward.price4,
-        defaultqty: ward.defaultqty,
-        addtocart: ward.addtocart,
-        wardgroup_id: ward.wardgroup_id,
+        district_id: ward.district_id,
     });
 
     const [modalState, setModalState] = useState({
@@ -26,7 +18,27 @@ export default function Edit({ ward }) {
         isAlert: false,
     });
     const [isSaving, setIsSaving] = useState(false);
-    const [wardGroups, setWardGroups] = useState([]);
+    const [filteredDistricts, setFilteredDistricts] = useState([]);
+    const [selectedRegionId, setSelectedRegionId] = useState(null);
+
+    useEffect(() => {
+        // On initial load, get the region_id based on the selected district
+        if (ward.district_id && districts.length > 0) {
+            const selectedDistrict = districts.find(d => d.id === ward.district_id);
+            if (selectedDistrict) {
+                setSelectedRegionId(selectedDistrict.region_id);
+            }
+        }
+    }, [ward.district_id, districts]);
+
+    useEffect(() => {
+        // Filter districts whenever the selectedRegionId changes
+        if (selectedRegionId) {
+            setFilteredDistricts(districts.filter(d => d.region_id == selectedRegionId));
+        } else {
+            setFilteredDistricts([]);
+        }
+    }, [selectedRegionId, districts]);
 
     const handleModalClose = () => {
         setModalState({ isOpen: false, message: '', isAlert: false });
@@ -39,7 +51,7 @@ export default function Edit({ ward }) {
     const handleSubmit = (e) => {
         e.preventDefault();
         setIsSaving(true);
-        put(route('systemconfiguration3.wards.update', ward.id), {
+        put(route('systemconfiguration4.wards.update', ward.id), data, {
             onSuccess: () => {
                 setIsSaving(false);
                 resetForm();
@@ -57,19 +69,22 @@ export default function Edit({ ward }) {
         showAlert('Ward updated successfully!');
     };
 
-    useEffect(() => {
-        const fetchWardGroups = async () => {
-            try {
-                const response = await axios.get(route('systemconfiguration3.wardgroups.search'));
-                setWardGroups(response.data.groups);
-            } catch (error) {
-                console.error('Error fetching ward groups:', error);
-                showAlert('Failed to fetch ward groups.');
-            }
-        };
+    const handleDistrictChange = (e) => {
+        const districtId = e.target.value;
+        setData('district_id', districtId);
 
-        fetchWardGroups();
-    }, []);
+        const selectedDistrict = districts.find(d => d.id === parseInt(districtId));
+
+        if (selectedDistrict) {
+            setSelectedRegionId(selectedDistrict.region_id);
+        }
+    };
+
+    const handleRegionChange = (e) => {
+        const regionId = e.target.value;
+        setSelectedRegionId(regionId);
+        setData('district_id', ''); // Reset district when region changes
+    };
 
     return (
         <AuthenticatedLayout
@@ -80,76 +95,68 @@ export default function Edit({ ward }) {
                 <div className="mx-auto max-w-4xl sm:px-6 lg:px-8">
                     <div className="bg-white p-6 shadow sm:rounded-lg">
                         <form onSubmit={handleSubmit} className="space-y-6">
-                           
-                            {/* Name and Ward Group */}
+
+                            {/* Region */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Region</label>
+                                    <select
+                                        value={selectedRegionId || ''}
+                                        onChange={handleRegionChange}
+                                        className="w-full border p-2 rounded text-sm"
+                                    >
+                                        <option value="">Select Region</option>
+                                        {regions.map(region => (
+                                            <option key={region.id} value={region.id}>
+                                                {region.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">District</label>
+                                    <select
+                                        value={data.district_id}
+                                        onChange={handleDistrictChange}
+                                        className="w-full border p-2 rounded text-sm"
+                                    >
+                                        <option value="">Select District</option>
+                                        {filteredDistricts.map(district => (
+                                            <option key={district.id} value={district.id}>
+                                                {district.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {errors.district_id && <p className="text-sm text-red-600">{errors.district_id}</p>}
+                                </div>
+                            </div>
+
+                            {/* Name */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700">Name</label>
                                     <input type="text" value={data.name} onChange={(e) => setData('name', e.target.value)} className={`w-full border p-2 rounded text-sm ${errors.name ? 'border-red-500' : ''}`} placeholder="Enter name..." />
                                     {errors.name && <p className="text-sm text-red-600">{errors.name}</p>}
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">Ward Group</label>
-                                    <select value={data.wardgroup_id} onChange={(e) => setData('wardgroup_id', e.target.value)} className="w-full border p-2 rounded text-sm">
-                                        <option value="">Select Ward Group</option>
-                                        {wardGroups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
-                                    </select>
-                                    {errors.wardgroup_id && <p className="text-sm text-red-600">{errors.wardgroup_id}</p>}
-                                </div>
-                            </div>
-
-                             {/* Prices */}
-                             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                {["price1", "price2", "price3", "price4"].map((price, index) => (
-                                    <div key={index}>
-                                        <label className="block text-sm font-medium text-gray-700">Price {index + 1}</label>
-                                        <input type="number" value={data[price]} onChange={(e) => setData(price, e.target.value)} className={`w-full border p-2 rounded text-sm ${errors[price] ? 'border-red-500' : ''}`} placeholder="Enter price..." />
-                                        {errors[price] && <p className="text-sm text-red-600">{errors[price]}</p>}
-                                    </div>
-                                ))}                               
-                            </div>
-
-                            <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4"> 
-                                <div className="relative flex-1">
-                                    <label htmlFor="defaultqty" className="block text-sm font-medium text-gray-700">Default Quantity</label>
-                                    <input
-                                        id="defaultqty"
-                                        type="number"
-                                        placeholder="Enter quantity..."
-                                        value={data.defaultqty}
-                                        onChange={(e) => setData('defaultqty', e.target.value)}
-                                        className={`w-full border p-2 rounded text-sm ${errors.defaultqty ? 'border-red-500' : ''}`}
-                                    />
-                                    {errors.defaultqty && <p className="text-sm text-red-600 mt-1">{errors.defaultqty}</p>}
-                                </div>
-
-                                <div className="relative flex-1">
-                                    <label htmlFor="addtocart" className="block text-sm font-medium text-gray-700">Add to Cart</label>
-                                    <input
-                                        id="addtocart"
-                                        type="checkbox"
-                                        checked={data.addtocart}
-                                        onChange={(e) => setData('addtocart', e.target.checked)}
-                                    />
-                                </div>
                             </div>
 
                             <div className="flex justify-end space-x-4 mt-6">
-                                <button
-                                    type="button"
-                                    onClick={() => Inertia.get(route('systemconfiguration3.wards.index'))}
-                                    className="bg-gray-300 text-gray-700 rounded p-2 flex wards-center space-x-2"
+                                <Link
+                                    href={route('systemconfiguration4.wards.index')}
+                                    method="get"
+                                    preserveState={true}
+                                    className="bg-gray-300 text-gray-700 rounded p-2 flex items-center space-x-2"
                                 >
                                     <FontAwesomeIcon icon={faTimesCircle} />
                                     <span>Cancel</span>
-                                </button>
+                                </Link>
                                 <button
                                     type="submit"
                                     disabled={processing || isSaving}
-                                    className="bg-blue-600 text-white rounded p-2 flex wards-center space-x-2"
+                                    className="bg-blue-600 text-white rounded p-2 flex items-center space-x-2"
                                 >
                                     <FontAwesomeIcon icon={faSave} />
-                                    <span>{isSaving ? 'Saving...' : 'Save Ward'}</span>
+                                    <span>{isSaving ? 'Saving...' : 'Save'}</span>
                                 </button>
                             </div>
                         </form>

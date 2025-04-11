@@ -17,7 +17,7 @@ return new class extends Migration
             Schema::create('loc_streets', function (Blueprint $table) {
                 $table->id();                
                 $table->integer('ward_id')->foreign('ward_id')->references('id')->on('loc_wards');             
-                $table->string('description');
+                $table->string('name');
                 $table->timestamps();
             });
         }

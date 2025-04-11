@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Enums\StoreType;
+
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -15,7 +17,11 @@ class IVReceive extends Model
     protected $table = 'iv_receive';
   
 
-    protected $fillable = ['transdate', 'fromstore_id','tostore_id','stage','total', 'user_id'];
+    protected $fillable = ['transdate', 'fromstore_id','fromstore_type','tostore_id','stage','total', 'user_id'];
+
+    protected $casts = [
+        'fromstore_type' => StoreType::class,
+    ];
 
 
     public function items()
@@ -24,10 +30,17 @@ class IVReceive extends Model
                     ->with('item'); // Include the relationship to IV Products
     }
    
+    
     public function fromstore()
     {
-        return $this->belongsTo(IVStore::class, 'fromstore_id', 'id');
+        return match ($this->fromstore_type) {
+            StoreType::Store => $this->belongsTo(SIVStore::class, 'fromstore_id'),
+            StoreType::Customer => $this->belongsTo(BLSCustomer::class, 'fromstore_id'),
+            StoreType::Supplier => $this->belongsTo(SIVSupplier::class, 'fromstore_id'),
+            default => null,
+        };
     }
+
 
     public function tostore()
     {

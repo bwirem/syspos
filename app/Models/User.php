@@ -6,6 +6,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class User extends Authenticatable
 {
@@ -18,6 +19,8 @@ class User extends Authenticatable
      * @var list<string>
      */
     protected $fillable = [
+        'store_id',
+        'usergroup_id',        
         'name',
         'email',
         'password',
@@ -45,4 +48,22 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+
+    
+    /**
+     * The facility branches that belong to the user.
+     */
+   
+     public function stores(): BelongsToMany  
+     {
+        return $this->belongsToMany(SIV_Store::class, 'siv_stores_user', 'user_id', 'store_id');
+     }
+
+
+    // User.php
+    public function userGroup()
+    {
+        return $this->belongsTo(UserGroup::class, 'usergroup_id'); // Ensure this is correct
+    }
+
 }

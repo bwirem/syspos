@@ -31,8 +31,11 @@ use App\Http\Controllers\SIV_ProductCategoryController;
 use App\Http\Controllers\SIV_ProductController;
 use App\Http\Controllers\SIV_PackagingController;
 use App\Http\Controllers\SIV_AdjustmentReasonController;
-
 use App\Http\Controllers\SPR_SupplierController;
+
+use App\Http\Controllers\ChartOfAccountController;
+use App\Http\Controllers\ChartOfAccountMappingController;
+
 
 use App\Http\Controllers\LOCCountryController;
 use App\Http\Controllers\LOCRegionController;
@@ -44,6 +47,7 @@ use App\Http\Controllers\FacilityOptionController;
 
 use App\Http\Controllers\UserGroupController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\UserPermissionController;
 
 
 use Illuminate\Foundation\Application;
@@ -155,6 +159,10 @@ Route::middleware('auth')->group(function () {
         Route::get('/create', [IVIssueController::class, 'create'])->name('create');
         Route::post('/', [IVIssueController::class, 'store'])->name('store');
         Route::get('/{requistion}/edit', [IVIssueController::class, 'edit'])->name('edit');
+        Route::post('/{requistion}/approve', [IVIssueController::class, 'approve'])->name('approve');
+        Route::post('/{requistion}/reject', [IVIssueController::class, 'reject'])->name('reject');
+        Route::post('/{requistion}/return', [IVIssueController::class, 'return'])->name('return');        
+
         Route::put('/{requistion}', [IVIssueController::class, 'update'])->name('update');
         Route::delete('/{requistion}', [IVIssueController::class, 'destroy'])->name('destroy');
     });
@@ -392,8 +400,40 @@ Route::middleware('auth')->group(function () {
     });
 
 
-    // Routes for Location Setup (Version 3)
+    // Routes for Account Setup (Version 3)
     Route::prefix('systemconfiguration3')->name('systemconfiguration3.')->group(function () {
+
+        // Main index route
+        Route::get('/', function () {
+            return Inertia::render('SystemConfiguration/AccountSetup/Index');
+        })->name('index'); // Added a proper route name for the index.
+
+         // --- chartofaccount Routes ---
+         Route::prefix('chartofaccounts')->name('chartofaccounts.')->group(function () {
+            Route::get('/', [ChartOfAccountController::class, 'index'])->name('index');
+            Route::get('/create', [ChartOfAccountController::class, 'create'])->name('create');
+            Route::post('/', [ChartOfAccountController::class, 'store'])->name('store');
+            Route::get('/{chartofaccount}/edit', [ChartOfAccountController::class, 'edit'])->name('edit');
+            Route::put('/{chartofaccount}', [ChartOfAccountController::class, 'update'])->name('update'); 
+            Route::delete('/{chartofaccount}', [ChartOfAccountController::class, 'destroy'])->name('destroy');
+            Route::get('/search', [ChartOfAccountController::class, 'search'])->name('search');
+        });   
+
+        
+         // --- accountmapping Routes ---
+         Route::prefix('chartofaccountmappings')->name('chartofaccountmappings.')->group(function () {
+            Route::get('/', [ChartOfAccountMappingController::class, 'index'])->name('index');
+            Route::get('/create', [ChartOfAccountMappingController::class, 'create'])->name('create');
+            Route::post('/', [ChartOfAccountMappingController::class, 'store'])->name('store');
+            Route::get('/edit', [ChartOfAccountMappingController::class, 'edit'])->name('edit');
+            Route::put('/', [ChartOfAccountMappingController::class, 'update'])->name('update'); 
+        }); 
+
+    });
+
+
+    // Routes for Location Setup (Version 3)
+    Route::prefix('systemconfiguration4')->name('systemconfiguration4.')->group(function () {
 
         // Main index route
         Route::get('/', function () {
@@ -457,7 +497,7 @@ Route::middleware('auth')->group(function () {
 
 
     // Routes for Facility Setup (Version 3)
-    Route::prefix('systemconfiguration4')->name('systemconfiguration4.')->group(function () {
+    Route::prefix('systemconfiguration5')->name('systemconfiguration5.')->group(function () {
 
         // Main index route
         Route::get('/', function () {
@@ -494,16 +534,28 @@ Route::middleware('auth')->group(function () {
             Route::get('/{usergroup}/edit', [UserGroupController::class, 'edit'])->name('edit');
             Route::put('/{usergroup}', [UserGroupController::class, 'update'])->name('update'); 
             Route::delete('/{usergroup}', [UserGroupController::class, 'destroy'])->name('destroy');
+            Route::get('/search', [UserGroupController::class, 'search'])->name('search');
         });   
 
          // --- user Routes ---
-         Route::prefix('users')->name('users.')->group(function () {
+        Route::prefix('users')->name('users.')->group(function () {
             Route::get('/', [UserController::class, 'index'])->name('index');
             Route::get('/create', [UserController::class, 'create'])->name('create');
             Route::post('/', [UserController::class, 'store'])->name('store');
             Route::get('/{user}/edit', [UserController::class, 'edit'])->name('edit');
-            Route::put('/{user}', [UserController::class, 'update'])->name('update'); 
+            Route::put('/{user}', [UserController::class, 'update'])->name('update');           
+            Route::post('/{user}/resetPassword', [UserController::class, 'resetPassword'])->name('resetPassword');
             Route::delete('/{user}', [UserController::class, 'destroy'])->name('destroy');
+
+        });  
+        
+        // --- UserPermission Routes ---
+        Route::prefix('userpermission')->name('userpermission.')->group(function () {
+            Route::get('/', [UserPermissionController::class, 'index'])->name('index');         
+            Route::get('/{userGroup}/permissions', [UserPermissionController::class, 'getPermissions'])->name('getPermissions');
+            Route::post('/{userGroup}/permissions', [UserPermissionController::class, 'storePermissions'])->name('storePermissions');
+            // New route for fetching modules and items
+            Route::get('/modules-and-items', [UserPermissionController::class, 'getModulesAndItems'])->name('modulesAndItems');
         });   
 
     });

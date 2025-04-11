@@ -35,7 +35,7 @@ export default function Create() {
         e.preventDefault();
 
         setIsSaving(true);
-        post(route('systemconfiguration4.facilityoptions.store'), {
+        post(route('systemconfiguration5.facilityoptions.store'), {
             onSuccess: () => {
                 setIsSaving(false);
                 resetForm();
@@ -86,7 +86,7 @@ export default function Create() {
                             <div className="flex justify-end space-x-4 mt-6">
                                 <button
                                     type="button"
-                                    onClick={() => Inertia.get(route('systemconfiguration4.facilityoptions.index'))}
+                                    onClick={() => Inertia.get(route('systemconfiguration5.facilityoptions.index'))}
                                     className="bg-gray-300 text-gray-700 rounded p-2 flex items-center space-x-2"
                                 >
                                     <FontAwesomeIcon icon={faTimesCircle} />

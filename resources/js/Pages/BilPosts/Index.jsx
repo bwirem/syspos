@@ -10,7 +10,7 @@ import Modal from '../../Components/CustomModal.jsx';
 export default function Index({ auth, orders, filters }) {
     const { data, setData, get, errors } = useForm({
         search: filters.search || "",
-        stage: filters.stage || "3",
+        stage: filters.stage || "",
     });
 
     const [modalState, setModalState] = useState({
@@ -69,9 +69,7 @@ export default function Index({ auth, orders, filters }) {
     // Map order stage numbers to labels
     const orderStageLabels = {       
         3: 'Approved',
-        4: 'Profoma',
-        5: 'Completed',
-        //6: 'Cancelled',
+        4: 'Profoma',   
     };
 
     return (
@@ -106,6 +104,14 @@ export default function Index({ auth, orders, filters }) {
                     </div>
 
                     <ul className="flex space-x-2 mt-2">
+
+                        <li
+                            className={`cursor-pointer px-2 py-1 rounded text-sm flex items-center ${data.stage === "" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-600"
+                                }`}
+                            onClick={() => handleStageChange("")}
+                        >
+                            All
+                        </li>
                         
                          {Object.entries(orderStageLabels).map(([key, label]) => (
                             <li
@@ -117,14 +123,7 @@ export default function Index({ auth, orders, filters }) {
                                 {label}
                             </li>
                         ))}
-
-                        <li
-                            className={`cursor-pointer px-2 py-1 rounded text-sm flex items-center ${data.stage === "" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-600"
-                                }`}
-                            onClick={() => handleStageChange("")}
-                        >
-                            All
-                        </li>
+                        
                     </ul>
                 </div>
 

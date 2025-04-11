@@ -1,10 +1,9 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, useForm } from '@inertiajs/react';
+import { Head,Link, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSave, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
-import { Inertia } from '@inertiajs/inertia';
 import Modal from '@/Components/CustomModal';
 
 export default function Edit({ region }) {
@@ -31,7 +30,7 @@ export default function Edit({ region }) {
         e.preventDefault();
 
         setIsSaving(true);
-        put(route('systemconfiguration3.regions.update', region.id), {
+        put(route('systemconfiguration4.regions.update', region.id), {
             onSuccess: () => {
                 setIsSaving(false);
                 resetForm();
@@ -51,9 +50,9 @@ export default function Edit({ region }) {
 
     return (
         <AuthenticatedLayout
-            header={<h2 className="text-xl font-semibold leading-tight text-gray-800">Edit Group</h2>}
+            header={<h2 className="text-xl font-semibold leading-tight text-gray-800">Edit Region</h2>}
         >
-            <Head title="Edit Group" />
+            <Head title="Edit Region" />
             <div className="py-12">
                 <div className="mx-auto max-w-4xl sm:px-6 lg:px-8">
                     <div className="bg-white p-6 shadow sm:rounded-lg">
@@ -77,14 +76,15 @@ export default function Edit({ region }) {
                             </div>
 
                             <div className="flex justify-end space-x-4 mt-6">
-                                <button
-                                    type="button"
-                                    onClick={() => Inertia.get(route('systemconfiguration3.regions.index'))}
+                                <Link
+                                    href={route('systemconfiguration4.regions.index')}  // Using the route for navigation
+                                    method="get"  // Optional, if you want to define the HTTP method (GET is default)
+                                    preserveState={true}  // Keep the page state (similar to `preserveState: true` in the button)
                                     className="bg-gray-300 text-gray-700 rounded p-2 flex items-center space-x-2"
                                 >
                                     <FontAwesomeIcon icon={faTimesCircle} />
                                     <span>Cancel</span>
-                                </button>
+                                </Link>
                                 <button
                                     type="submit"
                                     disabled={processing || isSaving}

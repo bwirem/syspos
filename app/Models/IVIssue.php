@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Enums\StoreType;
+
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -15,8 +17,11 @@ class IVIssue extends Model
     protected $table = 'iv_issue';
   
 
-    protected $fillable = ['transdate', 'fromstore_id','tostore_id','stage','total', 'user_id'];
+    protected $fillable = ['transdate', 'fromstore_id','tostore_id','tostore_type','stage','total', 'user_id'];
 
+    protected $casts = [
+        'tostore_type' => StoreType::class,
+    ];
 
     public function items()
     {        
@@ -32,7 +37,12 @@ class IVIssue extends Model
 
     public function tostore()
     {
-        return $this->belongsTo(SIV_Store::class, 'tostore_id', 'id');
+        return match ($this->tostore_type) {
+            StoreType::Store => $this->belongsTo(SIV_Store::class, 'tostore_id'),
+            StoreType::Customer => $this->belongsTo(BLSCustomer::class, 'tostore_id'),
+            StoreType::Supplier => $this->belongsTo(SPR_Supplier::class, 'tostore_id'),
+            default => null,
+        };
     }
     
     

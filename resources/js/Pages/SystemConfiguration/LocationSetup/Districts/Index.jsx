@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Head, Link, useForm, router } from "@inertiajs/react";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faSearch, faPlus, faEdit, faTrash } from "@fortawesome/free-solid-svg-icons";
+import { faHome,faSearch, faPlus, faEdit, faTrash } from "@fortawesome/free-solid-svg-icons";
 import "@fortawesome/fontawesome-svg-core/styles.css";
 
 import Modal from '@/Components/CustomModal';
@@ -21,7 +21,7 @@ export default function Index({ auth, districts, filters }) {
     });
 
     useEffect(() => {
-        get(route("systemconfiguration3.districts.index"), { preserveState: true });
+        get(route("systemconfiguration4.districts.index"), { preserveState: true });
     }, [data.search, data.stage, get]);
 
 
@@ -48,7 +48,7 @@ export default function Index({ auth, districts, filters }) {
 
     const handleModalConfirm = async () => {
         try {
-            await router.delete(route("systemconfiguration3.districts.destroy", modalState.districtToDeleteId));
+            await router.delete(route("systemconfiguration4.districts.destroy", modalState.districtToDeleteId));
         } catch (error) {
             console.error("Failed to delete district:", error);
             showAlert("There was an error deleting the district. Please try again.");
@@ -91,11 +91,17 @@ export default function Index({ auth, districts, filters }) {
 
 
                         <Link
-                            href={route("systemconfiguration3.districts.create")}
+                            href={route("systemconfiguration4.districts.create")}
                             className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm flex districts-center"
                         >
                             <FontAwesomeIcon icon={faPlus} className="mr-1" /> Create
                         </Link>
+                        <Link
+                            href={route("systemconfiguration4.index")}
+                            className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm flex items-center"
+                        >
+                            <FontAwesomeIcon icon={faHome} className="mr-1" /> Home
+                        </Link> 
                     </div>
                     
                 </div>
@@ -117,7 +123,7 @@ export default function Index({ auth, districts, filters }) {
                                                                       
                                         <td className="border-b p-3 flex space-x-2">
                                             <Link
-                                                href={route("systemconfiguration3.districts.edit", district.id)}
+                                                href={route("systemconfiguration4.districts.edit", district.id)}
                                                 className="px-2 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-xs flex districts-center"
                                             >
                                                 <FontAwesomeIcon icon={faEdit} className="mr-1" />

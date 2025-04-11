@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Head, Link, useForm, router } from "@inertiajs/react";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faSearch, faPlus, faEdit, faTrash } from "@fortawesome/free-solid-svg-icons";
+import {faHome, faSearch, faPlus, faEdit, faTrash } from "@fortawesome/free-solid-svg-icons";
 import "@fortawesome/fontawesome-svg-core/styles.css";
 
 import Modal from '@/Components/CustomModal';
@@ -92,6 +92,13 @@ export default function Index({ auth, paymenttypes, filters }) {
                         >
                             <FontAwesomeIcon icon={faPlus} className="mr-1" /> Create
                         </Link>
+
+                        <Link
+                            href={route("systemconfiguration0.index")}
+                            className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm flex items-center"
+                        >
+                            <FontAwesomeIcon icon={faHome} className="mr-1" /> Home
+                        </Link> 
                     </div>
                     
                 </div>
@@ -101,7 +108,7 @@ export default function Index({ auth, paymenttypes, filters }) {
                     <table className="min-w-full border border-gray-300 shadow-md rounded">
                         <thead className="bg-gray-50">
                             <tr>
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Paymenttype Descriptions</th>                                 
+                                <th className="border-b p-3 text-center font-medium text-gray-700">Descriptions</th>                                 
                                 <th className="border-b p-3 text-center font-medium text-gray-700">Actions</th>
                             </tr>
                         </thead>

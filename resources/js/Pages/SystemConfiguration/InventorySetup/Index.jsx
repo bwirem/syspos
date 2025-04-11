@@ -1,5 +1,5 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head } from '@inertiajs/react';
+import { Head, Link } from '@inertiajs/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     faCog,           // Settings
@@ -40,7 +40,7 @@ export default function Index() { // Receive data prop
                                     <p className="text-gray-600">Stores</p>
                                     <h3 className="text-2xl font-bold">{storeCount}</h3>
                                     <div className="mt-2">                                        
-                                        <a href={route('systemconfiguration2.stores.index')} className="text-purple-500 hover:underline">Manage Stores</a>
+                                        <Link href={route('systemconfiguration2.stores.index')} className="text-purple-500 hover:underline">Manage Stores</Link>
                                     </div>
                                 </div>
                             </div>
@@ -56,7 +56,7 @@ export default function Index() { // Receive data prop
                                     <p className="text-gray-600">Product Categories</p>
                                     <h3 className="text-2xl font-bold">{productCategoryCount}</h3>
                                     <div className="mt-2">                                       
-                                        <a href={route('systemconfiguration2.categories.index')} className="text-purple-500 hover:underline">Manage Product Categories</a>
+                                        <Link href={route('systemconfiguration2.categories.index')} className="text-purple-500 hover:underline">Manage Product Categories</Link>
                                     </div>
                                 </div>
                             </div>
@@ -72,7 +72,7 @@ export default function Index() { // Receive data prop
                                     <p className="text-gray-600">Product Units</p>
                                     <h3 className="text-2xl font-bold">{productUnitCount}</h3>
                                     <div className="mt-2">                                       
-                                        <a href={route('systemconfiguration2.units.index')} className="text-purple-500 hover:underline">Manage Product Units</a>
+                                        <Link href={route('systemconfiguration2.units.index')} className="text-purple-500 hover:underline">Manage Product Units</Link>
                                     </div>
                                 </div>
                             </div>
@@ -88,7 +88,7 @@ export default function Index() { // Receive data prop
                                     <p className="text-gray-600">Product Register</p>
                                     <h3 className="text-2xl font-bold">{productRegisterCount}</h3>
                                     <div className="mt-2">                                   
-                                        <a href={route('systemconfiguration2.products.index')} className="text-purple-500 hover:underline">Manage Product Register</a>
+                                        <Link href={route('systemconfiguration2.products.index')} className="text-purple-500 hover:underline">Manage Product Register</Link>
                                     </div>
                                 </div>
                             </div>
@@ -106,7 +106,7 @@ export default function Index() { // Receive data prop
                                     <p className="text-gray-600">Adjustment Reasons</p>
                                     <h3 className="text-2xl font-bold">{adjustmentReasonCount}</h3>
                                     <div className="mt-2">                                        
-                                        <a href={route('systemconfiguration2.adjustmentreasons.index')} className="text-purple-500 hover:underline">Manage Adjustment Reasons</a>
+                                        <Link href={route('systemconfiguration2.adjustmentreasons.index')} className="text-purple-500 hover:underline">Manage Adjustment Reasons</Link>
                                     </div>
                                 </div>
                             </div>
@@ -122,7 +122,7 @@ export default function Index() { // Receive data prop
                                     <p className="text-gray-600">Suppliers</p>
                                     <h3 className="text-2xl font-bold">{supplierCount}</h3>
                                     <div className="mt-2">                                       
-                                        <a href={route('systemconfiguration2.suppliers.index')} className="text-purple-500 hover:underline">Manage Suppliers</a>
+                                        <Link href={route('systemconfiguration2.suppliers.index')} className="text-purple-500 hover:underline">Manage Suppliers</Link>
                                     </div>
                                 </div>
                             </div>
