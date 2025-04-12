@@ -1,10 +1,9 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, useForm } from '@inertiajs/react';
+import { Head, useForm ,Link} from '@inertiajs/react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimesCircle, faTrash, faSave } from '@fortawesome/free-solid-svg-icons';
+import { faTimesCircle, faTrash, faSave, faCheck } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css'; // Corrected import
-import { Inertia } from '@inertiajs/inertia';
 import axios from 'axios';
 
 import Modal from '../../Components/CustomModal.jsx';
@@ -19,7 +18,7 @@ const debounce = (func, delay) => {
     };
 };
 
-export default function Edit({ requistion }) {
+export default function Edit({ requistion,fromstore,tostore }) {
     const { data, setData, put, errors, processing, reset } = useForm({
         from_store_name: requistion.fromstore?.name || '',
         from_store_id: requistion.fromstore_id || null,
@@ -27,6 +26,7 @@ export default function Edit({ requistion }) {
         to_store_id: requistion.tostore_id || null,
         total: requistion.total,
         stage: requistion.stage,
+        remarks: requistion.remarks || '',
         requistionitems: requistion.requistionitems || [],
     });
 
@@ -47,19 +47,14 @@ export default function Edit({ requistion }) {
     const itemDropdownRef = useRef(null);
     const itemSearchInputRef = useRef(null);
 
-    // From Store Search State
-    const [fromStoreSearchQuery, setFromStoreSearchQuery] = useState(data.from_store_name);
-    const [fromStoreSearchResults, setFromStoreSearchResults] = useState([]);
-    const [showFromStoreDropdown, setShowFromStoreDropdown] = useState(false);
-    const fromStoreDropdownRef = useRef(null);
-    const fromStoreSearchInputRef = useRef(null);
 
-    // To Store Search State
-    const [toStoreSearchQuery, setToStoreSearchQuery] = useState(data.to_store_name);
-    const [toStoreSearchResults, setToStoreSearchResults] = useState([]);
-    const [showToStoreDropdown, setShowToStoreDropdown] = useState(false);
-    const toStoreDropdownRef = useRef(null);
-    const toStoreSearchInputRef = useRef(null);
+    // Submit Modal state
+    const [submitModalOpen, setSubmitModalOpen] = useState(false);
+    const [submitRemarks, setSubmitRemarks] = useState('');
+    const [remarksError, setRemarksError] = useState('');
+    const [submitModalLoading, setSubmitModalLoading] = useState(false);
+    const [submitModalSuccess, setSubmitModalSuccess] = useState(false);
+    
 
     const [modalState, setModalState] = useState({
         isOpen: false,
@@ -88,73 +83,19 @@ export default function Edit({ requistion }) {
             });
     }, []);
 
-    // Fetch From Stores dynamically
-    const fetchFromStores = useCallback((query) => {
-        if (!query.trim()) {
-            setFromStoreSearchResults([]);
-            return;
-        }
-
-        axios.get(route('systemconfiguration2.stores.search'), { params: { query } })
-            .then((response) => {
-                setFromStoreSearchResults(response.data.stores.slice(0, 5));
-            })
-            .catch((error) => {
-                console.error('Error fetching from_stores:', error);
-                showAlert('Failed to fetch From Stores. Please try again later.');
-                setFromStoreSearchResults([]);
-            });
-    }, []);
-
-    // Fetch To Stores dynamically
-    const fetchToStores = useCallback((query) => {
-        if (!query.trim()) {
-            setToStoreSearchResults([]);
-            return;
-        }
-
-        axios.get(route('systemconfiguration2.stores.search'), { params: { query } })
-            .then((response) => {
-                setToStoreSearchResults(response.data.stores.slice(0, 5));
-            })
-            .catch((error) => {
-                console.error('Error fetching to_stores:', error);
-                showAlert('Failed to fetch To Stores. Please try again later.');
-                setToStoreSearchResults([]);
-            });
-    }, []);
-
+     
     // Debounced search handler
     const debouncedSearch = useMemo(() => debounce(fetchItems, 300), [fetchItems]);
-    // Debounced fromStore search handler
-    const debouncedFromStoreSearch = useMemo(() => debounce(fetchFromStores, 300), [fetchFromStores]);
-    // Debounced toStore search handler
-    const debouncedToStoreSearch = useMemo(() => debounce(fetchToStores, 300), [fetchToStores]);
-
+    
     useEffect(() => {
         if (itemSearchQuery.trim()) {
             debouncedSearch(itemSearchQuery);
         } else {
             setItemSearchResults([]);
         }
-    }, [itemSearchQuery, debouncedSearch]);
+    }, [itemSearchQuery, debouncedSearch]);    
 
-    useEffect(() => {
-        if (fromStoreSearchQuery.trim()) {
-            debouncedFromStoreSearch(fromStoreSearchQuery);
-        } else {
-            setFromStoreSearchResults([]);
-        }
-    }, [fromStoreSearchQuery, debouncedFromStoreSearch]);
-
-    useEffect(() => {
-        if (toStoreSearchQuery.trim()) {
-            debouncedToStoreSearch(toStoreSearchQuery);
-        } else {
-            setToStoreSearchResults([]);
-        }
-    }, [toStoreSearchQuery, debouncedToStoreSearch]);
-
+   
     useEffect(() => {
         setData('requistionitems', requistionItems);
         const calculatedTotal = requistionItems.reduce(
@@ -194,28 +135,7 @@ export default function Edit({ requistion }) {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Handle click outside fromStore dropdown
-    useEffect(() => {
-        const handleClickOutsideFromStore = (event) => {
-            if (fromStoreDropdownRef.current && !fromStoreDropdownRef.current.contains(event.target)) {
-                setShowFromStoreDropdown(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutsideFromStore);
-        return () => document.removeEventListener('mousedown', handleClickOutsideFromStore);
-    }, []);
-
-    // Handle click outside toStore dropdown
-    useEffect(() => {
-        const handleClickOutsideToStore = (event) => {
-            if (toStoreDropdownRef.current && !toStoreDropdownRef.current.contains(event.target)) {
-                setShowToStoreDropdown(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutsideToStore);
-        return () => document.removeEventListener('mousedown', handleClickOutsideToStore);
-    }, []);
-
+    
     const handleRequistionItemChange = (index, field, value) => {
         const updatedItems = [...requistionItems];
         if (field === 'quantity' || field === 'price') {
@@ -335,21 +255,7 @@ export default function Edit({ requistion }) {
         setItemSearchQuery(query);
         setShowItemDropdown(!!query.trim());
     };
-
-    const handleFromStoreSearchChange = (e) => {
-        const query = e.target.value;
-        setFromStoreSearchQuery(query);
-        setShowFromStoreDropdown(!!query.trim());
-        setData('from_store_name', query);
-    };
-
-    const handleToStoreSearchChange = (e) => {
-        const query = e.target.value;
-        setToStoreSearchQuery(query);
-        setShowToStoreDropdown(!!query.trim());
-        setData('to_store_name', query);
-    };
-
+    
     const handleClearItemSearch = () => {
         setItemSearchQuery('');
         setItemSearchResults([]);
@@ -359,44 +265,60 @@ export default function Edit({ requistion }) {
         }
     };
 
-    const handleClearFromStoreSearch = () => {
-        setFromStoreSearchQuery('');
-        setFromStoreSearchResults([]);
-        setShowFromStoreDropdown(false);
-        if (fromStoreSearchInputRef.current) {
-            fromStoreSearchInputRef.current.focus();
+    const handleSubmitClick = () => {
+        if (data.requistionitems.length === 0) {
+            showAlert('Please add at least one guarantor before submitting.');
+            return;
+        }       
+
+        setData("stage", 2);
+
+        setSubmitModalOpen(true);
+        setSubmitRemarks('');
+        setRemarksError('');
+        setSubmitModalLoading(false); // Reset loading state
+        setSubmitModalSuccess(false); // Reset success state
+    };
+
+    
+    const handleSubmitModalClose = () => {
+
+        setData("stage", 1);
+
+        setSubmitModalOpen(false);
+        setSubmitRemarks('');
+        setRemarksError('');
+        setSubmitModalLoading(false); // Reset loading state
+        setSubmitModalSuccess(false); // Reset success state
+    };
+
+    const handleSubmitModalConfirm = () => {
+        if (!data.remarks.trim()) {
+            setRemarksError('Please enter Approval remarks.');
+            return;
         }
-        setData('from_store_name', '');
-        setData('from_store_id', null);
+    
+        const formData = new FormData();
+        formData.append('remarks', data.remarks);
+    
+        setSubmitModalLoading(true); // Set loading state
+    
+        put(route('inventory0.update', requistion.id), formData, {
+            forceFormData: true,
+            onSuccess: () => {
+                setSubmitModalLoading(false);
+                reset(); // Reset form data
+                setSubmitModalSuccess(true); // Set success state
+                handleSubmitModalClose(); // Close the modal on success
+            },
+            onError: (errors) => {
+                setSubmitModalLoading(false);
+                console.error('Submission errors:', errors);
+            },
+        });
     };
 
-    const handleClearToStoreSearch = () => {
-        setToStoreSearchQuery('');
-        setToStoreSearchResults([]);
-        setShowToStoreDropdown(false);
-        if (toStoreSearchInputRef.current) {
-            toStoreSearchInputRef.current.focus();
-        }
-        setData('to_store_name', '');
-        setData('to_store_id', null);
-    };
-
-    const selectFromStore = (selectedFromStore) => {
-        setData('from_store_name', selectedFromStore.name);
-        setData('from_store_id', selectedFromStore.id);
-        setFromStoreSearchQuery(selectedFromStore.name);
-        setFromStoreSearchResults([]);
-        setShowFromStoreDropdown(false);
-    };
-
-    const selectToStore = (selectedToStore) => {
-        setData('to_store_name', selectedToStore.name);
-        setData('to_store_id', selectedToStore.id);
-        setToStoreSearchQuery(selectedToStore.name);
-        setToStoreSearchResults([]);
-        setShowToStoreDropdown(false);
-    };
-
+   
     return (
         <AuthenticatedLayout
             header={<h2 className="text-xl font-semibold leading-tight text-gray-800">Edit Requistion</h2>}
@@ -408,89 +330,53 @@ export default function Edit({ requistion }) {
                         <form onSubmit={handleSubmit} className="space-y-6">
 
                             {/* From Store Name and To Store Name */}
-                            <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
-                                <div className="relative flex-1" ref={fromStoreDropdownRef}>
+                             {/* From Store Name and To Store Name */}
+                             <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
+                                <div className="relative flex-1">
                                     <label htmlFor="from_store_name" className="block text-sm font-medium text-gray-700">
                                         From Store
                                     </label>
-                                    <input
-                                        type="text"
-                                        value={fromStoreSearchQuery}
-                                        onChange={handleFromStoreSearchChange}
-                                        onFocus={() => setShowFromStoreDropdown(!!fromStoreSearchQuery.trim())}
-                                        className="w-full border p-2 rounded text-sm pr-10"
-                                        ref={fromStoreSearchInputRef}
-                                        autoComplete="new-password"
-                                    />
-                                    {fromStoreSearchQuery && (
-                                        <button
-                                            type="button"
-                                            onClick={handleClearFromStoreSearch}
-                                            className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                                        >
-                                            <FontAwesomeIcon icon={faTimesCircle} />
-                                        </button>
-                                    )}
-                                    {showFromStoreDropdown && (
-                                        <ul className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded shadow-md max-h-48 overflow-y-auto">
-                                            {fromStoreSearchResults.length > 0 ? (
-                                                fromStoreSearchResults.map((fromStore) => (
-                                                    <li
-                                                        key={fromStore.id}
-                                                        className="p-2 hover:bg-gray-100 cursor-pointer"
-                                                        onClick={() => selectFromStore(fromStore)}
-                                                    >
-                                                        {fromStore.name}
-                                                    </li>
-                                                ))
-                                            ) : (
-                                                <li className="p-2 text-gray-500">No stores found.</li>
-                                            )}
-                                        </ul>
-                                    )}
+                                    
+                                    <select
+                                        id="from_store_id"
+                                        value={data.from_store_id}
+                                        onChange={(e) => setData("from_store_id", e.target.value)}
+                                        className={`w-full border p-2 rounded text-sm ${errors.from_store_id ? "border-red-500" : ""}`}
+                                    >
+                                        <option value="">Select From Store...</option>
+                                        {fromstore.map(store => (
+                                            <option key={store.id} value={store.id}>
+                                                {store.name} 
+                                            </option>
+                                        ))}
+                                    </select>
+                                {errors.from_store_id && <p className="text-sm text-red-600 mt-1">{errors.from_store_id}</p>}
+
                                 </div>
 
-                                <div className="relative flex-1" ref={toStoreDropdownRef}>
+                                <div className="relative flex-1">
                                     <label htmlFor="to_store_name" className="block text-sm font-medium text-gray-700">
                                         To Store
                                     </label>
-                                    <input
-                                        type="text"
-                                        value={toStoreSearchQuery}
-                                        onChange={handleToStoreSearchChange}
-                                        onFocus={() => setShowToStoreDropdown(!!toStoreSearchQuery.trim())}
-                                        className="w-full border p-2 rounded text-sm pr-10"
-                                        ref={toStoreSearchInputRef}
-                                        autoComplete="new-password"
-                                    />
-                                    {toStoreSearchQuery && (
-                                        <button
-                                            type="button"
-                                            onClick={handleClearToStoreSearch}
-                                            className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                                        >
-                                            <FontAwesomeIcon icon={faTimesCircle} />
-                                        </button>
-                                    )}
-                                    {showToStoreDropdown && (
-                                        <ul className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded shadow-md max-h-48 overflow-y-auto">
-                                            {toStoreSearchResults.length > 0 ? (
-                                                toStoreSearchResults.map((toStore) => (
-                                                    <li
-                                                        key={toStore.id}
-                                                        className="p-2 hover:bg-gray-100 cursor-pointer"
-                                                        onClick={() => selectToStore(toStore)}
-                                                    >
-                                                        {toStore.name}
-                                                    </li>
-                                                ))
-                                            ) : (
-                                                <li className="p-2 text-gray-500">No stores found.</li>
-                                            )}
-                                        </ul>
-                                    )}
+
+                                    <select
+                                        id="to_store_id"
+                                        value={data.to_store_id}
+                                        onChange={(e) => setData("to_store_id", e.target.value)}
+                                        className={`w-full border p-2 rounded text-sm ${errors.to_store_id ? "border-red-500" : ""}`}
+                                    >
+                                        <option value="">Select To Store...</option>
+                                        {tostore.map(store => (
+                                            <option key={store.id} value={store.id}>
+                                                {store.name} 
+                                            </option>
+                                        ))}
+                                    </select>
+
+                                    {errors.to_store_id && <p className="text-sm text-red-600 mt-1">{errors.to_store_id}</p>}
+                                    
                                 </div>
-                            </div>
+                            </div>                            
 
                             {/* Requistion Summary and Stage*/}
                             <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
@@ -507,22 +393,6 @@ export default function Edit({ requistion }) {
                                     </div>
                                 </div>
 
-                                <div className="flex-1">
-                                    <label htmlFor="stage" className="block text-sm font-medium text-gray-700">
-                                        Stage
-                                    </label>
-                                    <select
-                                        id="stage"
-                                        value={data.stage}
-                                        onChange={(e) => setData('stage', e.target.value)}
-                                        className={`mt-1 block w-full border-gray-300 rounded shadow-sm focus:ring-blue-500 focus:border-blue-500 ${errors.stage ? 'border-red-500' : ''}`}
-                                    >
-                                        <option value="1">Draft</option>
-                                        <option value="2">Checked</option>                                        
-                                        <option value="6">Cancelled</option>
-                                    </select>
-                                    {errors.stage && <p className="text-sm text-red-600 mt-1">{errors.stage}</p>}
-                                </div>
                             </div>
 
                             {/* Requistion Items Section */}
@@ -628,22 +498,34 @@ export default function Edit({ requistion }) {
 
                             {/* Submit Button */}
                             <div className="flex justify-end space-x-4 mt-6">
-                                <button
-                                    type="button"
-                                    onClick={() => Inertia.get(route('inventory0.index'))}
+                                <Link
+                                    href={route('inventory0.index')}  // Using the route for navigation
+                                    method="get"  // Optional, if you want to define the HTTP method (GET is default)
+                                    preserveState={true}  // Keep the page state (similar to `preserveState: true` in the button)
                                     className="bg-gray-300 text-gray-700 rounded p-2 flex items-center space-x-2"
                                 >
                                     <FontAwesomeIcon icon={faTimesCircle} />
                                     <span>Cancel</span>
-                                </button>
+                                </Link>
+
                                 <button
                                     type="submit"
                                     disabled={processing || isSaving}
                                     className="bg-blue-600 text-white rounded p-2 flex items-center space-x-2"
                                 >
                                     <FontAwesomeIcon icon={faSave} />
-                                    <span>{isSaving ? 'Saving...' : 'Save Requistion'}</span>
+                                    <span>{isSaving ? 'Saving...' : 'Save'}</span>
                                 </button>
+
+                                <button
+                                    type="button"
+                                    onClick={handleSubmitClick}
+                                    className="bg-green-500 text-white rounded p-2 flex items-center space-x-2 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
+                                >
+                                    <FontAwesomeIcon icon={faCheck} />
+                                    <span>Submit</span>
+                                </button>
+
                             </div>
                         </form>
                     </div>
@@ -657,6 +539,36 @@ export default function Edit({ requistion }) {
                 message={modalState.message}
                 isAlert={modalState.isAlert}
             />
+
+             {/* Submit Confirmation Modal */}
+             <Modal
+                isOpen={submitModalOpen}
+                onClose={handleSubmitModalClose}
+                onConfirm={handleSubmitModalConfirm}
+                title="Submit Confirmation"
+                confirmButtonText={submitModalLoading ? 'Loading...' : (submitModalSuccess ? "Success" : 'Submit')}
+                confirmButtonDisabled={submitModalLoading || submitModalSuccess}
+            >
+                <div>
+                    <p>
+                        Are you sure you want to submit the order to <strong>
+                            {data.to_store_name}</strong>?  
+                    </p>
+
+                    <label htmlFor="Submit_remarks" className="block text-sm font-medium text-gray-700 mt-4">
+                        Checker Remarks:
+                    </label>
+                    <textarea
+                        id="Submit_remarks"
+                        rows="3"
+                        className="mt-1 block w-full border-gray-300 rounded shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                        value={data.remarks}
+                        onChange={(e) => setData('remarks', e.target.value)}
+                    />
+                    {remarksError && <p className="text-red-500 text-sm mt-1">{remarksError}</p>}
+                </div>
+            </Modal>
+
         </AuthenticatedLayout>
     );
 }

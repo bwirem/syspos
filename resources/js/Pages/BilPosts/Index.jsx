@@ -156,7 +156,7 @@ export default function Index({ auth, orders, filters }) {
                                                 className="px-2 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-xs flex items-center"
                                             >
                                                 <FontAwesomeIcon icon={faEdit} className="mr-1" />
-                                                Edit
+                                                {order.stage === 3 ? "Edit" : "Preview"} 
                                             </Link>
                                             <button
                                                 onClick={() => handleDelete(order.id)}

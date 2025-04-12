@@ -1,10 +1,9 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, useForm } from '@inertiajs/react';
+import { Head, useForm,Link } from '@inertiajs/react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimesCircle } from '@fortawesome/free-solid-svg-icons';
+import { faTimesCircle , faTrash, faSave, faCheck } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
-import { Inertia } from '@inertiajs/inertia';
 import axios from 'axios';
 
 import Modal from '../../Components/CustomModal.jsx';
@@ -21,7 +20,7 @@ const debounce = (func, delay) => {
 };
 
 
-export default function Create() {
+export default function Create({fromstore, tostore}) {
     // Form state using Inertia's useForm hook
     const { data, setData, post, errors, processing, reset } = useForm({
         from_store_name: '',
@@ -30,6 +29,7 @@ export default function Create() {
         to_store_id: null,
         total: 0,
         stage: 1,
+        remarks: '',
         requistionitems: [],
     });
 
@@ -45,21 +45,16 @@ export default function Create() {
 
 
     // From Store Search State
-    const [fromStoreSearchQuery, setFromStoreSearchQuery] = useState('');
-    const [fromStoreSearchResults, setFromStoreSearchResults] = useState([]);
-    const [showFromStoreDropdown, setShowFromStoreDropdown] = useState(false);
-    const fromStoreDropdownRef = useRef(null);
-    const fromStoreSearchInputRef = useRef(null);
     const [fromStoreIDError, setFromStoreIDError] = useState(null);
-
-
-    // To Store Search State
-    const [toStoreSearchQuery, setToStoreSearchQuery] = useState('');
-    const [toStoreSearchResults, setToStoreSearchResults] = useState([]);
-    const [showToStoreDropdown, setShowToStoreDropdown] = useState(false);
-    const toStoreDropdownRef = useRef(null);
-    const toStoreSearchInputRef = useRef(null);
     const [toStoreIDError, setToStoreIDError] = useState(null);
+
+
+    // Submit Modal state
+    const [submitModalOpen, setSubmitModalOpen] = useState(false);
+    const [submitRemarks, setSubmitRemarks] = useState('');
+    const [remarksError, setRemarksError] = useState('');
+    const [submitModalLoading, setSubmitModalLoading] = useState(false);
+    const [submitModalSuccess, setSubmitModalSuccess] = useState(false);
 
     // Modal state
     const [modalState, setModalState] = useState({
@@ -92,49 +87,9 @@ export default function Create() {
     }, []);
 
 
-    // Fetch From Stores dynamically (using Inertia)
-    const fetchFromStores = useCallback((query) => {
-        if (!query.trim()) {
-            setFromStoreSearchResults([]);
-            return;
-        }
-
-        axios.get(route('systemconfiguration2.stores.search'), { params: { query } })
-            .then((response) => {
-                setFromStoreSearchResults(response.data.stores.slice(0, 5));
-            })
-            .catch((error) => {
-                console.error('Error fetching stores:', error);
-                showAlert('Failed to fetch stores. Please try again later.');
-                setFromStoreSearchResults([]);
-            });
-    }, []);
-
-
-    // Fetch To Store dynamically (using Inertia)
-    const fetchToStores = useCallback((query) => {
-        if (!query.trim()) {
-            setToStoreSearchResults([]);
-            return;
-        }
-
-        axios.get(route('systemconfiguration2.stores.search'), { params: { query } })
-            .then((response) => {
-                setToStoreSearchResults(response.data.stores.slice(0, 5));
-            })
-            .catch((error) => {
-                console.error('Error fetching stores:', error);
-                showAlert('Failed to fetch stores. Please try again later.');
-                setToStoreSearchResults([]);
-            });
-    }, []);
-
+  
     // Debounced search handler
-    const debouncedItemSearch = useMemo(() => debounce(fetchItems, 300), [fetchItems]);
-    // Debounced From Store search handler
-    const debouncedFromStoreSearch = useMemo(() => debounce(fetchFromStores, 300), [fetchFromStores]);
-    // Debounced To Store search handler
-    const debouncedToStoreSearch = useMemo(() => debounce(fetchToStores, 300), [fetchToStores]);
+    const debouncedItemSearch = useMemo(() => debounce(fetchItems, 300), [fetchItems]);   
 
     // Fetch items on search query change
     useEffect(() => {
@@ -145,25 +100,7 @@ export default function Create() {
         }
     }, [itemSearchQuery, debouncedItemSearch]);
 
-    // Fetch From Stores on search query change
-    useEffect(() => {
-        if (fromStoreSearchQuery.trim()) {
-            debouncedFromStoreSearch(fromStoreSearchQuery);
-        } else {
-            setFromStoreSearchResults([]);
-        }
-    }, [fromStoreSearchQuery, debouncedFromStoreSearch]);
-
-    // Fetch To Stores on search query change
-    useEffect(() => {
-        if (toStoreSearchQuery.trim()) {
-            debouncedToStoreSearch(toStoreSearchQuery);
-        } else {
-            setToStoreSearchResults([]);
-        }
-    }, [toStoreSearchQuery, debouncedToStoreSearch]);
-
-
+   
     // Update total on requistion item changes
     useEffect(() => {
         setData('requistionitems', requistionItems);
@@ -185,29 +122,7 @@ export default function Create() {
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
-
-
-    // Handle click outside From Store dropdown
-    useEffect(() => {
-        const handleClickOutsideFromStore = (event) => {
-            if (fromStoreDropdownRef.current && !fromStoreDropdownRef.current.contains(event.target)) {
-                setShowFromStoreDropdown(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutsideFromStore);
-        return () => document.removeEventListener('mousedown', handleClickOutsideFromStore);
-    }, []);
-
-    // Handle click outside To Store dropdown
-    useEffect(() => {
-        const handleClickOutsideToStore = (event) => {
-            if (toStoreDropdownRef.current && !toStoreDropdownRef.current.contains(event.target)) {
-                setShowToStoreDropdown(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutsideToStore);
-        return () => document.removeEventListener('mousedown', handleClickOutsideToStore);
-    }, []);
+       
 
     // Handle changes in requistion item fields
     const handleRequistionItemChange = (index, field, value) => {
@@ -338,25 +253,8 @@ export default function Create() {
         const query = e.target.value;
         setItemSearchQuery(query);
         setShowItemDropdown(!!query.trim());
-    };
-
-
-    // Handle From Store search input change
-    const handleFromStoreSearchChange = (e) => {
-        const query = e.target.value;
-        setFromStoreSearchQuery(query);
-        setData('from_store_name', query); // Keep existing line
-        setShowFromStoreDropdown(!!query.trim());
-    };
-
-
-    // Handle To Store search input change
-    const handleToStoreSearchChange = (e) => {
-        const query = e.target.value;
-        setToStoreSearchQuery(query);
-        setData('to_store_name', query); // Added this line
-        setShowToStoreDropdown(!!query.trim());
-    };
+    };   
+  
 
     // Clear item search
     const handleClearSearch = () => {
@@ -368,50 +266,58 @@ export default function Create() {
         }
     };
 
+    const handleSubmitClick = () => {
+        if (data.requistionitems.length === 0) {
+            showAlert('Please add at least one guarantor before submitting.');
+            return;
+        }  
 
-    // Clear From Store search
-    const handleClearFromStoreSearch = () => {
-        setFromStoreSearchQuery('');
-        setFromStoreSearchResults([]);
-        setShowFromStoreDropdown(false);
-        if (fromStoreSearchInputRef.current) {
-            fromStoreSearchInputRef.current.focus();
+        setData("stage", 2);
+
+        setSubmitModalOpen(true);
+        setSubmitRemarks('');
+        setRemarksError('');
+        setSubmitModalLoading(false); // Reset loading state
+        setSubmitModalSuccess(false); // Reset success state
+    };
+
+    
+    const handleSubmitModalClose = () => {
+
+        setData("stage", 1);
+
+        setSubmitModalOpen(false);
+        setSubmitRemarks('');
+        setRemarksError('');
+        setSubmitModalLoading(false); // Reset loading state
+        setSubmitModalSuccess(false); // Reset success state
+    };
+
+    const handleSubmitModalConfirm = () => {
+        if (!data.remarks.trim()) {
+            setRemarksError('Please enter Approval remarks.');
+            return;
         }
-        setData('from_store_name', '');
-        setData('from_store_id', null);
+    
+        const formData = new FormData();
+        formData.append('remarks', data.remarks);
+    
+        setSubmitModalLoading(true); // Set loading state
+    
+        post(route('inventory0.store'), formData, {
+            forceFormData: true,
+            onSuccess: () => {
+                setSubmitModalLoading(false);
+                reset(); // Reset form data
+                setSubmitModalSuccess(true); // Set success state
+                handleSubmitModalClose(); // Close the modal on success
+            },
+            onError: (errors) => {
+                setSubmitModalLoading(false);
+                console.error('Submission errors:', errors);
+            },
+        });
     };
-
-    // Clear To Store search
-    const handleClearToStoreSearch = () => {
-        setToStoreSearchQuery('');
-        setToStoreSearchResults([]);
-        setShowToStoreDropdown(false);
-        if (toStoreSearchInputRef.current) {
-            toStoreSearchInputRef.current.focus();
-        }
-        setData('to_store_name', '');
-        setData('to_store_id', null);
-    };
-
-
-    // Handle From Store selection
-    const selectFromStore = (selectedFromStore) => {
-        setData('from_store_name', selectedFromStore.name);
-        setData('from_store_id', selectedFromStore.id);
-        setFromStoreSearchQuery('');
-        setFromStoreSearchResults([]);
-        setShowFromStoreDropdown(false);
-    };
-
-    // Handle To Store selection
-    const selectToStore = (selectedToStore) => {
-        setData('to_store_name', selectedToStore.name); // Update to_store_name
-        setData('to_store_id', selectedToStore.id);   // Update to_store_id
-        setToStoreSearchQuery('');
-        setToStoreSearchResults([]);
-        setShowToStoreDropdown(false);
-    };
-
 
     return (
         <AuthenticatedLayout
@@ -423,96 +329,54 @@ export default function Create() {
                     <div className="bg-white p-6 shadow sm:rounded-lg">
                         <form onSubmit={handleSubmit} className="space-y-6">
                             {/* From Store Name and To Store Name */}
-                            <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
-                                <div className="relative flex-1" ref={fromStoreDropdownRef}>
-                                    <div className="flex items-center  h-10">
-                                        <label htmlFor="from_store_name" className="block text-sm font-medium text-gray-700 mr-2">
-                                            From Store
-                                        </label>
-                                    </div>
-                                    {/* Added autocomplete attribute here */}
-                                    <input
-                                        type="text"
-                                        placeholder="Search From Store..."
-                                        value={data.from_store_name} // Use the value to bind data
-                                        onChange={handleFromStoreSearchChange}
-                                        onFocus={() => setShowFromStoreDropdown(!!fromStoreSearchQuery.trim())}
-                                        className={`w-full border p-2 rounded text-sm pr-10 ${fromStoreIDError ? 'border-red-500' : ''}`}
-                                        ref={fromStoreSearchInputRef}
-                                        autoComplete="new-password"
-                                    />
-                                    {fromStoreIDError && <p className="text-sm text-red-600 mt-1">{fromStoreIDError}</p>}
-                                    {fromStoreSearchQuery && (
-                                        <button
-                                            type="button"
-                                            onClick={handleClearFromStoreSearch}
-                                            className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                                        >
-                                            <FontAwesomeIcon icon={faTimesCircle} />
-                                        </button>
-                                    )}
-                                    {showFromStoreDropdown && (
-                                        <ul className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded shadow-md max-h-48 overflow-y-auto">
-                                            {fromStoreSearchResults.length > 0 ? (
-                                                fromStoreSearchResults.map((fromStore) => (
-                                                    <li
-                                                        key={fromStore.id}
-                                                        className="p-2 hover:bg-gray-100 cursor-pointer"
-                                                        onClick={() => selectFromStore(fromStore)}
-                                                    >
-                                                        {fromStore.name}
-                                                    </li>
-                                                ))
-                                            ) : (
-                                                <li className="p-2 text-gray-500">No stores found.</li>
-                                            )}
-                                        </ul>
-                                    )}
+                             {/* From Store Name and To Store Name */}
+                             <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
+                                <div className="relative flex-1">
+                                    <label htmlFor="from_store_name" className="block text-sm font-medium text-gray-700">
+                                        From Store
+                                    </label>
+                                    
+                                    <select
+                                        id="from_store_id"
+                                        value={data.from_store_id}
+                                        onChange={(e) => setData("from_store_id", e.target.value)}
+                                        className={`w-full border p-2 rounded text-sm ${errors.from_store_id ? "border-red-500" : ""}`}
+                                    >
+                                        <option value="">Select From Store...</option>
+                                        {fromstore.map(store => (
+                                            <option key={store.id} value={store.id}>
+                                                {store.name} 
+                                            </option>
+                                        ))}
+                                    </select>
+                                {errors.from_store_id && <p className="text-sm text-red-600 mt-1">{errors.from_store_id}</p>}
+
                                 </div>
-                                <div className="relative flex-1" ref={toStoreDropdownRef}>
-                                    <div className="flex items-center h-10">
-                                        <label htmlFor="to_store_name" className="block text-sm font-medium text-gray-700 mr-2">
-                                            To Store
-                                        </label>
-                                    </div>
-                                    <input
-                                        type="text"
-                                        placeholder="Search To Store..."
-                                        value={data.to_store_name}
-                                        onChange={handleToStoreSearchChange}
-                                        onFocus={() => setShowToStoreDropdown(!!toStoreSearchQuery.trim())}
-                                        className="w-full border p-2 rounded text-sm pr-10"
-                                        ref={toStoreSearchInputRef}
-                                        autoComplete="new-password"
-                                    />
-                                    {toStoreSearchQuery && (
-                                        <button
-                                            type="button"
-                                            onClick={handleClearToStoreSearch}
-                                            className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                                        >
-                                            <FontAwesomeIcon icon={faTimesCircle} />
-                                        </button>
-                                    )}
-                                    {showToStoreDropdown && (
-                                        <ul className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded shadow-md max-h-48 overflow-y-auto">
-                                            {toStoreSearchResults.length > 0 ? (
-                                                toStoreSearchResults.map((toStore) => (
-                                                    <li
-                                                        key={toStore.id}
-                                                        className="p-2 hover:bg-gray-100 cursor-pointer"
-                                                        onClick={() => selectToStore(toStore)}
-                                                    >
-                                                        {toStore.name}
-                                                    </li>
-                                                ))
-                                            ) : (
-                                                <li className="p-2 text-gray-500">No stores found.</li>
-                                            )}
-                                        </ul>
-                                    )}
+
+                                <div className="relative flex-1">
+                                    <label htmlFor="to_store_name" className="block text-sm font-medium text-gray-700">
+                                        To Store
+                                    </label>
+
+                                    <select
+                                        id="to_store_id"
+                                        value={data.to_store_id}
+                                        onChange={(e) => setData("to_store_id", e.target.value)}
+                                        className={`w-full border p-2 rounded text-sm ${errors.to_store_id ? "border-red-500" : ""}`}
+                                    >
+                                        <option value="">Select To Store...</option>
+                                        {tostore.map(store => (
+                                            <option key={store.id} value={store.id}>
+                                                {store.name} 
+                                            </option>
+                                        ))}
+                                    </select>
+
+                                    {errors.to_store_id && <p className="text-sm text-red-600 mt-1">{errors.to_store_id}</p>}
+                                    
                                 </div>
                             </div>
+                            
 
                             {/* Requistion Summary and Stage */}
                             <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
@@ -527,22 +391,7 @@ export default function Create() {
                                         })}
                                     </div>
                                 </div>
-                                <div className="flex-1">
-                                    <label htmlFor="stage" className="block text-sm font-medium text-gray-700">
-                                        Stage
-                                    </label>
-                                    <select
-                                        id="stage"
-                                        value={data.stage}
-                                        onChange={(e) => setData('stage', e.target.value)}
-                                        className={`mt-1 block w-full border-gray-300 rounded shadow-sm focus:ring-blue-500 focus:border-blue-500 ${errors.stage ? 'border-red-500' : ''}`}
-                                    >
-                                        <option value="1">Draft</option>
-                                        <option value="2">Checked</option>                                        
-                                        <option value="6">Cancelled</option>
-                                    </select>
-                                    {errors.stage && <p className="text-sm text-red-600 mt-1">{errors.stage}</p>}
-                                </div>
+                                
                             </div>
 
                             {/* Requistion Items Section */}
@@ -645,20 +494,31 @@ export default function Create() {
 
                             {/* Submit Button */}
                             <div className="flex justify-end space-x-4 mt-6">
-                                <button
-                                    type="button"
-                                    onClick={() => Inertia.get(route('inventory0.index'))}
+                                <Link
+                                    href={route('inventory0.index')}  // Using the route for navigation
+                                    method="get"  // Optional, if you want to define the HTTP method (GET is default)
+                                    preserveState={true}  // Keep the page state (similar to `preserveState: true` in the button)
                                     className="bg-gray-300 text-gray-700 rounded p-2 flex items-center space-x-2"
                                 >
                                     <FontAwesomeIcon icon={faTimesCircle} />
                                     <span>Cancel</span>
-                                </button>
+                                </Link>
+
                                 <button
                                     type="submit"
                                     disabled={processing || isSaving}
                                     className="bg-blue-600 text-white rounded p-2 flex items-center space-x-2"
                                 >
-                                    <span>{isSaving ? 'Saving...' : 'Save Requistion'}</span>
+                                    <span>{isSaving ? 'Saving...' : 'Save'}</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={handleSubmitClick}
+                                    className="bg-green-500 text-white rounded p-2 flex items-center space-x-2 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
+                                >
+                                    <FontAwesomeIcon icon={faCheck} />
+                                    <span>Submit</span>
                                 </button>
                             </div>
                         </form>
@@ -674,6 +534,36 @@ export default function Create() {
                 message={modalState.message}
                 isAlert={modalState.isAlert}
             />
+
+             {/* Submit Confirmation Modal */}
+             <Modal
+                isOpen={submitModalOpen}
+                onClose={handleSubmitModalClose}
+                onConfirm={handleSubmitModalConfirm}
+                title="Submit Confirmation"
+                confirmButtonText={submitModalLoading ? 'Loading...' : (submitModalSuccess ? "Success" : 'Submit')}
+                confirmButtonDisabled={submitModalLoading || submitModalSuccess}
+            >
+                <div>
+                    <p>
+                        Are you sure you want to submit the order to <strong>
+                        {data.to_store_name} 
+                        </strong>?
+                    </p>
+
+                    <label htmlFor="Submit_remarks" className="block text-sm font-medium text-gray-700 mt-4">
+                        Checker Remarks:
+                    </label>
+                    <textarea
+                        id="Submit_remarks"
+                        rows="3"
+                        className="mt-1 block w-full border-gray-300 rounded shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                        value={data.remarks}
+                        onChange={(e) => setData('remarks', e.target.value)}
+                    />
+                    {remarksError && <p className="text-red-500 text-sm mt-1">{remarksError}</p>}
+                </div>
+            </Modal>
         </AuthenticatedLayout>
     );
 }

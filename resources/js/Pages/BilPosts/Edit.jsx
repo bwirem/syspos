@@ -45,6 +45,10 @@ export default function Edit({ order, fromstore }) {
     const customerDropdownRef = useRef(null);
     const customerSearchInputRef = useRef(null);
 
+    const [saveModalOpen, setSaveModalOpen] = useState(false);
+    const [saveModalLoading, setSaveModalLoading] = useState(false);
+    const [saveModalSuccess, setSaveModalSuccess] = useState(false);
+
 
     const [modalState, setModalState] = useState({
         isOpen: false,
@@ -243,40 +247,7 @@ export default function Edit({ order, fromstore }) {
             isAlert: true,
             itemToRemoveIndex: null,
         });
-    };
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-
-        const hasEmptyFields = orderItems.some((item) => {
-           const itemName = item.item?.name;
-           const parsedQuantity =  parseFloat(item.quantity);
-            const parsedPrice = parseFloat(item.price);
-            return !itemName ||
-                   !item.item_id ||
-                   isNaN(parsedQuantity) || (parsedQuantity <= 0) ||
-                   isNaN(parsedPrice) || parsedPrice < 0;
-        });
-
-        if (hasEmptyFields) {
-            showAlert('Please ensure all order items have valid item names, quantities, prices, and item IDs.');
-             return;
-        }
-
-        setIsSaving(true);
-
-        put(route('billing1.update', order.id), {
-            onSuccess: () => {
-                setIsSaving(false);
-                resetForm();
-            },
-            onError: (errors) => {
-                console.error(errors);
-                setIsSaving(false)
-                showAlert('An error occurred while saving the order. Please check the console for details.');
-            },
-        });
-    };
+    };   
 
     const resetForm = () => {
         reset();
@@ -434,6 +405,62 @@ export default function Edit({ order, fromstore }) {
 
     };
 
+
+    const handleSaveClick = () => { 
+        
+        const hasEmptyFields = orderItems.some((item) => {
+            const itemName = item.item?.name;
+            const parsedQuantity =  parseFloat(item.quantity);
+             const parsedPrice = parseFloat(item.price);
+             return !itemName ||
+                    !item.item_id ||
+                    isNaN(parsedQuantity) || (parsedQuantity <= 0) ||
+                    isNaN(parsedPrice) || parsedPrice < 0;
+         });
+ 
+         if (hasEmptyFields) {
+             showAlert('Please ensure all order items have valid item names, quantities, prices, and item IDs.');
+              return;
+         }
+
+        if (data.orderitems.length === 0) {
+            showAlert('Please add at least one guarantor before saveting.');
+            return;
+        }        
+      
+        setSaveModalOpen(true);       
+        setSaveModalLoading(false); // Reset loading state
+        setSaveModalSuccess(false); // Reset success state
+     };
+    
+    const handleSaveModalClose = () => {
+      
+        setSaveModalOpen(false);        
+        setSaveModalLoading(false); // Reset loading state
+        setSaveModalSuccess(false); // Reset success state
+    };
+ 
+    const handleSaveModalConfirm = () => {        
+    
+        const formData = new FormData();      
+    
+        setSaveModalLoading(true); // Set loading state
+    
+        put(route('billing1.update',order.id), formData, {
+            forceFormData: true,
+            onSuccess: () => {
+                setSaveModalLoading(false);
+                reset(); // Reset form data
+                setSaveModalSuccess(true); // Set success state
+                handleSaveModalClose(); // Close the modal on success
+            },
+            onError: (errors) => {
+                setSaveModalLoading(false);
+                console.error('Submission errors:', errors);
+            },
+        });
+    };
+
         return (
             <AuthenticatedLayout
                 header={<h2 className="text-xl font-semibold leading-tight text-gray-800">Edit Order</h2>}
@@ -442,7 +469,7 @@ export default function Edit({ order, fromstore }) {
                 <div className="py-12">
                     <div className="mx-auto max-w-4xl sm:px-6 lg:px-8">
                         <div className="bg-white p-6 shadow sm:rounded-lg">
-                            <form onSubmit={handleSubmit} className="space-y-6">
+                            <form className="space-y-6">
     
                                 <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
                                     <div className="relative flex-1" ref={customerDropdownRef}>
@@ -636,13 +663,14 @@ export default function Edit({ order, fromstore }) {
                                     </Link>
 
                                     <button
-                                        type="submit"
-                                        disabled={processing || isSaving}
-                                        className="bg-blue-600 text-white rounded p-2 flex items-center space-x-2"
+                                        type="button"
+                                        onClick={handleSaveClick}
+                                        className="bg-blue-500 text-white rounded p-2 flex items-center space-x-2 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
                                     >
                                         <FontAwesomeIcon icon={faSave} />
-                                        <span>{isSaving ? 'Saving...' : 'Save'}</span>
+                                        <span>Save</span>
                                     </button>
+
                                     <button
                                         type="button"
                                         disabled={processing || isSaving}
@@ -664,7 +692,34 @@ export default function Edit({ order, fromstore }) {
                     title={modalState.isAlert ? "Alert" : "Confirm Action"}
                     message={modalState.message}
                     isAlert={modalState.isAlert}
-                />               
+                />
+
+                 {/* Save Confirmation Modal */}
+                <Modal
+                    isOpen={saveModalOpen}
+                    onClose={handleSaveModalClose}
+                    onConfirm={handleSaveModalConfirm}
+                    title="Save Confirmation"
+                    confirmButtonText={saveModalLoading ? 'Loading...' : (saveModalSuccess ? "Success" : 'Save')}
+                    confirmButtonDisabled={saveModalLoading || saveModalSuccess}
+                >
+                    
+                    <div className="flex-1">
+                        <label htmlFor="stage" className="block text-sm font-medium text-gray-700">
+                            Saving Option
+                        </label>
+                        <select
+                            id="stage"
+                            value={data.stage}
+                            onChange={(e) => setData('stage', e.target.value)}
+                            className={`mt-1 block w-full border-gray-300 rounded shadow-sm focus:ring-blue-500 focus:border-blue-500 ${errors.stage ? 'border-red-500' : ''}`}
+                        >
+                            <option value="3">Approved</option>
+                            <option value="4">Profoma</option>                                        
+                        </select>
+                        {errors.stage && <p className="text-sm text-red-600 mt-1">{errors.stage}</p>}
+                    </div>
+                </Modal>               
                     
                 {/* Payment Modal */}
                 <Modal

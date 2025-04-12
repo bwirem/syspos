@@ -57,6 +57,10 @@ export default function Create({fromstore}) {
     const [newCustomerModalLoading, setNewCustomerModalLoading] = useState(false);
     const [newCustomerModalSuccess, setNewCustomerModalSuccess] = useState(false);
 
+    const [saveModalOpen, setSaveModalOpen] = useState(false);
+    const [saveModalLoading, setSaveModalLoading] = useState(false);
+    const [saveModalSuccess, setSaveModalSuccess] = useState(false);
+
     const [submitModalOpen, setSubmitModalOpen] = useState(false);
     const [submitModalLoading, setSubmitModalLoading] = useState(false);
     const [submitModalSuccess, setSubmitModalSuccess] = useState(false);
@@ -244,50 +248,7 @@ export default function Create({fromstore}) {
         });
     };
 
-    // Handle form submission
-    const handleSubmit = (e) => {
-        e.preventDefault();
-
-        // Validate customer_id
-        if (data.customer_id !== null && !Number.isInteger(Number(data.customer_id))) {
-            setCustomerIDError('Customer ID must be an integer.');
-            return; // Stop form submission
-        } else {
-            setCustomerIDError(null); //clear the error when valid
-        }
-
-        // Validate store_id
-        if (data.store_id !== null && !Number.isInteger(Number(data.store_id))) {
-            setStoreIDError('Store ID must be an integer.');
-            return; // Stop form submission
-        } else {
-            setStoreIDError(null);//clear the error when valid
-        }
-
-        const hasEmptyFields = orderItems.some(
-            (item) => !item.item_name || !item.item_id || item.quantity <= 0 || item.price < 0
-        );
-
-        if (hasEmptyFields) {
-            showAlert('Please ensure all order items have valid item names, quantities, prices, and item IDs.');
-            return;
-        }
-
-
-        setIsSaving(true);
-        post(route('billing0.store'), {
-            onSuccess: () => {
-                setIsSaving(false);
-                resetForm();
-            },
-            onError: (error) => {
-                console.error(error);
-                setIsSaving(false);
-                showAlert('An error occurred while saving the order.');
-            },
-        });
-    };
-
+    
 
     // Reset the form
     const resetForm = () => {
@@ -393,8 +354,101 @@ export default function Create({fromstore}) {
     };
 
     
+    const handleSaveClick = () => {
+
+         // Validate customer_id
+         if (data.customer_id !== null && !Number.isInteger(Number(data.customer_id))) {
+            setCustomerIDError('Customer ID must be an integer.');
+            return; // Stop form submission
+        } else {
+            setCustomerIDError(null); //clear the error when valid
+        }
+
+        // Validate store_id
+        if (data.store_id !== null && !Number.isInteger(Number(data.store_id))) {
+            setStoreIDError('Store ID must be an integer.');
+            return; // Stop form submission
+        } else {
+            setStoreIDError(null);//clear the error when valid
+        }
+
+        const hasEmptyFields = orderItems.some(
+            (item) => !item.item_name || !item.item_id || item.quantity <= 0 || item.price < 0
+        );
+
+        if (hasEmptyFields) {
+            showAlert('Please ensure all order items have valid item names, quantities, prices, and item IDs.');
+            return;
+        }
+
+
+        if (data.orderitems.length === 0) {
+            showAlert('Please add at least one guarantor before saveting.');
+            return;
+        }       
+
+        setSaveModalOpen(true);       
+        setSaveModalLoading(false); // Reset loading state
+        setSaveModalSuccess(false); // Reset success state
+    };
+
+    
+    const handleSaveModalClose = () => {
+        setSaveModalOpen(false);        
+        setSaveModalLoading(false); // Reset loading state
+        setSaveModalSuccess(false); // Reset success state
+    };
+
+    const handleSaveModalConfirm = () => {        
+    
+        const formData = new FormData();      
+    
+        setSaveModalLoading(true); // Set loading state
+    
+        post(route('billing0.store'), formData, {
+            forceFormData: true,
+            onSuccess: () => {
+                setSaveModalLoading(false);
+                reset(); // Reset form data
+                setSaveModalSuccess(true); // Set success state
+                handleSaveModalClose(); // Close the modal on success
+            },
+            onError: (errors) => {
+                setSaveModalLoading(false);
+                console.error('Submission errors:', errors);
+            },
+        });
+    };
+
+
     const handleSubmitClick = () => {
-        if (data.requistionitems.length === 0) {
+       
+         // Validate customer_id
+         if (data.customer_id !== null && !Number.isInteger(Number(data.customer_id))) {
+            setCustomerIDError('Customer ID must be an integer.');
+            return; // Stop form submission
+        } else {
+            setCustomerIDError(null); //clear the error when valid
+        }
+
+        // Validate store_id
+        if (data.store_id !== null && !Number.isInteger(Number(data.store_id))) {
+            setStoreIDError('Store ID must be an integer.');
+            return; // Stop form submission
+        } else {
+            setStoreIDError(null);//clear the error when valid
+        }
+
+        const hasEmptyFields = orderItems.some(
+            (item) => !item.item_name || !item.item_id || item.quantity <= 0 || item.price < 0
+        );
+
+        if (hasEmptyFields) {
+            showAlert('Please ensure all order items have valid item names, quantities, prices, and item IDs.');
+            return;
+        }
+       
+        if (data.orderitems.length === 0) {
             showAlert('Please add at least one guarantor before submitting.');
             return;
         }       
@@ -413,13 +467,12 @@ export default function Create({fromstore}) {
 
     const handleSubmitModalConfirm = () => {        
     
-        const formData = new FormData();
-        formData.append('remarks', data.remarks);
+        const formData = new FormData();      
     
         setSubmitModalLoading(true); // Set loading state
     
-        put(route('inventory1.update', requistion.id), formData, {
-            forceFormData: true,
+        post(route('billing0.store'), formData, {
+           
             onSuccess: () => {
                 setSubmitModalLoading(false);
                 reset(); // Reset form data
@@ -432,6 +485,7 @@ export default function Create({fromstore}) {
             },
         });
     };
+
    
 
     return (
@@ -442,7 +496,7 @@ export default function Create({fromstore}) {
             <div className="py-12">
                 <div className="mx-auto max-w-4xl sm:px-6 lg:px-8">
                     <div className="bg-white p-6 shadow sm:rounded-lg">
-                        <form onSubmit={handleSubmit} className="space-y-6">
+                        <form className="space-y-6">
                             {/* Customer Name and Store Name */}
                             <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
                                 <div className="relative flex-1" ref={customerDropdownRef}>
@@ -536,24 +590,7 @@ export default function Create({fromstore}) {
                                                 maximumFractionDigits: 2,
                                             })}
                                     </div>
-                                </div>
-                                <div className="flex-1">
-                                    <label htmlFor="stage" className="block text-sm font-medium text-gray-700">
-                                        Stage
-                                    </label>
-                                    <select
-                                        id="stage"
-                                        value={data.stage}
-                                        onChange={(e) => setData('stage', e.target.value)}
-                                        className={`mt-1 block w-full border-gray-300 rounded shadow-sm focus:ring-blue-500 focus:border-blue-500 ${errors.stage ? 'border-red-500' : ''}`}
-                                    >
-                                        <option value="1">Draft</option>
-                                        <option value="2">Quotation</option>
-                                        <option value="3">Approved</option>
-                                        <option value="6">Cancelled</option>
-                                    </select>
-                                    {errors.stage && <p className="text-sm text-red-600 mt-1">{errors.stage}</p>}
-                                </div>
+                                </div>                                
                             </div>
 
                             {/* Order Items Section */}
@@ -665,16 +702,18 @@ export default function Create({fromstore}) {
                                     <FontAwesomeIcon icon={faTimesCircle} />
                                     <span>Cancel</span>
                                 </Link>
+
                                 <button
-                                    type="submit"
-                                    disabled={processing || isSaving}
-                                    className="bg-blue-600 text-white rounded p-2 flex items-center space-x-2"
+                                    type="button"
+                                    onClick={handleSaveClick}
+                                    className="bg-blue-500 text-white rounded p-2 flex items-center space-x-2 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
                                 >
                                     <FontAwesomeIcon icon={faSave} />
-                                    <span>{isSaving ? 'Saving...' : 'Save'}</span>
+                                    <span>Save</span>
                                 </button>
+                                
 
-                                 <button
+                                <button
                                     type="button"
                                     onClick={handleSubmitClick}
                                     className="bg-green-500 text-white rounded p-2 flex items-center space-x-2 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
@@ -713,12 +752,39 @@ export default function Create({fromstore}) {
                 </div>
             </Modal>
 
+            {/* Save Confirmation Modal */}
+            <Modal
+                isOpen={saveModalOpen}
+                onClose={handleSaveModalClose}
+                onConfirm={handleSaveModalConfirm}
+                title="Save Confirmation"
+                confirmButtonText={saveModalLoading ? 'Loading...' : (saveModalSuccess ? "Success" : 'Save')}
+                confirmButtonDisabled={saveModalLoading || saveModalSuccess}
+            >
+                
+                <div className="flex-1">
+                    <label htmlFor="stage" className="block text-sm font-medium text-gray-700">
+                        Saving Option
+                    </label>
+                    <select
+                        id="stage"
+                        value={data.stage}
+                        onChange={(e) => setData('stage', e.target.value)}
+                        className={`mt-1 block w-full border-gray-300 rounded shadow-sm focus:ring-blue-500 focus:border-blue-500 ${errors.stage ? 'border-red-500' : ''}`}
+                    >
+                        <option value="1">Draft</option>
+                        <option value="2">Quotation</option>                                           
+                    </select>
+                    {errors.stage && <p className="text-sm text-red-600 mt-1">{errors.stage}</p>}
+                </div>
+            </Modal>
+
             {/* Submit Confirmation Modal */}
             <Modal
                 isOpen={submitModalOpen}
                 onClose={handleSubmitModalClose}
                 onConfirm={handleSubmitModalConfirm}
-                title="Issuance Confirmation"
+                title="Submit Confirmation"
                 confirmButtonText={submitModalLoading ? 'Loading...' : (submitModalSuccess ? "Success" : 'Submit')}
                 confirmButtonDisabled={submitModalLoading || submitModalSuccess}
             >

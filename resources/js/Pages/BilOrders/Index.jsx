@@ -134,8 +134,7 @@ export default function Index({ auth, orders, filters }) {
                         <thead className="bg-gray-50">
                             <tr>
                                 <th className="border-b p-3 text-center font-medium text-gray-700">Customer Name</th>
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Total</th>
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Stage</th>
+                                <th className="border-b p-3 text-center font-medium text-gray-700">Total</th>                                
                                 <th className="border-b p-3 text-center font-medium text-gray-700">Actions</th>
                             </tr>
                         </thead>
@@ -149,15 +148,14 @@ export default function Index({ auth, orders, filters }) {
                                                 minimumFractionDigits: 2,
                                                 maximumFractionDigits: 2,
                                             })}
-                                        </td>
-                                          <td className="border-b p-3 text-gray-700">{orderStageLabels[order.stage]}</td>
+                                        </td>                                        
                                         <td className="border-b p-3 flex space-x-2">
                                             <Link
                                                 href={route("billing0.edit", order.id)}
                                                 className="px-2 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-xs flex items-center"
                                             >
-                                                <FontAwesomeIcon icon={faEdit} className="mr-1" />
-                                                Edit
+                                                <FontAwesomeIcon icon={faEdit} className="mr-1" />                                                
+                                                {order.stage === 1 ? "Edit" : "Preview"}   
                                             </Link>
                                             <button
                                                 onClick={() => handleDelete(order.id)}

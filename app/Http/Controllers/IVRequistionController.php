@@ -40,7 +40,7 @@ class IVRequistionController extends Controller
              $query->where('stage', $request->stage);
          }
 
-         $query->where('stage', '<=', '2');
+         $query->where('stage', '=', '1');
      
          // Paginate and sort requistions
          $requistions = $query->orderBy('created_at', 'desc')->paginate(10);
@@ -57,7 +57,10 @@ class IVRequistionController extends Controller
      */
     public function create()
     {
-        return inertia('IvRequisition/Create');
+        return inertia('IvRequisition/Create', [
+            'fromstore' => SIV_Store::all(), // Pass the correct data to the view
+            'tostore' => SIV_Store::all(), // Pass the correct data to the view
+        ]);
     }
 
     /**
@@ -86,7 +89,8 @@ class IVRequistionController extends Controller
              $requistion = IVRequistion::create([
                  'transdate' => $transdate,
                  'tostore_id' => $validated['to_store_id'],
-                 'fromstore_id' => $validated['from_store_id'],
+                 'tostore_type' => StoreType::Store->value, // Assuming this is a store
+                 'fromstore_id' => $validated['from_store_id'],                 
                  'stage' => $validated['stage'],
                  'total' => 0, // Set an initial total (will update later)
                  'user_id' => Auth::id(),
@@ -139,6 +143,8 @@ class IVRequistionController extends Controller
              
         return inertia('IvRequisition/Edit', [
             'requistion' => $requistion,
+            'fromstore' => SIV_Store::all(), // Pass the correct data to the view
+            'tostore' => SIV_Store::all(), // Pass the correct data to the view
         ]);
     }
 
@@ -213,6 +219,7 @@ class IVRequistionController extends Controller
              // Update the requistion details
              $requistion->update([                 
                  'tostore_id' => $validated['to_store_id'],
+                 'tostore_type' => StoreType::Store->value, // Assuming this is a store
                  'fromstore_id' => $validated['from_store_id'],
                  'stage' => $validated['stage'],
                  'total' => $calculatedTotal,

@@ -50,6 +50,10 @@ export default function Create({fromstore}) {
     const [newCustomerModalLoading, setNewCustomerModalLoading] = useState(false);
     const [newCustomerModalSuccess, setNewCustomerModalSuccess] = useState(false);
 
+    const [saveModalOpen, setSaveModalOpen] = useState(false);
+    const [saveModalLoading, setSaveModalLoading] = useState(false);
+    const [saveModalSuccess, setSaveModalSuccess] = useState(false);
+
     
     const [storeIDError, setStoreIDError] = useState(null);
 
@@ -240,46 +244,7 @@ export default function Create({fromstore}) {
         });
     };
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
-
-        if (data.customer_id !== null && !Number.isInteger(Number(data.customer_id))) {
-            setCustomerIDError('Customer ID must be an integer.');
-            return;
-        } else {
-            setCustomerIDError(null);
-        }
-
-        if (data.store_id !== null && !Number.isInteger(Number(data.store_id))) {
-            setStoreIDError('Store ID must be an integer.');
-            return;
-        } else {
-            setStoreIDError(null);
-        }
-
-        const hasEmptyFields = orderItems.some(
-            (item) => !item.item_name || !item.item_id || item.quantity <= 0 || item.price < 0
-        );
-
-        if (hasEmptyFields) {
-            showAlert('Please ensure all order items have valid item names, quantities, prices, and item IDs.');
-            return;
-        }
-
-        setIsSaving(true);
-        post(route('billing1.store'), {
-            onSuccess: () => {
-                setIsSaving(false);
-                resetForm();
-            },
-            onError: (error) => {
-                console.error(error);
-                setIsSaving(false);
-                showAlert('An error occurred while saving the order.');
-            },
-        });
-    };
-
+   
     const resetForm = () => {
         reset();
         setOrderItems([]);
@@ -344,93 +309,93 @@ export default function Create({fromstore}) {
         setPaymentErrors({});
     };
 
-        const handlePaymentModalConfirm = async () => {
-            const errors = {};
-            if (!totalPaid && saleType !== "credit") {
-              errors.totalPaid = 'Total paid is required';
-            }
-        
-            if (!saleType) {
-              errors.saleType = 'Sale type is required';
-            }
-        
-            if (!paymentMethod && saleType !== "credit") {
-              errors.paymentMethod = 'Payment method is required';
-            }
-            if (!paidAmount && saleType !== "credit") {
-              errors.paidAmount = 'Paid amount is required';
-            }
-        
-            setPaymentErrors(errors);
-        
-            if (Object.keys(errors).length === 0) {
-              try {
-                const payload = {
-                   customer_id: data.customer_id,
-                   store_id: data.store_id,
-                   stage: data.stage,
-                   total: data.total,
-                    orderitems: orderItems.map(item => ({
-                        item_id: item.item_id,
-                        quantity: item.quantity,
-                        price: item.price
-                    })),
-                    payment_method: saleType !== "credit" ? paymentMethod : null,
-                    paid_amount: saleType !== "credit" ? paidAmount : 0,
-                    total_paid: saleType !== "credit" ? totalPaid : 0,
-                    sale_type: saleType
-                };
+    const handlePaymentModalConfirm = async () => {
+        const errors = {};
+        if (!totalPaid && saleType !== "credit") {
+            errors.totalPaid = 'Total paid is required';
+        }
+    
+        if (!saleType) {
+            errors.saleType = 'Sale type is required';
+        }
+    
+        if (!paymentMethod && saleType !== "credit") {
+            errors.paymentMethod = 'Payment method is required';
+        }
+        if (!paidAmount && saleType !== "credit") {
+            errors.paidAmount = 'Paid amount is required';
+        }
+    
+        setPaymentErrors(errors);
+    
+        if (Object.keys(errors).length === 0) {
+            try {
+            const payload = {
+                customer_id: data.customer_id,
+                store_id: data.store_id,
+                stage: data.stage,
+                total: data.total,
+                orderitems: orderItems.map(item => ({
+                    item_id: item.item_id,
+                    quantity: item.quantity,
+                    price: item.price
+                })),
+                payment_method: saleType !== "credit" ? paymentMethod : null,
+                paid_amount: saleType !== "credit" ? paidAmount : 0,
+                total_paid: saleType !== "credit" ? totalPaid : 0,
+                sale_type: saleType
+            };
 
-                if (saleType !== 'credit') {
-                    // Find the selected payment method object
-                    const selectedPaymentMethod = paymentMethods.find(method => method.name === paymentMethod);
-   
-                    if (selectedPaymentMethod) {
-                        payload.payment_method = selectedPaymentMethod.id; // Set the ID instead of the name
-                    }else {
-                        showAlert('Invalid Payment Method. Please try again.');
-                        return;
-                    }
+            if (saleType !== 'credit') {
+                // Find the selected payment method object
+                const selectedPaymentMethod = paymentMethods.find(method => method.name === paymentMethod);
+
+                if (selectedPaymentMethod) {
+                    payload.payment_method = selectedPaymentMethod.id; // Set the ID instead of the name
+                }else {
+                    showAlert('Invalid Payment Method. Please try again.');
+                    return;
                 }
-                
-                setIsSaving(true);
-                
-                  let response = await axios.post(route('billing1.pay'), payload);
-                     
-                  if (response.data && response.data.success) {
+            }
+            
+            setIsSaving(true);
+            
+                let response = await axios.post(route('billing1.pay'), payload);
+                    
+                if (response.data && response.data.success) {
+                setIsSaving(false);
+                setPaymentModalOpen(false);
+                setTotalPaid('');
+                setSaleType('');
+                setPaymentMethod('');
+                setPaidAmount('');
+                setAmountDisplay('');
+                setPaymentErrors({});
+                Inertia.get(route('billing1.index'));
+                }else {
                     setIsSaving(false);
-                    setPaymentModalOpen(false);
-                   setTotalPaid('');
-                   setSaleType('');
-                   setPaymentMethod('');
-                   setPaidAmount('');
-                   setAmountDisplay('');
-                   setPaymentErrors({});
-                   Inertia.get(route('billing1.index'));
-                  }else {
-                     setIsSaving(false);
-                    showAlert('Payment processing failed. Please try again.');
-                    console.error('Payment processing failed:', response.data.message || 'Unknown error');
-                }
-              } catch (error) {
-                  setIsSaving(false);
-                console.error('Error during payment processing:', error);
-                showAlert('An error occurred during payment processing.');
-              }
+                showAlert('Payment processing failed. Please try again.');
+                console.error('Payment processing failed:', response.data.message || 'Unknown error');
             }
-          };
-
-       const handlePaidAmountChange = (e) => {
-            const value = e.target.value;
-             setPaidAmount(value);
-
-             const dueAmount = parseFloat(totalDue) || 0;
-             const paidValue = parseFloat(value) || 0;
-             const diff = (paidValue).toFixed(2);
-
-             setAmountDisplay(diff);
-
+            } catch (error) {
+                setIsSaving(false);
+            console.error('Error during payment processing:', error);
+            showAlert('An error occurred during payment processing.');
+            }
+        }
         };
+
+    const handlePaidAmountChange = (e) => {
+        const value = e.target.value;
+            setPaidAmount(value);
+
+            const dueAmount = parseFloat(totalDue) || 0;
+            const paidValue = parseFloat(value) || 0;
+            const diff = (paidValue).toFixed(2);
+
+            setAmountDisplay(diff);
+
+    };
 
     const handleNewCustomerClick = () => {
         setNewCustomerModalOpen(true);
@@ -447,7 +412,7 @@ export default function Create({fromstore}) {
     const handleNewCustomerModalConfirm = async () => {
         setNewCustomerModalLoading(true);
         try {
-            const response = await axios.post(route('customers.directstore'), { name: newCustomerName });
+            const response = await axios.post(route('systemconfiguration0.customers.directstore'), { name: newCustomerName });
 
             if (response.data && response.data.id) {
                 setData('customer_name', response.data.name);
@@ -472,6 +437,72 @@ export default function Create({fromstore}) {
 
     };
 
+    
+    const handleSaveClick = () => { 
+        
+        if (data.customer_id !== null && !Number.isInteger(Number(data.customer_id))) {
+            setCustomerIDError('Customer ID must be an integer.');
+            return;
+        } else {
+            setCustomerIDError(null);
+        }
+
+        if (data.store_id !== null && !Number.isInteger(Number(data.store_id))) {
+            setStoreIDError('Store ID must be an integer.');
+            return;
+        } else {
+            setStoreIDError(null);
+        }
+
+        const hasEmptyFields = orderItems.some(
+            (item) => !item.item_name || !item.item_id || item.quantity <= 0 || item.price < 0
+        );
+
+        if (hasEmptyFields) {
+            showAlert('Please ensure all order items have valid item names, quantities, prices, and item IDs.');
+            return;
+        }
+
+
+        if (data.orderitems.length === 0) {
+            showAlert('Please add at least one guarantor before saveting.');
+            return;
+        }        
+      
+        setSaveModalOpen(true);       
+        setSaveModalLoading(false); // Reset loading state
+        setSaveModalSuccess(false); // Reset success state
+     };
+    
+    const handleSaveModalClose = () => {
+      
+        setSaveModalOpen(false);        
+        setSaveModalLoading(false); // Reset loading state
+        setSaveModalSuccess(false); // Reset success state
+    };
+ 
+    const handleSaveModalConfirm = () => {        
+    
+        const formData = new FormData();      
+    
+        setSaveModalLoading(true); // Set loading state
+    
+        post(route('billing1.store'), formData, {
+            forceFormData: true,
+            onSuccess: () => {
+                setSaveModalLoading(false);
+                reset(); // Reset form data
+                setSaveModalSuccess(true); // Set success state
+                handleSaveModalClose(); // Close the modal on success
+            },
+            onError: (errors) => {
+                setSaveModalLoading(false);
+                console.error('Submission errors:', errors);
+            },
+        });
+    };
+ 
+
     return (
         <AuthenticatedLayout
             header={<h2 className="text-xl font-semibold leading-tight text-gray-800">New Order</h2>}
@@ -480,7 +511,7 @@ export default function Create({fromstore}) {
             <div className="py-12">
                 <div className="mx-auto max-w-4xl sm:px-6 lg:px-8">
                     <div className="bg-white p-6 shadow sm:rounded-lg">
-                        <form onSubmit={handleSubmit} className="space-y-6">
+                        <form className="space-y-6">
                             <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
                                 <div className="relative flex-1" ref={customerDropdownRef}>
                                     <div className="flex items-center justify-between h-10">
@@ -688,12 +719,12 @@ export default function Create({fromstore}) {
                                 </Link>
 
                                 <button
-                                    type="submit"
-                                    disabled={processing || isSaving}
-                                    className="bg-blue-600 text-white rounded p-2 flex items-center space-x-2"
+                                    type="button"
+                                    onClick={handleSaveClick}
+                                    className="bg-blue-500 text-white rounded p-2 flex items-center space-x-2 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
                                 >
                                     <FontAwesomeIcon icon={faSave} />
-                                    <span>{isSaving ? 'Saving...' : 'Save'}</span>
+                                    <span>Save</span>
                                 </button>
 
                                 <button
@@ -743,6 +774,33 @@ export default function Create({fromstore}) {
             message={modalState.message}
             isAlert={modalState.isAlert}
         />
+
+         {/* Save Confirmation Modal */}
+         <Modal
+            isOpen={saveModalOpen}
+            onClose={handleSaveModalClose}
+            onConfirm={handleSaveModalConfirm}
+            title="Save Confirmation"
+            confirmButtonText={saveModalLoading ? 'Loading...' : (saveModalSuccess ? "Success" : 'Save')}
+            confirmButtonDisabled={saveModalLoading || saveModalSuccess}
+        >
+            
+            <div className="flex-1">
+                <label htmlFor="stage" className="block text-sm font-medium text-gray-700">
+                    Saving Option
+                </label>
+                <select
+                    id="stage"
+                    value={data.stage}
+                    onChange={(e) => setData('stage', e.target.value)}
+                    className={`mt-1 block w-full border-gray-300 rounded shadow-sm focus:ring-blue-500 focus:border-blue-500 ${errors.stage ? 'border-red-500' : ''}`}
+                >
+                    <option value="3">Approved</option>
+                    <option value="4">Profoma</option>                                           
+                </select>
+                {errors.stage && <p className="text-sm text-red-600 mt-1">{errors.stage}</p>}
+            </div>
+        </Modal>
 
         {/* Payment Modal */}
         <Modal

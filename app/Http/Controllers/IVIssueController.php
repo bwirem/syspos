@@ -158,7 +158,9 @@ class IVIssueController extends Controller
      * Update the specified requistion in storage.
      */
     public function update(Request $request, IVRequistion $requistion)
-    {     
+    {    
+        
+        $StoreToStore = false;
 
         if($requistion->stage == 2){
 
@@ -190,6 +192,7 @@ class IVIssueController extends Controller
             switch ($request->tostore_type) {
                 case StoreType::Store->value:
                     $rules['to_store_id'] = 'required|exists:siv_stores,id';
+                    $StoreToStore = true;
                     break;
                 case StoreType::Customer->value:
                     $rules['to_store_id'] = 'required|exists:bls_customers,id';
@@ -207,9 +210,9 @@ class IVIssueController extends Controller
             try {
 
               
-                $this->performIssuance($validated);
+                $this->performIssuance($validated,$StoreToStore); // Pass $validated directly
 
-                if ($transferType === 'StoreToStore' && $doubleEntry) {
+                if ($StoreToStore && $doubleEntry) {
                     $this->performReception($validated); // Pass $validated directly
                 }
 
@@ -231,7 +234,7 @@ class IVIssueController extends Controller
 
  
 
-    private function performIssuance($validated): void
+    private function performIssuance($validated,$StoreToStore): void
     {
         $fromstore_id = $validated['from_store_id'];
         $tostore_id = $validated['to_store_id'];
@@ -243,8 +246,13 @@ class IVIssueController extends Controller
         $transDate = Carbon::now();
         $deliveryNo = $validated['delivery_no'] ?? ''; // Use validated delivery number
 
-        $toStore = SIV_Store::find($tostore_id);
-        $toStoreName = $toStore ? $toStore->name : 'Unknown Store';
+        if($StoreToStore){
+            $toStore = SIV_Store::find($tostore_id);
+            $toStoreName = $toStore ? $toStore->name : 'Unknown Store';
+        }else{
+            $toStore = BLSCustomer::find($tostore_id);
+            $toStoreName = $toStore ? $toStore->name : 'Unknown Customer';
+        }
 
         $issue = IVIssue::create([
             'transdate' => $transDate,
