@@ -234,9 +234,17 @@ export default function Approve({ requistion,fromstore,tostore }) {
                                     >
                                         <option value="">Select To Store...</option>
                                         {tostore.map(store => (
-                                            <option key={store.id} value={store.id}>
-                                                {store.name} 
-                                            </option>
+                                        <option key={store.id} value={store.id}>
+                                            {store.customer_type ? (
+                                            store.customer_type === 'individual' ? (
+                                                `${store.first_name} ${store.other_names ? store.other_names + ' ' : ''}${store.surname}`
+                                            ) : (
+                                                store.company_name
+                                            )
+                                            ) : (
+                                            store.name || "n/a"
+                                            )}
+                                        </option>
                                         ))}
                                     </select>
 
@@ -313,7 +321,7 @@ export default function Approve({ requistion,fromstore,tostore }) {
                                     className="bg-gray-300 text-gray-700 rounded p-2 flex items-center space-x-2"
                                 >
                                     <FontAwesomeIcon icon={faTimesCircle} />
-                                    <span>Cancel</span>
+                                    <span>Close</span>
                                 </Link>
 
                                 <Link

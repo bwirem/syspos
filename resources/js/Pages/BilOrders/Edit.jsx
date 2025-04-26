@@ -19,12 +19,23 @@ const debounce = (func, delay) => {
 };
 
 
-export default function Edit({ order ,fromstore}) {
-    const { data, setData, put, errors, processing, reset } = useForm({
-        customer_name: order.customer.name,
+export default function Edit({ order ,fromstore, auth }) {
+    const { data, setData, put, errors, processing, reset } = useForm({       
+
+        customer_type: order.customer.customer_type,
+        first_name: order.customer.first_name || '',
+        other_names: order.customer.other_names || '',
+        surname: order.customer.surname || '',
+        company_name: order.customer.company_name || '',
+        email: order.customer.email,
+        phone: order.customer.phone || '',
+
         customer_id: order.customer_id,
         store_name: order.store.name,
-        store_id: order.store_id,
+        store_id: auth?.user?.store_id || null, 
+        pricecategory_name: '',
+        pricecategory_id: auth?.user?.pricecategory_id || null,
+
         total: order.total,
         stage: order.stage,
         orderitems: order.orderitems || [],
@@ -40,11 +51,16 @@ export default function Edit({ order ,fromstore}) {
     const itemSearchInputRef = useRef(null);
 
     // Customer Search State
-    const [customerSearchQuery, setCustomerSearchQuery] = useState(data.customer_name);
+    const [customerSearchQuery, setCustomerSearchQuery] = useState('');
     const [customerSearchResults, setCustomerSearchResults] = useState([]);
     const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
     const customerDropdownRef = useRef(null);
     const customerSearchInputRef = useRef(null);  
+
+    const [customerIDError, setCustomerIDError] = useState(null);
+    const [storeIDError, setStoreIDError] = useState(null);
+    const [pricecategoryIDError, setPricecategoryIDError] = useState(null);
+
 
     const [saveModalOpen, setSaveModalOpen] = useState(false);
     const [saveModalLoading, setSaveModalLoading] = useState(false);
@@ -71,17 +87,23 @@ export default function Edit({ order ,fromstore}) {
             setItemSearchResults([]);
             return;
         }
-
-        axios.get(route('systemconfiguration0.items.search'), { params: { query } })
-            .then((response) => {
-                setItemSearchResults(response.data.items.slice(0, 5));
-            })
-            .catch((error) => {
-                console.error('Error fetching items:', error);
-                showAlert('Failed to fetch items. Please try again later.');
-                setItemSearchResults([]);
-            });
-    }, []);
+    
+        axios.get(route('systemconfiguration0.items.search'), { 
+            params: { 
+                query: query.trim(), 
+                pricecategory_id: data.pricecategory_id // send selected price column
+            } 
+        })
+        .then((response) => {
+            setItemSearchResults(response.data.items.slice(0, 5));
+        })
+        .catch((error) => {
+            console.error('Error fetching items:', error);
+            showAlert('Failed to fetch items. Please try again later.');
+            setItemSearchResults([]);
+        });
+    }, [data.pricecategory_id]);
+    
 
     // Fetch Customers dynamically
     const fetchCustomers = useCallback((query) => {
@@ -99,6 +121,15 @@ export default function Edit({ order ,fromstore}) {
                 showAlert('Failed to fetch customers. Please try again later.');
                 setCustomerSearchResults([]);
             });
+    }, []);
+
+
+    const [priceCategories, setPriceCategories] = useState([]);
+
+    useEffect(() => {
+        axios.get(route('systemconfiguration0.pricecategories.viewactive'))
+            .then(response => setPriceCategories(response.data.priceCategories))
+            .catch(() => showAlert('Failed to fetch item groups.'));
     }, []);
 
    
@@ -234,6 +265,11 @@ export default function Edit({ order ,fromstore}) {
         });
     }; 
 
+     // Utility function to validate integers properly
+     const isValidInteger = (value) => {
+        return value !== null && value !== '' && !isNaN(value) && Number.isInteger(Number(value));
+    };
+
 
     const handleItemSearchChange = (e) => {
         const query = e.target.value;
@@ -241,14 +277,6 @@ export default function Edit({ order ,fromstore}) {
         setShowItemDropdown(!!query.trim());
     };
 
-      const handleCustomerSearchChange = (e) => {
-          const query = e.target.value;
-          setCustomerSearchQuery(query);
-          setShowCustomerDropdown(!!query.trim());
-           setData('customer_name', query);
-      };
-
-   
 
     const handleClearItemSearch = () => {
         setItemSearchQuery('');
@@ -260,31 +288,87 @@ export default function Edit({ order ,fromstore}) {
     };
 
 
-      const handleClearCustomerSearch = () => {
+    const handleCustomerSearchChange = (e) => {
+        const query = e.target.value;
+        setCustomerSearchQuery(query);
+        setCustomerSearchResults([]); // Clear previous results
+        setShowCustomerDropdown(!!query.trim());
+
+        // Update appropriate fields based on customer type
+        setData((prevData) => ({
+            ...prevData,
+            first_name: '',
+            other_names: '',
+            surname: '',
+            company_name: '',
+            email: '',
+            phone: '',
+            customer_id: null,
+        }));
+    };
+
+    const handleClearCustomerSearch = () => {
         setCustomerSearchQuery('');
         setCustomerSearchResults([]);
         setShowCustomerDropdown(false);
-           if (customerSearchInputRef.current) {
+        if (customerSearchInputRef.current) {
             customerSearchInputRef.current.focus();
         }
+
+        setData((prevData) => ({
+            ...prevData,
+            first_name: '',
+            other_names: '',
+            surname: '',
+            company_name: '',
+            email: '',
+            phone: '',
+            customer_id: null,
+        }));
     };
 
-   
-
+    // Handle customer selection
     const selectCustomer = (selectedCustomer) => {
-         setData('customer_name', selectedCustomer.name);
-         setData('customer_id', selectedCustomer.id);
-         setCustomerSearchQuery(selectedCustomer.name);
+        setData((prevData) => ({
+            ...prevData,
+            customer_type: selectedCustomer.customer_type,
+            first_name: selectedCustomer.first_name || '',
+            other_names: selectedCustomer.other_names || '',
+            surname: selectedCustomer.surname || '',
+            company_name: selectedCustomer.company_name || '',
+            email: selectedCustomer.email,
+            phone: selectedCustomer.phone || '',
+            customer_id: selectedCustomer.id,
+        }));
+
+        setCustomerSearchQuery('');
         setCustomerSearchResults([]);
         setShowCustomerDropdown(false);
     };
+
 
 
     const handleSaveClick = () => {   
 
+         // Validate customer_id
+         if (!isValidInteger(data.customer_id)) {
+            setCustomerIDError('Customer ID must be a valid integer.');
+            return;
+        } else {
+            setCustomerIDError(null); // Clear the error when valid
+        }
+
+        // Validate store_id
+        if (!isValidInteger(data.store_id)) {
+            setStoreIDError('Store ID must be a valid integer.');
+            return;
+        } else {
+            setStoreIDError(null); // Clear the error when valid
+        }
+
 
        if (data.orderitems.length === 0) {
-           showAlert('Please add at least one guarantor before saveting.');
+           showAlert('Please add at least one guarantor before saving.');
            return;
        }        
      
@@ -321,12 +405,27 @@ export default function Edit({ order ,fromstore}) {
        });
    };
 
-
     
     const handleSubmitClick = () => {
+
+         // Validate customer_id
+         if (!isValidInteger(data.customer_id)) {
+            setCustomerIDError('Customer ID must be a valid integer.');
+            return;
+        } else {
+            setCustomerIDError(null); // Clear the error when valid
+        }
+
+        // Validate store_id
+        if (!isValidInteger(data.store_id)) {
+            setStoreIDError('Store ID must be a valid integer.');
+            return;
+        } else {
+            setStoreIDError(null); // Clear the error when valid
+        }
         
         if (data.orderitems.length === 0) {
-            showAlert('Please add at least one guarantor before submitting.');
+            showAlert('Please add at least one item before submitting.');
             return;
         } 
 
@@ -379,21 +478,26 @@ export default function Edit({ order ,fromstore}) {
                     <div className="bg-white p-6 shadow sm:rounded-lg">
                         <form className="space-y-6">
 
-                           {/* Customer Name */}
+                            {/* Customer Search and New Customer Button */}
                             <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
                                 <div className="relative flex-1" ref={customerDropdownRef}>
-                                    <label htmlFor="customer_name" className="block text-sm font-medium text-gray-700">
-                                        Customer Name
-                                    </label>
+                                    <div className="flex items-center justify-between h-10">
+                                        <label htmlFor="customer_name" className="block text-sm font-medium text-gray-700 mr-2">
+                                            Customer Name
+                                        </label>
+                                        
+                                    </div>
                                     <input
-                                         type="text"
+                                        type="text"
+                                        placeholder="Search customer..."
                                         value={customerSearchQuery}
                                         onChange={handleCustomerSearchChange}
                                         onFocus={() => setShowCustomerDropdown(!!customerSearchQuery.trim())}
-                                        className="w-full border p-2 rounded text-sm pr-10"
+                                        className={`w-full border p-2 rounded text-sm pr-10 ${customerIDError ? 'border-red-500' : ''}`}
                                         ref={customerSearchInputRef}
-                                        autocomplete="new-password"
+                                        autoComplete="off"
                                     />
+                                    {customerIDError && <p className="text-sm text-red-600 mt-1">{customerIDError}</p>}
                                     {customerSearchQuery && (
                                         <button
                                             type="button"
@@ -410,9 +514,9 @@ export default function Edit({ order ,fromstore}) {
                                                     <li
                                                         key={customer.id}
                                                         className="p-2 hover:bg-gray-100 cursor-pointer"
-                                                         onClick={() => selectCustomer(customer)}
+                                                        onClick={() => selectCustomer(customer)}
                                                     >
-                                                        {customer.name}
+                                                        {customer.customer_type === 'company' ? customer.company_name : `${customer.first_name} ${customer.surname}`}
                                                     </li>
                                                 ))
                                             ) : (
@@ -420,45 +524,106 @@ export default function Edit({ order ,fromstore}) {
                                             )}
                                         </ul>
                                     )}
-                                </div>
+                                    {/* Display Customer Details After Selection */}
+                                    {data.customer_id && (
+                                        <section className="border-b border-gray-200 pb-4">                                      
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">                                              
 
-                                <div className="relative flex-1">
-                                    <label htmlFor="store_name" className="block text-sm font-medium text-gray-700">
-                                      Store Name
-                                    </label>
+                                                {data.customer_type === 'individual' ? (
+                                                    <>
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700">First Name:</label>
+                                                            <p className="mt-1 text-sm text-gray-500">{data.first_name || 'N/A'}</p>
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700">Other Names:</label>
+                                                            <p className="mt-1 text-sm text-gray-500">{data.other_names || 'N/A'}</p>
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700">Surname:</label>
+                                                            <p className="mt-1 text-sm text-gray-500">{data.surname || 'N/A'}</p>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700">Company Name:</label>
+                                                        <p className="mt-1 text-sm text-gray-500">{data.company_name || 'N/A'}</p>
+                                                    </div>
+                                                )}
 
-                                    <select
-                                        id="store_id"
-                                        value={data.store_id}
-                                        onChange={(e) => setData("store_id", e.target.value)}
-                                        className={`w-full border p-2 rounded text-sm ${errors.store_id ? "border-red-500" : ""}`}
-                                    >
-                                        <option value="">Select From Store...</option>
-                                        {fromstore.map(store => (
-                                            <option key={store.id} value={store.id}>
-                                                {store.name} 
-                                            </option>
-                                        ))}
-                                    </select>
-                                    {errors.store_id && <p className="text-sm text-red-600 mt-1">{errors.store_id}</p>}                                       
-                                       
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700">Email:</label>
+                                                    <p className="mt-1 text-sm text-gray-500">{data.email || 'N/A'}</p>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700">Phone:</label>
+                                                    <p className="mt-1 text-sm text-gray-500">{data.phone || 'N/A'}</p>
+                                                </div>
+                                            </div>
+                                        </section>
+                                    )}
                                 </div>
                             </div>
 
-                            {/* Order Summary and Stage*/}
-                            <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
-                                
-                                <div className="flex-1">
-                                    <label htmlFor="total" className="block text-sm font-medium text-gray-700 text-right">
-                                        Total (Auto-calculated)
-                                    </label>
-                                    <div className="mt-1  text-right font-bold text-gray-800 bg-gray-100 p-2 rounded">
+
+                            {/* Store and Price Categores */}
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label htmlFor="store_name" className="block text-sm font-medium text-gray-700"> Store Name</label>
+                                        <select
+                                            id="store_id"
+                                            value={data.store_id}
+                                            onChange={(e) => setData("store_id", e.target.value)}
+                                            className="w-full border p-2 rounded text-sm"
+                                            required
+                                        >                                       
+                                             <option value="" disabled>Select From Store...</option>
+                                            {fromstore.map(store => (
+                                                <option key={store.id} value={store.id}>
+                                                    {store.name} 
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {storeIDError && <p className="text-sm text-red-600">{storeIDError}</p>}
+                                    </div>
+
+                                    <div>
+                                        <label htmlFor="pricecategory_name" className="block text-sm font-medium text-gray-700"> Price Category </label>
+                                        <select
+                                            id="pricecategory_id"
+                                            value={data.pricecategory_id}
+                                            onChange={(e) => setData("pricecategory_id", e.target.value)}
+                                            className="w-full border p-2 rounded text-sm"
+                                            required
+                                        >                                       
+                                             <option value="" disabled>Select Price Category...</option>
+                                            {priceCategories.map(pricecategory => (
+                                                <option key={pricecategory.pricename} value={pricecategory.pricename}>
+                                                    {pricecategory.pricedescription} 
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {pricecategoryIDError && <p className="text-sm text-red-600">{pricecategoryIDError}</p>}
+                                    </div>
+                                                                
+                                </div>
+                            </div>
+
+                            
+                            {/*  Total */}
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">                                    
+                                    <div>
+                                        <label htmlFor="total" className="block text-sm font-medium text-gray-700">Total (Auto-calculated)</label>
+                                        <div className="text-right font-bold text-gray-800 bg-gray-100 p-2 rounded">
                                         {parseFloat(data.total).toLocaleString(undefined, {
                                                 minimumFractionDigits: 2,
                                                 maximumFractionDigits: 2,
                                             })}
-                                    </div>
-                                </div>                                
+                                        </div>
+                                    </div>                                    
+                                </div>
                             </div>
 
                             {/* Order Items Section */}
@@ -636,7 +801,7 @@ export default function Edit({ order ,fromstore}) {
             >
                 <div>
                     <p>
-                        Are you sure you want to issue the goods to <strong>
+                        Are you sure you want to submit the goods to <strong>
                             {data.customer_type === 'individual' ? (
                                 `${data.first_name} ${data.other_names ? data.other_names + ' ' : ''}${data.surname}`
                             ) : (

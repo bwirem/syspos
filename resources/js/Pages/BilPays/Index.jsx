@@ -93,8 +93,14 @@ export default function Index({ auth, debtors, filters }) {
                         <tbody>
                             {debtors.data.length > 0 ? (
                                 debtors.data.map((debtor, index) => (
-                                    <tr key={debtor.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                                        <td className="border-b p-3 text-gray-700">{debtor.customer ? debtor.customer.name : "n/a"}</td>
+                                    <tr key={debtor.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>                                        
+                                        <td className="border-b p-3 text-gray-700">
+                                            {debtor.customer.customer_type === 'individual' ? (
+                                                `${debtor.customer.first_name} ${debtor.customer.other_names ? debtor.customer.other_names + ' ' : ''}${debtor.customer.surname}`
+                                            ) : (
+                                                debtor.customer.company_name
+                                            )}
+                                        </td>
                                         <td className="border-b p-3 text-gray-700 text-right">
                                             {parseFloat(debtor.balance).toLocaleString(undefined, {
                                                 minimumFractionDigits: 2,

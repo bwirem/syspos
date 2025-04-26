@@ -12,7 +12,9 @@ export default function Edit({ user, userGroups, stores,assignedStoreIds }) {
     const { data, setData, put, errors, processing } = useForm({
         name: user.name,
         email: user.email,
-        usergroup_id: user.usergroup_id,
+        pricecategory_id: user.pricecategory_id || '', // Default to empty string if undefined
+        paymenttype_id: user.paymenttype_id || '', // Default to empty string if undefined       
+        usergroup_id: user.usergroup_id || '', // Default to empty string if undefined
         store_id: user.store_id,
         selectedStores: assignedStoreIds || [], // Set assigned stores initially
     });
@@ -90,6 +92,22 @@ export default function Edit({ user, userGroups, stores,assignedStoreIds }) {
             });
     };
 
+    const [pricecategories, setPriceCategories] = useState([]);
+
+    useEffect(() => {
+        axios.get(route('systemconfiguration0.pricecategories.viewactive'))
+            .then(response => setPriceCategories(response.data.priceCategories))
+            .catch(() => showAlert('Failed to fetch price categories.'));
+    }, []);
+
+    const [paymenttypes, setPaymentTypes] = useState([]);
+
+    useEffect(() => {
+        axios.get(route('systemconfiguration0.paymenttypes.search'))
+            .then(response => setPaymentTypes(response.data.paymenttype))
+            .catch(() => showAlert('Failed to fetch payments type.'));
+    }, []);
+
 
     return (
         <AuthenticatedLayout
@@ -123,6 +141,39 @@ export default function Edit({ user, userGroups, stores,assignedStoreIds }) {
                                         placeholder="Enter email..."
                                     />
                                     {errors.email && <p className="text-sm text-red-600">{errors.email}</p>}
+                                </div>
+                            </div>
+
+                            {/* Payment Type and Price Category */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Payment Type</label>
+                                    <select
+                                        value={data.paymenttype_id}
+                                        onChange={(e) => setData('paymenttype_id', e.target.value)}
+                                        className={`w-full border p-2 rounded text-sm ${errors.paymenttype_id ? 'border-red-500' : ''}`}
+                                    >
+                                        <option value="">Select Payment Type</option>
+                                        {Array.isArray(paymenttypes) && paymenttypes.map(paymenttype => (
+                                            <option key={paymenttype.id} value={paymenttype.id}>{paymenttype.name}</option>
+                                        ))}
+                                    </select>
+                                    {errors.paymenttype_id && <p className="text-sm text-red-600">{errors.paymenttype_id}</p>}
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Price Categories</label>
+                                    <select
+                                        value={data.pricecategory_id}
+                                        onChange={(e) => setData('pricecategory_id', e.target.value)}
+                                        className={`w-full border p-2 rounded text-sm ${errors.pricecategory_id ? 'border-red-500' : ''}`}
+                                    >
+                                        <option value="">Select Price Category</option>
+                                        {Array.isArray(pricecategories) && pricecategories.map(pricecategory => (
+                                            <option key={pricecategory.pricename} value={pricecategory.pricename}>{pricecategory.pricedescription}</option>
+                                        ))}
+                                    </select>
+                                    {errors.pricecategory_id && <p className="text-sm text-red-600">{errors.pricecategory_id}</p>}
                                 </div>
                             </div>
 

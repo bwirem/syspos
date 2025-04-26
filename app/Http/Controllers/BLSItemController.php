@@ -137,13 +137,19 @@ class BLSItemController extends Controller
     public function search(Request $request)
     {
         $query = $request->input('query');
-        //$items = BLSItem::where('name', 'like', '%' . $query . '%')->get();
-        $items = BLSItem::where('name', 'like', '%' . $query . '%')
-        ->select('id', 'name', 'price1 as price')
-        ->get();
+        $priceCategoryId = $request->input('pricecategory_id', 'price1'); // default to price1 if not provided
 
+        // Ensure only price1, price2, price3, or price4 is allowed
+        if (!in_array($priceCategoryId, ['price1', 'price2', 'price3', 'price4'])) {
+            $priceCategoryId = 'price1';
+        }
+
+        $items = BLSItem::where('name', 'like', '%' . $query . '%')
+            ->select('id', 'name', "$priceCategoryId as price")
+            ->get();
 
         return response()->json(['items' => $items]);
     }
+
 }
 

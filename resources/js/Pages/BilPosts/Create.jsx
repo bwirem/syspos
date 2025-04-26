@@ -19,12 +19,16 @@ const debounce = (func, delay) => {
 };
 
 
-export default function Create({fromstore}) {
+export default function Create({fromstore, auth}) {
     const { data, setData, post, errors, processing, reset } = useForm({
         customer_name: '',
         customer_id: null,
         store_name: '',
-        store_id: null,
+        store_id: auth?.user?.store_id || null, 
+        pricecategory_name: '',
+        pricecategory_id: auth?.user?.pricecategory_id || null,
+        paymenttype_name: '',
+        paymenttype_id: auth?.user?.paymenttype_id || null,
         total: 0,
         stage: 3,
         orderitems: [],
@@ -45,8 +49,17 @@ export default function Create({fromstore}) {
     const customerSearchInputRef = useRef(null);    
     const [customerIDError, setCustomerIDError] = useState(null);
 
+    // New Customer Modal State
     const [newCustomerModalOpen, setNewCustomerModalOpen] = useState(false);
-    const [newCustomerName, setNewCustomerName] = useState('');
+    const [newCustomer, setNewCustomer] = useState({
+        customer_type: 'individual',
+        first_name: '',
+        other_names: '',
+        surname: '',
+        company_name: '',
+        email: '',
+        phone: '',
+    });
     const [newCustomerModalLoading, setNewCustomerModalLoading] = useState(false);
     const [newCustomerModalSuccess, setNewCustomerModalSuccess] = useState(false);
 
@@ -56,6 +69,7 @@ export default function Create({fromstore}) {
 
     
     const [storeIDError, setStoreIDError] = useState(null);
+    const [pricecategoryIDError, setPricecategoryIDError] = useState(null);
 
     const [modalState, setModalState] = useState({
         isOpen: false,
@@ -65,13 +79,12 @@ export default function Create({fromstore}) {
     });
     const [isSaving, setIsSaving] = useState(false);
     const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-    const [totalDue, setTotalDue] = useState(0);
-    const [totalPaid, setTotalPaid] = useState('');
-    const [saleType, setSaleType] = useState('');
-    const [paymentMethod, setPaymentMethod] = useState('');
+    const [totalDue, setTotalDue] = useState(0); 
+    const [saleType, setSaleType] = useState('cash');
+    const [paymentMethod, setPaymentMethod] = useState(data.paymenttype_id);
     const [paymentMethods, setPaymentMethods] = useState([]);
     const [paidAmount, setPaidAmount] = useState('');
-    const [amountDisplay, setAmountDisplay] = useState('');
+    const [amountDisplay, setAmountDisplay] = useState('0');
     const [paymentErrors, setPaymentErrors] = useState({});
     const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(false);
 
@@ -80,17 +93,23 @@ export default function Create({fromstore}) {
             setItemSearchResults([]);
             return;
         }
-
-        axios.get(route('systemconfiguration0.items.search'), { params: { query } })
-            .then((response) => {
-                setItemSearchResults(response.data.items.slice(0, 5));
-            })
-            .catch((error) => {
-                console.error('Error fetching items:', error);
-                showAlert('Failed to fetch items. Please try again later.');
-                setItemSearchResults([]);
-            });
-    }, []);
+    
+        axios.get(route('systemconfiguration0.items.search'), { 
+            params: { 
+                query: query.trim(), 
+                pricecategory_id: data.pricecategory_id // send selected price column
+            } 
+        })
+        .then((response) => {
+            setItemSearchResults(response.data.items.slice(0, 5));
+        })
+        .catch((error) => {
+            console.error('Error fetching items:', error);
+            showAlert('Failed to fetch items. Please try again later.');
+            setItemSearchResults([]);
+        });
+    }, [data.pricecategory_id]);
+    
 
     const fetchCustomers = useCallback((query) => {
         if (!query.trim()) {
@@ -126,6 +145,14 @@ export default function Create({fromstore}) {
         } finally {
             setPaymentMethodsLoading(false);
         }
+    }, []);
+
+    const [priceCategories, setPriceCategories] = useState([]);
+
+    useEffect(() => {
+        axios.get(route('systemconfiguration0.pricecategories.viewactive'))
+            .then(response => setPriceCategories(response.data.priceCategories))
+            .catch(() => showAlert('Failed to fetch item groups.'));
     }, []);
 
     const debouncedItemSearch = useMemo(() => debounce(fetchItems, 300), [fetchItems]);
@@ -244,27 +271,17 @@ export default function Create({fromstore}) {
         });
     };
 
-   
-    const resetForm = () => {
-        reset();
-        setOrderItems([]);
-        setCustomerIDError(null);
-        setStoreIDError(null);
-        showAlert('Order created successfully!');
+     // Utility function to validate integers properly
+     const isValidInteger = (value) => {
+        return value !== null && value !== '' && !isNaN(value) && Number.isInteger(Number(value));
     };
+   
 
     const handleSearchChange = (e) => {
         const query = e.target.value;
         setItemSearchQuery(query);
         setShowItemDropdown(!!query.trim());
-    };
-
-    const handleCustomerSearchChange = (e) => {
-        const query = e.target.value;
-        setCustomerSearchQuery(query);
-        setData('customer_name', query);
-        setShowCustomerDropdown(!!query.trim());
-    };   
+    };    
 
     const handleClearSearch = () => {
         setItemSearchQuery('');
@@ -275,6 +292,29 @@ export default function Create({fromstore}) {
         }
     };
 
+   
+
+    // Handle customer search input change
+    const handleCustomerSearchChange = (e) => {
+        const query = e.target.value;
+        setCustomerSearchQuery(query);
+        setCustomerSearchResults([]); // Clear previous results
+        setShowCustomerDropdown(!!query.trim());
+
+        // Update appropriate fields based on customer type
+        setData((prevData) => ({
+            ...prevData,
+            first_name: '',
+            other_names: '',
+            surname: '',
+            company_name: '',
+            email: '',
+            phone: '',
+            customer_id: null,
+        }));
+    };
+
+    // Clear customer search
     const handleClearCustomerSearch = () => {
         setCustomerSearchQuery('');
         setCustomerSearchResults([]);
@@ -282,39 +322,155 @@ export default function Create({fromstore}) {
         if (customerSearchInputRef.current) {
             customerSearchInputRef.current.focus();
         }
-        setData('customer_name', '');
-        setData('customer_id', null);
-    };
-   
 
+        setData((prevData) => ({
+            ...prevData,
+            first_name: '',
+            other_names: '',
+            surname: '',
+            company_name: '',
+            email: '',
+            phone: '',
+            customer_id: null,
+        }));
+    };
+
+
+    // Handle customer selection
     const selectCustomer = (selectedCustomer) => {
-        setData('customer_name', selectedCustomer.name);
-        setData('customer_id', selectedCustomer.id);
+        setData((prevData) => ({
+            ...prevData,
+            customer_type: selectedCustomer.customer_type,
+            first_name: selectedCustomer.first_name || '',
+            other_names: selectedCustomer.other_names || '',
+            surname: selectedCustomer.surname || '',
+            company_name: selectedCustomer.company_name || '',
+            email: selectedCustomer.email,
+            phone: selectedCustomer.phone || '',
+            customer_id: selectedCustomer.id,
+        }));
+
         setCustomerSearchQuery('');
         setCustomerSearchResults([]);
         setShowCustomerDropdown(false);
-    };    
+    };
 
-     const handlePayBillsClick = () => {
+
+
+     // Function to handle new customer button click (Open the modal)
+     const handleNewCustomerClick = () => {
+        setNewCustomerModalOpen(true);
+        setNewCustomerModalSuccess(false); //reset state in case open again
+        setNewCustomer({
+            customer_type: 'individual',
+            first_name: '',
+            other_names: '',
+            surname: '',
+            company_name: '',
+            email: '',
+            phone: '',
+        });
+    };
+    // Function to close the modal
+    const handleNewCustomerModalClose = () => {
+        setNewCustomerModalOpen(false);
+        setNewCustomerModalLoading(false);
+        setNewCustomerModalSuccess(false);
+    };
+
+    // Function to confirm new customer (you should implement saving logic here)
+    const handleNewCustomerModalConfirm = async () => {
+        setNewCustomerModalLoading(true);
+        try {
+            const response = await axios.post(route('systemconfiguration0.customers.directstore'), newCustomer);
+
+            if (response.data && response.data.id) {
+                setData((prevData) => ({
+                    ...prevData,
+                    customer_type: response.data.customer_type,
+                    first_name: response.data.first_name,
+                    other_names: response.data.other_names,
+                    surname: response.data.surname,
+                    company_name: response.data.company_name,
+                    email: response.data.email,
+                    phone: response.data.phone,
+                    customer_id: response.data.id,
+                }));
+
+                setNewCustomerModalSuccess(true);
+            } else {
+                showAlert('Error creating new customer!');
+            }
+        } catch (error) {
+            console.error("Error creating new customer:", error);
+            showAlert('Failed to create new customer. Please try again.');
+        } finally {
+            setNewCustomerModalLoading(false);
+            setTimeout(() => {
+                setNewCustomerModalOpen(false);
+                setNewCustomerModalSuccess(false);
+            }, 1000)
+
+        }
+
+    };
+
+    const handleNewCustomerInputChange = (e) => {
+        const { id, value } = e.target;
+        setNewCustomer(prevState => ({
+            ...prevState,
+            [id]: value,
+        }));
+    };
+
+    const handlePayBillsClick = () => {
+        // Validate customer_id
+        if (!isValidInteger(data.customer_id)) {
+            setCustomerIDError('Customer ID must be a valid integer.');
+            return;
+        } else {
+            setCustomerIDError(null); // Clear the error when valid
+        }
+
+        // Validate store_id
+        if (!isValidInteger(data.store_id)) {
+            setStoreIDError('Store ID must be a valid integer.');
+            return;
+        } else {
+            setStoreIDError(null); // Clear the error when valid
+        }
+
+        const hasEmptyFields = orderItems.some(
+            (item) => !item.item_name || !item.item_id || item.quantity <= 0 || item.price < 0
+        );
+
+        if (hasEmptyFields) {
+            showAlert('Please ensure all order items have valid item names, quantities, prices, and item IDs.');
+            return;
+        }
+
+
+        if (data.orderitems.length === 0) {
+            showAlert('Please add at least one item before saving.');
+            return;
+        }     
+
+
         setPaymentModalOpen(true);
     };
 
       const handlePaymentModalClose = () => {
-        setPaymentModalOpen(false);
-        setTotalPaid('');
-        setSaleType('');
-        setPaymentMethod('');
+        setPaymentModalOpen(false);    
+        setSaleType('cash');
+        setPaymentMethod(data.paymenttype_id);
         setPaidAmount('');
-        setAmountDisplay('');
+        setAmountDisplay('0');
         setPaymentErrors({});
     };
 
     const handlePaymentModalConfirm = async () => {
         const errors = {};
-        if (!totalPaid && saleType !== "credit") {
-            errors.totalPaid = 'Total paid is required';
-        }
-    
+           
         if (!saleType) {
             errors.saleType = 'Sale type is required';
         }
@@ -325,6 +481,7 @@ export default function Create({fromstore}) {
         if (!paidAmount && saleType !== "credit") {
             errors.paidAmount = 'Paid amount is required';
         }
+        
     
         setPaymentErrors(errors);
     
@@ -341,14 +498,14 @@ export default function Create({fromstore}) {
                     price: item.price
                 })),
                 payment_method: saleType !== "credit" ? paymentMethod : null,
-                paid_amount: saleType !== "credit" ? paidAmount : 0,
-                total_paid: saleType !== "credit" ? totalPaid : 0,
+                paid_amount: saleType !== "credit" ? paidAmount : 0,               
                 sale_type: saleType
             };
 
+
             if (saleType !== 'credit') {
                 // Find the selected payment method object
-                const selectedPaymentMethod = paymentMethods.find(method => method.name === paymentMethod);
+                const selectedPaymentMethod = paymentMethods.find(method => method.id === paymentMethod);
 
                 if (selectedPaymentMethod) {
                     payload.payment_method = selectedPaymentMethod.id; // Set the ID instead of the name
@@ -364,12 +521,11 @@ export default function Create({fromstore}) {
                     
                 if (response.data && response.data.success) {
                 setIsSaving(false);
-                setPaymentModalOpen(false);
-                setTotalPaid('');
-                setSaleType('');
+                setPaymentModalOpen(false);                
+                setSaleType('cash');
                 setPaymentMethod('');
                 setPaidAmount('');
-                setAmountDisplay('');
+                setAmountDisplay('0');
                 setPaymentErrors({});
                 Inertia.get(route('billing1.index'));
                 }else {
@@ -383,7 +539,7 @@ export default function Create({fromstore}) {
             showAlert('An error occurred during payment processing.');
             }
         }
-        };
+    };
 
     const handlePaidAmountChange = (e) => {
         const value = e.target.value;
@@ -397,61 +553,23 @@ export default function Create({fromstore}) {
 
     };
 
-    const handleNewCustomerClick = () => {
-        setNewCustomerModalOpen(true);
-        setNewCustomerModalSuccess(false);
-    };
-
-    const handleNewCustomerModalClose = () => {
-        setNewCustomerModalOpen(false);
-        setNewCustomerName('');
-        setNewCustomerModalLoading(false);
-        setNewCustomerModalSuccess(false);
-    };
-
-    const handleNewCustomerModalConfirm = async () => {
-        setNewCustomerModalLoading(true);
-        try {
-            const response = await axios.post(route('systemconfiguration0.customers.directstore'), { name: newCustomerName });
-
-            if (response.data && response.data.id) {
-                setData('customer_name', response.data.name);
-                setData('customer_id', response.data.id);
-
-                setNewCustomerModalSuccess(true);
-            } else {
-                  showAlert('Error creating new customer!');
-            }
-        } catch (error) {
-            console.error("Error creating new customer:", error);
-            showAlert('Failed to create new customer. Please try again.');
-        } finally {
-            setNewCustomerModalLoading(false);
-             setTimeout(() => {
-                    setNewCustomerModalOpen(false);
-                    setNewCustomerName('');
-                    setNewCustomerModalSuccess(false);
-             },1000)
-
-        }
-
-    };
-
     
     const handleSaveClick = () => { 
         
-        if (data.customer_id !== null && !Number.isInteger(Number(data.customer_id))) {
-            setCustomerIDError('Customer ID must be an integer.');
+        // Validate customer_id
+        if (!isValidInteger(data.customer_id)) {
+            setCustomerIDError('Customer ID must be a valid integer.');
             return;
         } else {
-            setCustomerIDError(null);
+            setCustomerIDError(null); // Clear the error when valid
         }
-
-        if (data.store_id !== null && !Number.isInteger(Number(data.store_id))) {
-            setStoreIDError('Store ID must be an integer.');
+    
+        // Validate store_id
+        if (!isValidInteger(data.store_id)) {
+            setStoreIDError('Store ID must be a valid integer.');
             return;
         } else {
-            setStoreIDError(null);
+            setStoreIDError(null); // Clear the error when valid
         }
 
         const hasEmptyFields = orderItems.some(
@@ -465,7 +583,7 @@ export default function Create({fromstore}) {
 
 
         if (data.orderitems.length === 0) {
-            showAlert('Please add at least one guarantor before saveting.');
+            showAlert('Please add at least one item before saving.');
             return;
         }        
       
@@ -512,12 +630,15 @@ export default function Create({fromstore}) {
                 <div className="mx-auto max-w-4xl sm:px-6 lg:px-8">
                     <div className="bg-white p-6 shadow sm:rounded-lg">
                         <form className="space-y-6">
-                            <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
+                           
+                           {/* Customer Search and New Customer Button */}
+                           <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
                                 <div className="relative flex-1" ref={customerDropdownRef}>
                                     <div className="flex items-center justify-between h-10">
                                         <label htmlFor="customer_name" className="block text-sm font-medium text-gray-700 mr-2">
                                             Customer Name
                                         </label>
+                                        {/* New Customer Button Added Here */}
                                         <button
                                             type="button"
                                             onClick={handleNewCustomerClick}
@@ -529,12 +650,12 @@ export default function Create({fromstore}) {
                                     <input
                                         type="text"
                                         placeholder="Search customer..."
-                                        value={data.customer_name}
+                                        value={customerSearchQuery}
                                         onChange={handleCustomerSearchChange}
                                         onFocus={() => setShowCustomerDropdown(!!customerSearchQuery.trim())}
                                         className={`w-full border p-2 rounded text-sm pr-10 ${customerIDError ? 'border-red-500' : ''}`}
                                         ref={customerSearchInputRef}
-                                        autocomplete="new-password"
+                                        autoComplete="off"
                                     />
                                     {customerIDError && <p className="text-sm text-red-600 mt-1">{customerIDError}</p>}
                                     {customerSearchQuery && (
@@ -555,7 +676,7 @@ export default function Create({fromstore}) {
                                                         className="p-2 hover:bg-gray-100 cursor-pointer"
                                                         onClick={() => selectCustomer(customer)}
                                                     >
-                                                        {customer.name}
+                                                        {customer.customer_type === 'company' ? customer.company_name : `${customer.first_name} ${customer.surname}`}
                                                     </li>
                                                 ))
                                             ) : (
@@ -563,46 +684,104 @@ export default function Create({fromstore}) {
                                             )}
                                         </ul>
                                     )}
+                                    {/* Display Customer Details After Selection */}
+                                    {data.customer_id && (
+                                        <section className="border-b border-gray-200 pb-4">                                      
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">                                              
 
-                                    {errors.customer_id && <p className="text-sm text-red-600 mt-1">{errors.customer_id}</p>}
+                                                {data.customer_type === 'individual' ? (
+                                                    <>
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700">First Name:</label>
+                                                            <p className="mt-1 text-sm text-gray-500">{data.first_name || 'N/A'}</p>
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700">Other Names:</label>
+                                                            <p className="mt-1 text-sm text-gray-500">{data.other_names || 'N/A'}</p>
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700">Surname:</label>
+                                                            <p className="mt-1 text-sm text-gray-500">{data.surname || 'N/A'}</p>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700">Company Name:</label>
+                                                        <p className="mt-1 text-sm text-gray-500">{data.company_name || 'N/A'}</p>
+                                                    </div>
+                                                )}
 
-                                </div>
-                                <div className="relative flex-1">
-                                    <div className="flex items-center h-10">
-                                        <label htmlFor="store_name" className="block text-sm font-medium text-gray-700 mr-2">
-                                            Store Name
-                                        </label>
-                                    </div>
-                                    <select
-                                        id="store_id"
-                                        value={data.store_id}
-                                        onChange={(e) => setData("store_id", e.target.value)}
-                                        className={`w-full border p-2 rounded text-sm ${errors.store_id ? "border-red-500" : ""}`}
-                                    >
-                                        <option value="">Select From Store...</option>
-                                        {fromstore.map(store => (
-                                            <option key={store.id} value={store.id}>
-                                                {store.name} 
-                                            </option>
-                                        ))}
-                                    </select>
-                                    {errors.store_id && <p className="text-sm text-red-600 mt-1">{errors.store_id}</p>}
-                                        
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700">Email:</label>
+                                                    <p className="mt-1 text-sm text-gray-500">{data.email || 'N/A'}</p>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700">Phone:</label>
+                                                    <p className="mt-1 text-sm text-gray-500">{data.phone || 'N/A'}</p>
+                                                </div>
+                                            </div>
+                                        </section>
+                                    )}
                                 </div>
                             </div>
 
-                            <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
-                                <div className="flex-1">
-                                    <label htmlFor="total" className="block text-sm font-medium text-gray-700 text-right">
-                                        Total (Auto-calculated)
-                                    </label>
-                                    <div className="mt-1  text-right font-bold text-gray-800 bg-gray-100 p-2 rounded">
+                             {/* Store and Price Categores */}
+                             <div className="space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label htmlFor="store_name" className="block text-sm font-medium text-gray-700"> Store Name</label>
+                                        <select
+                                            id="store_id"
+                                            value={data.store_id}
+                                            onChange={(e) => setData("store_id", e.target.value)}
+                                            className="w-full border p-2 rounded text-sm"
+                                            required
+                                        >                                       
+                                             <option value="" disabled>Select From Store...</option>
+                                            {fromstore.map(store => (
+                                                <option key={store.id} value={store.id}>
+                                                    {store.name} 
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {storeIDError && <p className="text-sm text-red-600">{storeIDError}</p>}
+                                    </div>
+
+                                    <div>
+                                        <label htmlFor="pricecategory_name" className="block text-sm font-medium text-gray-700"> Price Category </label>
+                                        <select
+                                            id="pricecategory_id"
+                                            value={data.pricecategory_id}
+                                            onChange={(e) => setData("pricecategory_id", e.target.value)}
+                                            className="w-full border p-2 rounded text-sm"
+                                            required
+                                        >                                       
+                                             <option value="" disabled>Select Price Category...</option>
+                                            {priceCategories.map(pricecategory => (
+                                                <option key={pricecategory.pricename} value={pricecategory.pricename}>
+                                                    {pricecategory.pricedescription} 
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {pricecategoryIDError && <p className="text-sm text-red-600">{pricecategoryIDError}</p>}
+                                    </div>
+                                                                
+                                </div>
+                            </div>
+
+                             {/* Total */}
+                             <div className="space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">                                   
+                                    <div>
+                                        <label htmlFor="total" className="block text-sm font-medium text-gray-700">Total (Auto-calculated)</label>
+                                        <div className="text-right font-bold text-gray-800 bg-gray-100 p-2 rounded">
                                         {parseFloat(data.total).toLocaleString(undefined, {
                                                 minimumFractionDigits: 2,
                                                 maximumFractionDigits: 2,
                                             })}
-                                    </div>
-                                </div>                                
+                                        </div>
+                                    </div>                                    
+                                </div>
                             </div>
 
                             <div className="flex items-center space-x-4 mb-2 py-1">
@@ -742,29 +921,108 @@ export default function Create({fromstore}) {
                 </div>
             </div>            
 
-        {/* New Customer Modal */}
+         {/* New Customer Modal */}
+         
         <Modal
-            isOpen={newCustomerModalOpen}
-            onClose={handleNewCustomerModalClose}
-            onConfirm={handleNewCustomerModalConfirm}
-            title="Create New Customer"
-            confirmButtonText={newCustomerModalLoading ? 'Loading...' : (newCustomerModalSuccess ? "Success" : 'Confirm')}
-            confirmButtonDisabled={newCustomerModalLoading || newCustomerModalSuccess}
-        >
-            <div>
-                <label htmlFor="new_customer_name" className="block text-sm font-medium text-gray-700">
-                    Customer Name
-                </label>
-                <input
-                    type="text"
-                    id="new_customer_name"
-                    value={newCustomerName}
-                    onChange={(e) => setNewCustomerName(e.target.value)}
-                    className="mt-1 block w-full border-gray-300 rounded shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                     disabled={newCustomerModalLoading || newCustomerModalSuccess}
-                />
-            </div>
+                isOpen={newCustomerModalOpen}
+                onClose={handleNewCustomerModalClose}
+                onConfirm={handleNewCustomerModalConfirm}
+                title="Create New Customer"
+                confirmButtonText={newCustomerModalLoading ? 'Loading...' : (newCustomerModalSuccess ? "Success" : 'Confirm')}
+                confirmButtonDisabled={newCustomerModalLoading || newCustomerModalSuccess}
+            >
+                <form className="space-y-4">
+                    <div>
+                        <label htmlFor="customer_type" className="block text-sm font-medium text-gray-700">Customer Type</label>
+                        <select
+                            id="customer_type"
+                            value={newCustomer.customer_type}
+                            onChange={handleNewCustomerInputChange}
+                            className="w-full border p-2 rounded text-sm"
+                            disabled={newCustomerModalLoading || newCustomerModalSuccess}
+                        >
+                            <option value="individual">Individual</option>
+                            <option value="company">Company</option>
+                        </select>
+                    </div>
+
+                    {newCustomer.customer_type === 'individual' && (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label htmlFor="first_name" className="block text-sm font-medium text-gray-700">First Name</label>
+                                <input
+                                    type="text"
+                                    id="first_name"
+                                    value={newCustomer.first_name}
+                                    onChange={handleNewCustomerInputChange}
+                                    className="w-full border p-2 rounded text-sm"
+                                    disabled={newCustomerModalLoading || newCustomerModalSuccess}
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="other_names" className="block text-sm font-medium text-gray-700">Other Names</label>
+                                <input
+                                    type="text"
+                                    id="other_names"
+                                    value={newCustomer.other_names}
+                                    onChange={handleNewCustomerInputChange}
+                                    className="w-full border p-2 rounded text-sm"
+                                    disabled={newCustomerModalLoading || newCustomerModalSuccess}
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="surname" className="block text-sm font-medium text-gray-700">Surname</label>
+                                <input
+                                    type="text"
+                                    id="surname"
+                                    value={newCustomer.surname}
+                                    onChange={handleNewCustomerInputChange}
+                                    className="w-full border p-2 rounded text-sm"
+                                    disabled={newCustomerModalLoading || newCustomerModalSuccess}
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {newCustomer.customer_type === 'company' && (
+                        <div>
+                            <label htmlFor="company_name" className="block text-sm font-medium text-gray-700">Company Name</label>
+                            <input
+                                type="text"
+                                id="company_name"
+                                value={newCustomer.company_name}
+                                onChange={handleNewCustomerInputChange}
+                                className="w-full border p-2 rounded text-sm"
+                                disabled={newCustomerModalLoading || newCustomerModalSuccess}
+                            />
+                        </div>
+                    )}
+
+                    <div>
+                        <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</label>
+                        <input
+                            type="email"
+                            id="email"
+                            value={newCustomer.email}
+                            onChange={handleNewCustomerInputChange}
+                            className="w-full border p-2 rounded text-sm"
+                            disabled={newCustomerModalLoading || newCustomerModalSuccess}
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="phone" className="block text-sm font-medium text-gray-700">Phone</label>
+                        <input
+                            type="text"
+                            id="phone"
+                            value={newCustomer.phone}
+                            onChange={handleNewCustomerInputChange}
+                            className="w-full border p-2 rounded text-sm"
+                            disabled={newCustomerModalLoading || newCustomerModalSuccess}
+                        />
+                    </div>
+                </form>
         </Modal>
+
 
         <Modal
             isOpen={modalState.isOpen}
@@ -812,32 +1070,18 @@ export default function Create({fromstore}) {
             confirmButtonDisabled={false}
          >
             <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col">
+              {/* Total Due: Full width row */}
+              <div className="col-span-2 flex flex-col">
                 <label htmlFor="total-due" className="block text-sm font-medium text-gray-700">
                     Total Due
                 </label>
-                    <div className="mt-1  text-right font-bold text-gray-800 bg-gray-100 p-2 rounded">
-                        {parseFloat(totalDue).toLocaleString(undefined, {
-                                        minimumFractionDigits: 2,
-                                        maximumFractionDigits: 2,
-                                    })}
-                     </div>
+                <div className="mt-1 text-right font-bold text-gray-800 bg-gray-100 p-2 rounded">
+                    {parseFloat(totalDue).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                    })}
                 </div>
-              <div className="flex flex-col">
-                <label htmlFor="total-paid" className="block text-sm font-medium text-gray-700">
-                    Total Paid
-                </label>
-                 <input
-                    type="number"
-                    id="total-paid"
-                    value={totalPaid}
-                    onChange={(e) => setTotalPaid(e.target.value)}
-                    placeholder="Total Paid"
-                     className={`mt-1 block w-full border-gray-300 rounded shadow-sm focus:ring-blue-500 focus:border-blue-500 ${paymentErrors.totalPaid ? 'border-red-500' : ''}`}
-                  />
-                     {paymentErrors.totalPaid && <p className="text-sm text-red-600 mt-1">{paymentErrors.totalPaid}</p>}
-              </div>
-
+            </div>
 
               <div className="flex flex-col">
                 <label htmlFor="sale-type" className="block text-sm font-medium text-gray-700">
@@ -873,7 +1117,7 @@ export default function Create({fromstore}) {
                             <option disabled>Loading Payment Methods...</option>
                         ) : (
                             paymentMethods.map((method) => (
-                                <option key={method.id} value={method.name}>{method.name}</option>
+                                <option key={method.id} value={method.id}>{method.name}</option>
                             ))
                         )}
                    </select>

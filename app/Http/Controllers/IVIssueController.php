@@ -41,15 +41,41 @@ class IVIssueController extends Controller
     {
         $query = IVRequistion::with(['requistionitems', 'fromstore']);
 
+        // General search (only for tostore and customer/store names)
         if ($request->filled('search')) {
-            $query->whereHas('fromstore', function ($q) use ($request) {
-                $q->where('name', 'like', '%' . $request->search . '%');
+            $query->where(function ($q) use ($request) {
+                // Add condition for SIV_Store tostore
+                $q->orWhere(function ($sub) use ($request) {
+                    $sub->where('tostore_type', StoreType::Store->value)
+                        ->whereIn('tostore_id', function ($query) use ($request) {
+                            $query->select('id')
+                                  ->from((new SIV_Store())->getTable())
+                                  ->where('name', 'like', '%' . $request->search . '%');
+                        });
+                });
+    
+                // Add condition for BLSCustomer tostore
+                $q->orWhere(function ($sub) use ($request) {
+                    $sub->where('tostore_type', StoreType::Customer->value)
+                        ->whereIn('tostore_id', function ($query) use ($request) {
+                            $query->select('id')
+                                  ->from((new BLSCustomer())->getTable())
+                                  ->where(function ($q) use ($request) {
+                                      $q->where('first_name', 'like', '%' . $request->search . '%')
+                                        ->orWhere('surname', 'like', '%' . $request->search . '%')
+                                        ->orWhere('other_names', 'like', '%' . $request->search . '%')
+                                        ->orWhere('company_name', 'like', '%' . $request->search . '%');
+                                  });
+                        });
+                });
             });
         }
-
+    
+        // Separate filter for fromstore (by ID)
         if ($request->filled('fromstore')) {
             $query->where('fromstore_id', $request->fromstore);
-        }
+        }   
+
         
 
         if ($request->filled('stage')) {
@@ -246,13 +272,26 @@ class IVIssueController extends Controller
         $transDate = Carbon::now();
         $deliveryNo = $validated['delivery_no'] ?? ''; // Use validated delivery number
 
-        if($StoreToStore){
+        
+        $toStore = null;
+        $toStoreName = 'Unknown';
+
+        if ($StoreToStore) {
             $toStore = SIV_Store::find($tostore_id);
             $toStoreName = $toStore ? $toStore->name : 'Unknown Store';
-        }else{
+        } else {
             $toStore = BLSCustomer::find($tostore_id);
-            $toStoreName = $toStore ? $toStore->name : 'Unknown Customer';
+            if ($toStore) {
+                if ($toStore->customer_type === 'individual') {
+                    $toStoreName = trim("{$toStore->first_name} " . ($toStore->other_names ? $toStore->other_names . ' ' : '') . "{$toStore->surname}");
+                } elseif ($toStore->customer_type === 'company') {
+                    $toStoreName = $toStore->company_name;
+                } 
+            } else {
+                $toStoreName = 'Unknown Customer';
+            }
         }
+
 
         $issue = IVIssue::create([
             'transdate' => $transDate,
@@ -405,4 +444,21 @@ class IVIssueController extends Controller
 
      
     }
+
+    
+    public function return(IVRequistion $requistion)
+    { 
+        // Check if the current stage is greater than 0
+        if ($requistion->stage > 1) {
+            // Decrease the requistion stage by 1
+            $requistion->update(['stage' => $requistion->stage - 1]);
+        } else {
+            // Optionally, you can log or handle the case where the stage is already 0
+            // Log::warning('Attempted to decrease requistion stage below zero for requistion ID: ' . $requistion->id);
+        }
+    
+        // Redirect to the 'edit' route for the current requistion
+        return redirect()->route('inventory1.edit', ['requistion' => $requistion->id]);
+    }    
+
 }

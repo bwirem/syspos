@@ -55,6 +55,8 @@ class UserController extends Controller
             'email' => 'required|string|email|unique:users,email',
             'password' => 'required|string|min:8',
             'usergroup_id' => 'required|exists:usergroups,id',
+            'paymenttype_id' => 'required|exists:bls_paymenttypes,id',
+            'pricecategory_id' => 'required|string|max:255',
             'store_id' => 'required|exists:siv_stores,id',
             'selectedStores' => 'array',
             'selectedStores.*' => 'exists:siv_stores,id', // Validate each store ID
@@ -68,6 +70,8 @@ class UserController extends Controller
             'password' => $validated['password'],
             'usergroup_id' => $validated['usergroup_id'],
             'store_id' => $validated['store_id'], // Store the primary store
+            'paymenttype_id' => $validated['paymenttype_id'],
+            'pricecategory_id' => $validated['pricecategory_id'],
         ]);
 
         // Attach the selected stores
@@ -110,6 +114,10 @@ class UserController extends Controller
             'store_id' => 'required|exists:siv_stores,id',
             'selectedStores' => 'array', 
             'selectedStores.*' => 'exists:siv_stores,id', 
+
+            'paymenttype_id' => 'required|exists:bls_paymenttypes,id',
+            'pricecategory_id' => 'required|string|max:255',
+
         ]);
 
         $user->update([
@@ -117,6 +125,8 @@ class UserController extends Controller
             'email' => $validated['email'],
             'usergroup_id' => $validated['usergroup_id'],
             'store_id' => $validated['store_id'],
+            'paymenttype_id' => $validated['paymenttype_id'],
+            'pricecategory_id' => $validated['pricecategory_id'],
         ]);
 
         //Sync the selected stores using the correct pivot table name

@@ -71,6 +71,21 @@ export default function Index({ auth, requistions,fromstore, filters }) {
         3: 'Approved',   
     };
 
+    const getToStoreName = (requistion) => {
+        if (!requistion.tostore) return "n/a";
+    
+        const tostore = requistion.tostore;
+    
+        if (tostore.customer_type) {
+            return tostore.customer_type === 'individual'
+                ? `${tostore.first_name} ${tostore.other_names ? tostore.other_names + ' ' : ''}${tostore.surname}`
+                : tostore.company_name;
+        }
+    
+        return tostore.name;
+    };   
+      
+
     return (
         <AuthenticatedLayout
             header={<h2 className="text-xl font-semibold text-gray-800">Issue List</h2>}
@@ -87,7 +102,7 @@ export default function Index({ auth, requistions,fromstore, filters }) {
                                 id="fromstore"
                                 value={data.fromstore}
                                 onChange={(e) => setData("fromstore", e.target.value)}
-                                className={`w-full border p-2 rounded text-sm "border-red-500" `}
+                                className="border px-2 py-1 rounded text-sm mr-2"
                             >
                                 <option value="">Select To Store...</option>
                                 {fromstore.map(store => (
@@ -155,7 +170,11 @@ export default function Index({ auth, requistions,fromstore, filters }) {
                             {requistions.data.length > 0 ? (
                                 requistions.data.map((requistion, index) => (
                                     <tr key={requistion.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                                        <td className="border-b p-3 text-gray-700">{requistion.tostore ? requistion.tostore.name : "n/a"}</td>
+
+                                        <td className="border-b p-3 text-gray-700">
+                                            {getToStoreName(requistion)}
+                                        </td>                                      
+                                        
                                         <td className="border-b p-3 text-gray-700 text-right">
                                             {parseFloat(requistion.total).toLocaleString(undefined, {
                                                 minimumFractionDigits: 2,

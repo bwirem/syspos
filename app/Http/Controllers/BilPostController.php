@@ -245,8 +245,7 @@ class BilPostController extends Controller
                     'orderitems.*.quantity' => 'required|numeric',
                     'orderitems.*.price' => 'required|numeric',
                     'payment_method' => 'nullable|integer',
-                    'paid_amount' => 'nullable|numeric',
-                    'total_paid' => 'nullable|numeric',
+                    'paid_amount' => 'nullable|numeric',                    
                     'total' => 'nullable|numeric',   //Total Due
                     'sale_type' => 'required|string',
                     'customer_id' => 'required|integer',
@@ -327,8 +326,7 @@ class BilPostController extends Controller
                         'orderitems.*.quantity' => 'required|numeric',
                         'orderitems.*.price' => 'required|numeric',
                         'payment_method' => 'nullable|integer',
-                        'paid_amount' => 'nullable|numeric',
-                        'total_paid' => 'nullable|numeric',
+                        'paid_amount' => 'nullable|numeric',                        
                         'total' => 'nullable|numeric',   // Total Due           
                         'sale_type' => 'required|string',
                         'customer_id' => 'required|integer',

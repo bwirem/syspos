@@ -11,8 +11,7 @@ import Modal from '../../Components/CustomModal.jsx';
 import InputField from '../../Components/CustomInputField.jsx'; 
 
 export default function PayBills({ debtor }) {
-    const { data, setData, post, errors, processing, reset } = useForm({
-        customer_name: debtor.customer.name,
+    const { data, setData, post, errors, processing, reset } = useForm({       
         customer_id: debtor.customer_id,        
         total: debtor.balance,
         stage: 3,
@@ -245,7 +244,12 @@ export default function PayBills({ debtor }) {
                                         Customer Name
                                     </label>                                        
                                     <div className="mt-1 text-left font-bold text-gray-800 bg-gray-100 p-2 rounded">
-                                        {data.customer_name}                                   
+                                     
+                                        {debtor.customer.customer_type === 'individual' ? (
+                                                `${debtor.customer.first_name} ${debtor.customer.other_names ? debtor.customer.other_names + ' ' : ''}${debtor.customer.surname}`
+                                            ) : (
+                                                debtor.customer.company_name
+                                            )}                               
                                     </div>
                                 </div>                            
                                 <div className="flex-1">

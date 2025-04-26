@@ -10,6 +10,8 @@ use App\Http\Controllers\BLSItemGroupController;
 use App\Http\Controllers\BLSItemController;
 use App\Http\Controllers\BLSCurrencyController;
 use App\Http\Controllers\BLSPaymentTypeController;
+use App\Http\Controllers\BLSPriceCategoryController;
+
 use App\Http\Controllers\BLSCustomerController;
 
 use App\Http\Controllers\ExpPostController;
@@ -161,7 +163,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/{requistion}/edit', [IVIssueController::class, 'edit'])->name('edit');
         Route::post('/{requistion}/approve', [IVIssueController::class, 'approve'])->name('approve');
         Route::post('/{requistion}/reject', [IVIssueController::class, 'reject'])->name('reject');
-        Route::post('/{requistion}/return', [IVIssueController::class, 'return'])->name('return');        
+        Route::get('/{requistion}/return', [IVIssueController::class, 'return'])->name('return');        
 
         Route::put('/{requistion}', [IVIssueController::class, 'update'])->name('update');
         Route::delete('/{requistion}', [IVIssueController::class, 'destroy'])->name('destroy');
@@ -242,11 +244,12 @@ Route::middleware('auth')->group(function () {
 
         // --- pricecategories Routes ---
         Route::prefix('pricecategories')->name('pricecategories.')->group(function () {
-            Route::get('/', [BLSPaymentTypeController::class, 'index'])->name('index'); // Lists item groups
-            Route::get('/create', [BLSPaymentTypeController::class, 'create'])->name('create'); // Show form to create new item group
-            Route::post('/', [BLSPaymentTypeController::class, 'store'])->name('store'); // Store new item group
-            Route::get('/{pricecategory}/edit', [BLSPaymentTypeController::class, 'edit'])->name('edit'); // Show form to edit item group
-            Route::put('/{pricecategory}', [BLSPaymentTypeController::class, 'update'])->name('update'); // Update item group
+            Route::get('/', [BLSPriceCategoryController::class, 'index'])->name('index'); // Lists item groups
+            Route::get('/create', [BLSPriceCategoryController::class, 'create'])->name('create'); // Show form to create new item group
+            Route::post('/', [BLSPriceCategoryController::class, 'store'])->name('store'); // Store new item group
+            Route::get('/{pricecategory}/edit', [BLSPriceCategoryController::class, 'edit'])->name('edit'); // Show form to edit item group
+            Route::put('/{pricecategory}', [BLSPriceCategoryController::class, 'update'])->name('update'); // Update item group
+            Route::get('/viewactive', [BLSPriceCategoryController::class, 'viewActive'])->name('viewactive'); // Update item group;
         });
 
         // --- Itemgroups Routes ---

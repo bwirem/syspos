@@ -23,31 +23,72 @@ class IVRequistionController extends Controller
     /**
      * Display a listing of requistions.
      */
-    
+         
+     
      public function index(Request $request)
      {
-         $query = IVRequistion::with(['requistionitems', 'fromstore']); // Eager load requistion items and customer
+         $query = IVRequistion::with(['requistionitems', 'fromstore']);
      
-         // Filtering by customer name using relationship
+         // General search (only for tostore and customer/store names)
          if ($request->filled('search')) {
-             $query->whereHas('fromstore', function ($q) use ($request) {
-                 $q->where('name', 'like', '%' . $request->search . '%');
+             $query->where(function ($q) use ($request) {
+                 // Add condition for SIV_Store tostore
+                 $q->orWhere(function ($sub) use ($request) {
+                     $sub->where('tostore_type', StoreType::Store->value)
+                         ->whereIn('tostore_id', function ($query) use ($request) {
+                             $query->select('id')
+                                   ->from((new SIV_Store())->getTable())
+                                   ->where('name', 'like', '%' . $request->search . '%');
+                         });
+                 });
+     
+                 // Add condition for BLSCustomer tostore
+                 $q->orWhere(function ($sub) use ($request) {
+                     $sub->where('tostore_type', StoreType::Customer->value)
+                         ->whereIn('tostore_id', function ($query) use ($request) {
+                             $query->select('id')
+                                   ->from((new BLSCustomer())->getTable())
+                                   ->where(function ($q) use ($request) {
+                                       $q->where('first_name', 'like', '%' . $request->search . '%')
+                                         ->orWhere('surname', 'like', '%' . $request->search . '%')
+                                         ->orWhere('other_names', 'like', '%' . $request->search . '%')
+                                         ->orWhere('company_name', 'like', '%' . $request->search . '%');
+                                   });
+                         });
+                 });
              });
          }
      
-         // Filtering by stage (Ensure 'stage' exists in the IVRequistion model)
-         if ($request->filled('stage')) {
-             $query->where('stage', $request->stage);
+         // Separate filter for fromstore (by ID)
+         if ($request->filled('fromstore')) {
+             $query->where('fromstore_id', $request->fromstore);
          }
-
-         $query->where('stage', '=', '1');
      
-         // Paginate and sort requistions
-         $requistions = $query->orderBy('created_at', 'desc')->paginate(10);
+         $query->where('stage', '=', 1);
+     
+         $requisitions = $query->orderBy('created_at', 'desc')->paginate(10);
+     
+         // Dynamically load the tostore relation
+         $requisitions->getCollection()->transform(function ($requisition) {
+             switch ($requisition->tostore_type->value) {
+                 case StoreType::Store->value:
+                     $requisition->setRelation('tostore', SIV_Store::find($requisition->tostore_id));
+                     break;
+                 case StoreType::Customer->value:
+                     $requisition->setRelation('tostore', BLSCustomer::find($requisition->tostore_id));
+                     break;
+                 default:
+                     $requisition->setRelation('tostore', null);
+             }
+     
+             return $requisition;
+         });
      
          return inertia('IvRequisition/Index', [
-             'requistions' => $requistions,
-             'filters' => $request->only(['search', 'stage']),
+             'requisitions' => $requisitions,
+             'fromstore' => SIV_Store::all(),
+             'filters' => $request->only(['search', 'fromstore']),
+             'fromstoreList' => SIV_Store::select('id', 'name')->get(),
          ]);
      }
      

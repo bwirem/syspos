@@ -142,7 +142,13 @@ export default function Index({ auth, orders, filters }) {
                             {orders.data.length > 0 ? (
                                 orders.data.map((order, index) => (
                                     <tr key={order.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                                        <td className="border-b p-3 text-gray-700">{order.customer ? order.customer.name : "n/a"}</td>
+                                         <td className="border-b p-3 text-gray-700">
+                                            {order.customer.customer_type === 'individual' ? (
+                                                `${order.customer.first_name} ${order.customer.other_names ? order.customer.other_names + ' ' : ''}${order.customer.surname}`
+                                            ) : (
+                                                order.customer.company_name
+                                            )}
+                                        </td>
                                         <td className="border-b p-3 text-gray-700 text-right">
                                             {parseFloat(order.total).toLocaleString(undefined, {
                                                 minimumFractionDigits: 2,

@@ -81,7 +81,7 @@ export default function Index({ auth, categories, filters }) {
                             <input
                                 type="text"
                                 name="search"
-                                placeholder="Search by supplier name"
+                                placeholder="Search by category name"
                                 value={data.search}
                                 onChange={handleSearchChange}
                                 className={`pl-10 border px-2 py-1 rounded text-sm ${errors.search ? "border-red-500" : ""

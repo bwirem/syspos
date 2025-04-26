@@ -20,7 +20,9 @@ class User extends Authenticatable
      */
     protected $fillable = [
         'store_id',
-        'usergroup_id',        
+        'usergroup_id',  
+        'pricecategory_id',   
+        'paymenttype_id',   
         'name',
         'email',
         'password',
