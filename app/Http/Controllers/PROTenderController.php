@@ -121,6 +121,7 @@ class PROTenderController extends Controller
         if ($tender->stage != "2") {
             $relations[] = 'tenderitems.item';
         } else {
+            $relations[] = 'tenderitems.item';
             $relations[] = 'tenderquotations.supplier'; // Correct relationship
         }
 

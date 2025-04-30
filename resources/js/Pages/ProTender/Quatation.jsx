@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, useForm, usePage } from '@inertiajs/react';
+import { Head, useForm, usePage, Link } from '@inertiajs/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus, faTrash, faSave, faTimesCircle, faTimes, faEye, faAward } from '@fortawesome/free-solid-svg-icons';
 import axios from 'axios';
@@ -24,6 +24,7 @@ export default function Quotation({ tender }) {
         facility_name: tender.facilityoption?.name || '',
         facility_id: tender.facilityoption_id || null,
         stage: tender.stage || 1,
+        tenderitems: tender.tenderitems || [],
         tenderquotations: [],
     });
 
@@ -468,6 +469,31 @@ export default function Quotation({ tender }) {
                                 </div>
                             </div>
 
+
+                            {/* Table for Tender Items */}
+                            <div className="overflow-x-auto bg-white border border-gray-300 rounded-lg">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50">
+                                        <tr>
+                                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>                                            
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-200">
+                                        {data.tenderitems.map((item, index) => (
+                                            <tr key={index} className="bg-gray-50">
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                                    {item.item ? item.item.name : 'Unknown Item'}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">
+                                                  {item.quantity}                                                   
+                                                </td>                                                
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+
                             <div className="flex items-center space-x-4 mb-2 py-1">
                                 <div className="relative flex-1" ref={supplierDropdownRef}>
                                     <input
@@ -606,21 +632,23 @@ export default function Quotation({ tender }) {
 
                             {/* Form submission buttons */}
                             <div className="flex justify-end space-x-4 mt-6">
-                                <button
-                                    type="button"
-                                    onClick={() => Inertia.get(route('procurements0.index'))}
+                                
+                                <Link
+                                    href={route('procurements0.index')}  // Using the route for navigation
+                                    method="get"  // Optional, if you want to define the HTTP method (GET is default)
+                                    preserveState={true}  // Keep the page state (similar to `preserveState: true` in the button)
                                     className="bg-gray-300 text-gray-700 rounded p-2 flex items-center space-x-2"
                                 >
                                     <FontAwesomeIcon icon={faTimesCircle} />
-                                    <span>Cancel</span>
-                                </button>
+                                    <span>Close</span>
+                                </Link>
                                 <button
                                     type="submit"
                                     disabled={processing || isSaving}
                                     className="bg-blue-600 text-white rounded p-2 flex items-center space-x-2"
                                 >
                                     <FontAwesomeIcon icon={faSave} />
-                                    <span>{isSaving ? 'Saving...' : 'Save Tender'}</span>
+                                    <span>{isSaving ? 'Saving...' : 'Save'}</span>
                                 </button>
                                 <button
                                     type="button"

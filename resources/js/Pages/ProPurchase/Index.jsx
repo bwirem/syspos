@@ -10,7 +10,7 @@ import Modal from '../../Components/CustomModal.jsx';
 export default function Index({ auth, purchases, filters }) {
     const { data, setData, get, errors } = useForm({
         search: filters.search || "",
-        stage: filters.stage || "1",
+        stage: filters.stage || "",
     });
 
     const [modalState, setModalState] = useState({
@@ -68,11 +68,9 @@ export default function Index({ auth, purchases, filters }) {
 
     // Map purchase stage numbers to labels
     const purchaseStageLabels = {  
-        1: 'Draft',  
+        1: 'Pending',  
         2: 'Approved',
-        3: 'Dispatched',
-        4: 'Received',
-        //6: 'Cancelled',
+        3: 'Dispatched',        
     };
 
     return (
@@ -107,6 +105,14 @@ export default function Index({ auth, purchases, filters }) {
                     </div>
 
                     <ul className="flex space-x-2 mt-2">
+
+                        <li
+                            className={`cursor-pointer px-2 py-1 rounded text-sm flex items-center ${data.stage === "" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-600"
+                                }`}
+                            onClick={() => handleStageChange("")}
+                        >
+                            All
+                        </li>
                         
                          {Object.entries(purchaseStageLabels).map(([key, label]) => (
                             <li
@@ -119,13 +125,7 @@ export default function Index({ auth, purchases, filters }) {
                             </li>
                         ))}
 
-                        <li
-                            className={`cursor-pointer px-2 py-1 rounded text-sm flex items-center ${data.stage === "" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-600"
-                                }`}
-                            onClick={() => handleStageChange("")}
-                        >
-                            All
-                        </li>
+                        
                     </ul>
                 </div>
 
@@ -158,7 +158,11 @@ export default function Index({ auth, purchases, filters }) {
                                                 className="px-2 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-xs flex items-center"
                                             >
                                                 <FontAwesomeIcon icon={faEdit} className="mr-1" />                                               
-                                                {purchase.stage === 2 ? "Dispatch" : "Edit"}   
+                                                {{
+                                                    2: "Dispatch",
+                                                    3: "Receive"
+                                                }[purchase.stage] || "Edit"}
+  
                                             </Link>
                                             <button
                                                 onClick={() => handleDelete(purchase.id)}

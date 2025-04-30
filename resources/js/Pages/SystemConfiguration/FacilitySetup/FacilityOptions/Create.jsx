@@ -90,7 +90,7 @@ export default function Create() {
                                     className="bg-gray-300 text-gray-700 rounded p-2 flex items-center space-x-2"
                                 >
                                     <FontAwesomeIcon icon={faTimesCircle} />
-                                    <span>Cancel</span>
+                                    <span>Close</span>
                                 </button>
                                 <button
                                     type="submit"

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Head, Link, useForm, router } from "@inertiajs/react";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faSearch, faPlus, faEdit, faTrash } from "@fortawesome/free-solid-svg-icons";
+import { faSearch, faPlus, faEdit, faTrash, faHome } from "@fortawesome/free-solid-svg-icons";
 import "@fortawesome/fontawesome-svg-core/styles.css";
 
 import Modal from '@/Components/CustomModal';
@@ -128,20 +128,13 @@ export default function Index({ auth, facilityoptions, filters }) {
                                             >
                                                 <FontAwesomeIcon icon={faEdit} className="mr-1" />
                                                 Edit
-                                            </Link>
-                                            <button
-                                                onClick={() => handleDelete(facilityoption.id)}
-                                                className="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs flex items-center"
-                                            >
-                                                <FontAwesomeIcon icon={faTrash} className="mr-1" />
-                                                Delete
-                                            </button>
+                                            </Link>                                            
                                         </td>
                                     </tr>
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan="4" className="border-b p-3 text-center text-gray-700">No facilityoptions found.</td>
+                                    <td colSpan="4" className="border-b p-3 text-center text-gray-700">No Facility Options found.</td>
                                 </tr>
                             )}
                         </tbody>

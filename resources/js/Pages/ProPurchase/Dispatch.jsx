@@ -1,5 +1,5 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, useForm } from '@inertiajs/react';
+import { Head, useForm , Link} from '@inertiajs/react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus, faTrash, faSave, faTimesCircle, faMoneyBill, faEye, faTruck } from '@fortawesome/free-solid-svg-icons';
@@ -196,31 +196,7 @@ export default function Dispatch({ purchase }) {
                                         )}
                                     </div>
                                 </div>
-                            </div>
-
-
-                            <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
-                                <div className="flex-1">
-                                    <label htmlFor="total" className="block text-sm font-medium text-gray-700 text-right">
-                                        Total (Auto-calculated)
-                                    </label>
-                                    <div className="mt-1  text-right font-bold text-gray-800 bg-gray-100 p-2 rounded">
-                                        {parseFloat(data.total).toLocaleString(undefined, {
-                                            minimumFractionDigits: 2,
-                                            maximumFractionDigits: 2,
-                                        })}
-                                    </div>
-                                </div>
-
-                                <div className="flex-1">
-                                    <label htmlFor="stage" className="block text-sm font-medium text-gray-700">
-                                        Stage
-                                    </label>
-                                    <div className="mt-1  text-left font-bold text-gray-800 bg-gray-100 p-2 rounded">
-                                        {data.stage}
-                                    </div>
-                                </div>
-                            </div>                              
+                            </div>                                                     
 
                             <div className="overflow-x-auto bg-white border border-gray-300 rounded-lg">
                                 <table className="min-w-full divide-y divide-gray-200">
@@ -229,8 +205,7 @@ export default function Dispatch({ purchase }) {
                                             <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
                                             <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
                                             <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
-                                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>                                            
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-200">
@@ -256,32 +231,35 @@ export default function Dispatch({ purchase }) {
                                                         minimumFractionDigits: 2,
                                                         maximumFractionDigits: 2,
                                                     })}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                    {item.item_id && <span className="text-xs text-gray-400">ID: {item.item_id}</span>}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => removePurchaseItem(index)}
-                                                        className="text-red-600 hover:text-red-800"
-                                                    >
-                                                        <FontAwesomeIcon icon={faTrash} />
-                                                    </button>
-                                                </td>
+                                                </td>                                                
                                             </tr>
                                         ))}
+                                        {/* Total Row */}
+                                        <tr className="bg-gray-100 font-bold">
+                                            <td colSpan="3" className="px-6 py-4 text-right text-gray-700">
+                                                Total
+                                            </td>
+                                            <td className="px-6 py-4 text-right text-gray-800">
+                                                {parseFloat(data.total).toLocaleString(undefined, {
+                                                    minimumFractionDigits: 2,
+                                                    maximumFractionDigits: 2,
+                                                })}
+                                            </td>
+                                        </tr>
                                     </tbody>
                                 </table>
                             </div>
 
                             <div className="flex justify-end space-x-4 mt-6">
-                                <button
-                                    type="button"
-                                    onClick={() => Inertia.get(route('procurements1.index'))}
+                                <Link
+                                    href={route('procurements1.index')}  // Using the route for navigation
+                                    method="get"  // Optional, if you want to define the HTTP method (GET is default)
+                                    preserveState={true}  // Keep the page state (similar to `preserveState: true` in the button)
                                     className="bg-gray-300 text-gray-700 rounded p-2 flex items-center space-x-2"
                                 >
                                     <FontAwesomeIcon icon={faTimesCircle} />
-                                    <span>Cancel</span>
-                                </button>
+                                    <span>Close</span>
+                                </Link>
                                 <button
                                     type="submit"
                                     disabled={processing || isSaving}

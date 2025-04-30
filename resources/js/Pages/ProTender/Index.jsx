@@ -10,7 +10,7 @@ import Modal from '../../Components/CustomModal.jsx';
 export default function Index({ auth, tenders, filters }) {
     const { data, setData, get, errors } = useForm({
         search: filters.search || "",
-        stage: filters.stage || "1",
+        stage: filters.stage || "",
     });
 
     const [modalState, setModalState] = useState({
@@ -69,9 +69,8 @@ export default function Index({ auth, tenders, filters }) {
     // Map tender stage numbers to labels
     const tenderStageLabels = {  
         1: 'Draft',  
-        2: 'Approved',
-        3: 'Awarded',      
-        //6: 'Cancelled',
+        2: 'Quotation',
+        3: 'Evaluation',       
     };
 
     return (
@@ -106,8 +105,16 @@ export default function Index({ auth, tenders, filters }) {
                     </div>
 
                     <ul className="flex space-x-2 mt-2">
+
+                        <li
+                            className={`cursor-pointer px-2 py-1 rounded text-sm flex items-center ${data.stage === "" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-600"
+                                }`}
+                            onClick={() => handleStageChange("")}
+                        >
+                            All
+                        </li>
                         
-                         {Object.entries(tenderStageLabels).map(([key, label]) => (
+                        {Object.entries(tenderStageLabels).map(([key, label]) => (
                             <li
                                 key={key}
                                 className={`cursor-pointer px-2 py-1 rounded text-sm flex items-center ${data.stage === key ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-600"
@@ -118,13 +125,7 @@ export default function Index({ auth, tenders, filters }) {
                             </li>
                         ))}
 
-                        <li
-                            className={`cursor-pointer px-2 py-1 rounded text-sm flex items-center ${data.stage === "" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-600"
-                                }`}
-                            onClick={() => handleStageChange("")}
-                        >
-                            All
-                        </li>
+                        
                     </ul>
                 </div>
 
@@ -135,7 +136,7 @@ export default function Index({ auth, tenders, filters }) {
                             <tr>
                                 <th className="border-b p-3 text-center font-medium text-gray-700">Tender Descriptions</th>                               
                                 <th className="border-b p-3 text-center font-medium text-gray-700">Stage</th>
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Actions</th>
+                                <th colspan = "2" className="border-b p-3 text-center font-medium text-gray-700">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -144,7 +145,7 @@ export default function Index({ auth, tenders, filters }) {
                                     <tr key={tender.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
                                         <td className="border-b p-3 text-gray-700">{tender.description ? tender.description : "n/a"}</td>                                        
                                         <td className="border-b p-3 text-gray-700">{tenderStageLabels[tender.stage]}</td>
-                                        <td className="border-b p-3 flex space-x-2">
+                                        <td className="border-b p-3 text-gray-700">
                                             <Link
                                                 href={route("procurements0.edit", tender.id)}
                                                 className="px-2 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-xs flex items-center"
@@ -152,6 +153,9 @@ export default function Index({ auth, tenders, filters }) {
                                                 <FontAwesomeIcon icon={faEdit} className="mr-1" />
                                                 {tender.stage === 2 ? "Process" : "Edit"}                                                
                                             </Link>
+                                         </td>   
+
+                                         <td className="border-b p-3 text-gray-700">   
                                             <button
                                                 onClick={() => handleDelete(tender.id)}
                                                 className="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs flex items-center"

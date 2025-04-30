@@ -48,7 +48,10 @@ class BilPayController extends Controller
         // Filtering by customer name using relationship
         if ($request->filled('search')) {
             $query->whereHas('customer', function ($q) use ($request) {
-                $q->where('name', 'like', '%' . $request->search . '%');
+                $q->where('first_name', 'like', '%' . $request->search . '%')
+                ->orWhere('surname', 'like', '%' . $request->search . '%')
+                ->orWhere('other_names', 'like', '%' . $request->search . '%')
+                ->orWhere('company_name', 'like', '%' . $request->search . '%');
             });
         }   
 

@@ -33,8 +33,15 @@ class FacilityOptionController extends Controller
      */
     public function create()
     {
+        $facilityoption = FacilityOption::first();
+
+        if ($facilityoption) {
+            return redirect()->route('systemconfiguration5.facilityoptions.edit', $facilityoption->id);
+        }
+
         return inertia('SystemConfiguration/FacilitySetup/FacilityOptions/Create');
     }
+
 
     /**
      * Facilityoption a newly created facilityoption in storage.
@@ -51,7 +58,7 @@ class FacilityOptionController extends Controller
             'name' => $validated['name'],            
         ]);
 
-        return redirect()->route('systemconfiguration4.facilityoptions.index')
+        return redirect()->route('systemconfiguration5.facilityoptions.index')
             ->with('success', 'Facilityoption created successfully.');
     }
 
@@ -80,21 +87,11 @@ class FacilityOptionController extends Controller
             'name' => $validated['name'],            
         ]);
 
-        return redirect()->route('systemconfiguration4.facilityoptions.index')
+        return redirect()->route('systemconfiguration5.facilityoptions.index')
             ->with('success', 'Facilityoption updated successfully.');
     }
 
-    /**
-     * Remove the specified facilityoption from storage.
-     */
-    public function destroy(FacilityOption $facilityoption)
-    {
-        $facilityoption->delete();
-
-        return redirect()->route('systemconfiguration4.facilityoptions.index')
-            ->with('success', 'Facilityoption deleted successfully.');
-    }
-
+    
     /**
      * Search for facilityoptions based on query.
      */

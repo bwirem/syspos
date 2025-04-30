@@ -5,6 +5,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\BilOrderController;
 use App\Http\Controllers\BilPostController;
 use App\Http\Controllers\BilPayController;
+use App\Http\Controllers\BilHistoryController;
 
 use App\Http\Controllers\BLSItemGroupController;
 use App\Http\Controllers\BLSItemController;
@@ -107,6 +108,28 @@ Route::middleware('auth')->group(function () {
         Route::post('/pay', [BilPayController::class, 'pay'])->name('pay');  // POST route with no parameter
         Route::put('/pay/{debtor}', [BilPayController::class, 'pay'])->name('pay_update');  // PUT route with {order} param and a different name.
     
+    });
+
+
+    // Pay Bills routes
+    Route::prefix('billing3')->name('billing3.')->group(function () {
+        Route::get('/', [BilHistoryController::class, 'saleHistory'])->name('salehistory'); 
+        Route::get('/{sale}/preview', [BilHistoryController::class, 'previewSale'])->name('preview');
+        Route::put('/{sale}', [BilHistoryController::class, 'postVoidSale'])->name('voidsale');        
+    });
+
+    // Pay Bills routes
+    Route::prefix('billing4')->name('billing4.')->group(function () {
+        Route::get('/', [BilHistoryController::class, 'repaymentHistory'])->name('repaymenthistory'); 
+        Route::get('/{repayment}/preview', [BilHistoryController::class, 'previewRepayment'])->name('preview');
+        
+    });
+
+    // Pay Bills routes
+    Route::prefix('billing5')->name('billing5.')->group(function () {
+        Route::get('/', [BilHistoryController::class, 'voidHistory'])->name('voidsalehistory'); 
+        Route::get('/{voidsale}/preview', [BilHistoryController::class, 'previewVoid'])->name('preview');
+        
     });
 
       

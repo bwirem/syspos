@@ -1,8 +1,8 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, useForm } from '@inertiajs/react';
+import { Head, useForm , Link} from '@inertiajs/react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTrash, faSave, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
+import { faTrash, faSave, faTimesCircle, faCheck } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
 import { Inertia } from '@inertiajs/inertia';
 import axios from 'axios';
@@ -284,6 +284,15 @@ export default function Edit({ tender }) {
         setShowFacilityDropdown(false);
     };
 
+    const handleApproveClick = (e) => {
+        e.preventDefault();
+        setModalState({
+            isOpen: true,
+            message: 'Are you sure you want to submit this tender?',
+            isAlert: false,
+        });
+    }
+
     return (
         <AuthenticatedLayout
             header={<h2 className="text-xl font-semibold leading-tight text-gray-800">Edit Tender</h2>}
@@ -465,21 +474,31 @@ export default function Edit({ tender }) {
                             </div>
 
                             <div className="flex justify-end space-x-4 mt-6">
-                                <button
-                                    type="button"
-                                    onClick={() => Inertia.get(route('procurements0.index'))}
+                                <Link
+                                    href={route('procurements0.index')}  // Using the route for navigation
+                                    method="get"  // Optional, if you want to define the HTTP method (GET is default)
+                                    preserveState={true}  // Keep the page state (similar to `preserveState: true` in the button)
                                     className="bg-gray-300 text-gray-700 rounded p-2 flex items-center space-x-2"
                                 >
                                     <FontAwesomeIcon icon={faTimesCircle} />
-                                    <span>Cancel</span>
-                                </button>
+                                    <span>Close</span>
+                                </Link>
                                 <button
                                     type="submit"
                                     disabled={processing || isSaving}
                                     className="bg-blue-600 text-white rounded p-2 flex items-center space-x-2"
                                 >
                                     <FontAwesomeIcon icon={faSave} />
-                                    <span>{isSaving ? 'Saving...' : 'Save Tender'}</span>
+                                    <span>{isSaving ? 'Saving...' : 'Save'}</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={handleApproveClick}
+                                    className="bg-green-500 text-white rounded p-2 flex items-center space-x-2 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
+                                >
+                                    <FontAwesomeIcon icon={faCheck} />
+                                    <span>Approve</span>
                                 </button>
                             </div>
                         </form>

@@ -431,7 +431,8 @@ export default function Edit({ order, fromstore , auth }) {
 
             if (saleType !== 'credit') {
                 // Find the selected payment method object
-                const selectedPaymentMethod = paymentMethods.find(method => method.id === paymentMethod);
+                const paymenttype_id = parseInt(paymentMethod)
+                const selectedPaymentMethod = paymentMethods.find(method => method.id === paymenttype_id);
 
                 if (selectedPaymentMethod) {
                     payload.payment_method = selectedPaymentMethod.id; // Set the ID instead of the name

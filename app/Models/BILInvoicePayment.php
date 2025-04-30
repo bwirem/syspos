@@ -20,7 +20,12 @@ class BILInvoicePayment extends Model
                            'totaldue','totalpaid','currency_id', 
                            'yearpart','monthpart','transtype', 'user_id'];
 
-   
+    public function items()
+    {        
+        return $this->hasMany(BILInvoicePaymentDetail::class, 'receiptno', 'receiptno');
+    }
+                   
+
     public function customer()
     {
         return $this->belongsTo(BLSCustomer::class, 'customer_id', 'id');

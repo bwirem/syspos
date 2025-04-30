@@ -4,7 +4,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     faCog,        // Settings
     faLayerGroup, // Expense Item Group
-    faListAlt,    // Expense Items
+    faListAlt   // Expense Items
 } from '@fortawesome/free-solid-svg-icons';
 
 export default function Index() {
