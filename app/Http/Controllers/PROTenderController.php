@@ -111,111 +111,136 @@ class PROTenderController extends Controller
      * Show the form for editing the specified tender.
      */
     
-    public function edit(PROTender $tender)
-    {
-
-        // Always load 'facilityoption'
-        $relations = ['facilityoption'];
-
-        // Conditionally add other relationships
-        if ($tender->stage != "2") {
-            $relations[] = 'tenderitems.item';
-        } else {
-            $relations[] = 'tenderitems.item';
-            $relations[] = 'tenderquotations.supplier'; // Correct relationship
-        }
-
-        // Load all required relationships in a single query
-        $tender->load($relations);
-
-        // Determine the appropriate page based on the stage value
-        $page = $tender->stage != "2" ? 'ProTender/Edit' : 'ProTender/Quatation';
-
-        // --- TRANSFORMATION (This is the key part) ---
-        if ($tender->stage == "2") { // Only transform if on the Quatation page
+     public function edit(PROTender $tender)
+     {
+         // Always load 'facilityoption'
+         $relations = ['facilityoption', 'tenderitems.item'];
+     
+         // Conditionally add quotation relationships
+         if ($tender->stage != "1") {
+             $relations[] = 'tenderquotations.supplier';
+         }
+     
+         // Load all necessary relationships
+         $tender->load($relations);
+     
+         // Determine the correct page based on stage
+         if ($tender->stage == "2") {
+             $page = 'ProTender/Quatation';
+         } elseif ($tender->stage == "3") {
+             $page = 'ProTender/Evaluation';
+         } else {
+             $page = 'ProTender/Edit';
+         }
+     
+         // Transform quotations only if beyond stage 1
+         if ($tender->stage != "1") {
             $tender->tenderquotations->transform(function ($quotation) {
                 return [
                     'id'        => $quotation->id,
-                    'item_name' => $quotation->supplier ? $quotation->supplier->name : '', // Map supplier name
-                    'item_id'   => $quotation->supplier ? $quotation->supplier->id : null, // Map supplier ID
-                    //'url' => basename($quotation->url), // Extract filename from path.  VERY IMPORTANT!
-                    'url' => $quotation->url, // Extract filename from path.  VERY IMPORTANT!
-                    'filename' => $quotation->filename,                     
-                    'file'=> null,
-                    // Add any other fields from $quotation you need in the frontend
+                    'item_name' => $quotation->supplier ? 
+                        ($quotation->supplier->supplier_type === 'individual' 
+                            ? "{$quotation->supplier->first_name} " . 
+                              ($quotation->supplier->other_names ? "{$quotation->supplier->other_names} " : '') . 
+                              "{$quotation->supplier->surname}" 
+                            : $quotation->supplier->company_name) 
+                        : '',
+                    'item_id'   => $quotation->supplier?->id ?? null,
+                    'url'       => $quotation->url,
+                    'filename'  => $quotation->filename,
+                    'file'      => null,
                 ];
             });
-        }
-        // --- END TRANSFORMATION ---
-
-        return inertia($page, [
-            'tender' => $tender,
-        ]);
-    }
+            
+         }
+     
+         return inertia($page, [
+             'tender' => $tender,
+         ]);
+     }
+     
 
     public function update(Request $request, PROTender $tender)
     {
-        // Validate input
-        $validated = $request->validate([             
-            'description' => 'nullable|string|max:255', //validate store id             
-            'facility_id' => 'required|exists:facilityoptions,id', //validate store id  
-            'stage' => 'required|integer|min:1',
-            'tenderitems' => 'required|array',
-            'tenderitems.*.id' => 'nullable|exists:pro_tenderitems,id',
-            'tenderitems.*.item_id' => 'required|exists:siv_products,id',
-            'tenderitems.*.quantity' => 'required|numeric|min:0',            
-        ]);
-    
-        // Update the tender within a transaction
-        DB::transaction(function () use ($validated, $tender) {
-            // Retrieve existing item IDs before the update
-            $oldItemIds = $tender->tenderitems()->pluck('id')->toArray();
-            
-            $existingItemIds = [];
-            $newItems = [];
-    
-            foreach ($validated['tenderitems'] as $item) {
-                if (!empty($item['id'])) {
-                    $existingItemIds[] = $item['id'];
-                } else {
-                    $newItems[] = $item;
-                }
-            }
-    
-            // Identify and delete removed items
-            $itemsToDelete = array_diff($oldItemIds, $existingItemIds);
-            $tender->tenderitems()->whereIn('id', $itemsToDelete)->delete();
-    
-            // Add new items
-            foreach ($newItems as $item) {
-                $tender->tenderitems()->create([
-                    'product_id' => $item['item_id'],
-                    'quantity' => $item['quantity'],                   
-                ]);
-            }
-    
-            // Update existing items
-            foreach ($validated['tenderitems'] as $item) {
-                if (!empty($item['id'])) {
-                    $tenderItem = PROTenderItem::find($item['id']);
-    
-                    if ($tenderItem) {
-                        $tenderItem->update([
-                            'product_id' => $item['item_id'],
-                            'quantity' => $item['quantity'],                            
-                        ]);
+        if($tender->stage == "1" ){
+          
+            // Validate input
+            $validated = $request->validate([             
+                'description' => 'nullable|string|max:255', //validate store id             
+                'facility_id' => 'required|exists:facilityoptions,id', //validate store id  
+                'stage' => 'required|integer|min:1',
+                'tenderitems' => 'required|array',
+                'tenderitems.*.id' => 'nullable|exists:pro_tenderitems,id',
+                'tenderitems.*.item_id' => 'required|exists:siv_products,id',
+                'tenderitems.*.quantity' => 'required|numeric|min:0',            
+            ]);
+        
+            // Update the tender within a transaction
+            DB::transaction(function () use ($validated, $tender) {
+                // Retrieve existing item IDs before the update
+                $oldItemIds = $tender->tenderitems()->pluck('id')->toArray();
+                
+                $existingItemIds = [];
+                $newItems = [];
+        
+                foreach ($validated['tenderitems'] as $item) {
+                    if (!empty($item['id'])) {
+                        $existingItemIds[] = $item['id'];
+                    } else {
+                        $newItems[] = $item;
                     }
                 }
-            }
-                   
+        
+                // Identify and delete removed items
+                $itemsToDelete = array_diff($oldItemIds, $existingItemIds);
+                $tender->tenderitems()->whereIn('id', $itemsToDelete)->delete();
+        
+                // Add new items
+                foreach ($newItems as $item) {
+                    $tender->tenderitems()->create([
+                        'product_id' => $item['item_id'],
+                        'quantity' => $item['quantity'],                   
+                    ]);
+                }
+        
+                // Update existing items
+                foreach ($validated['tenderitems'] as $item) {
+                    if (!empty($item['id'])) {
+                        $tenderItem = PROTenderItem::find($item['id']);
+        
+                        if ($tenderItem) {
+                            $tenderItem->update([
+                                'product_id' => $item['item_id'],
+                                'quantity' => $item['quantity'],                            
+                            ]);
+                        }
+                    }
+                }
+                    
+                // Update the tender details
+                $tender->update([                 
+                    'description' => $validated['description'],
+                    'facilityoption_id' => $validated['facility_id'],
+                    'stage' => $validated['stage'],                
+                    'user_id' => Auth::id(),
+                ]);
+            });
+
+        }else{
+
+            $validated = $request->validate([            
+                
+                'stage' => 'required|integer|min:1',
+                'remarks' => 'required|string|max:255',                 
+            ]);
+
             // Update the tender details
-            $tender->update([                 
-                'description' => $validated['description'],
-                'facilityoption_id' => $validated['facility_id'],
+            $tender->update([   
                 'stage' => $validated['stage'],                
                 'user_id' => Auth::id(),
             ]);
-        });
+            
+        }
     
         return redirect()->route('procurements0.index')->with('success', 'Tender updated successfully.');
     }
@@ -387,7 +412,7 @@ class PROTenderController extends Controller
             });
 
             // Update Tender Stage and other details
-            $tender->stage = 3;
+            $tender->stage = 4;
             // $tender->awarded_url = $url;
             // $tender->awarded_filename = $filename;
             $tender->save();

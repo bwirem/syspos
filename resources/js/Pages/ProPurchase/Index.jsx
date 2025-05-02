@@ -137,22 +137,29 @@ export default function Index({ auth, purchases, filters }) {
                                 <th className="border-b p-3 text-center font-medium text-gray-700">Supplier Name</th>
                                 <th className="border-b p-3 text-center font-medium text-gray-700">Total</th>
                                 <th className="border-b p-3 text-center font-medium text-gray-700">Stage</th>
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Actions</th>
+                                <th colspan = "2" className="border-b p-3 text-center font-medium text-gray-700">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {purchases.data.length > 0 ? (
                                 purchases.data.map((purchase, index) => (
                                     <tr key={purchase.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                                        <td className="border-b p-3 text-gray-700">{purchase.supplier ? purchase.supplier.name : "n/a"}</td>
+                                        <td className="border-b p-3 text-gray-700">
+                                            {purchase.supplier ? purchase.supplier.name : "n/a"}
+                                            {purchase.supplier.supplier_type === 'individual' ? (
+                                                `${purchase.supplier.first_name} ${purchase.supplier.other_names ? purchase.supplier.other_names + ' ' : ''}${purchase.supplier.surname}`
+                                            ) : (
+                                                purchase.supplier.company_name
+                                            )}
+                                        </td>
                                         <td className="border-b p-3 text-gray-700 text-right">
                                             {parseFloat(purchase.total).toLocaleString(undefined, {
                                                 minimumFractionDigits: 2,
                                                 maximumFractionDigits: 2,
                                             })}
                                         </td>
-                                          <td className="border-b p-3 text-gray-700">{purchaseStageLabels[purchase.stage]}</td>
-                                        <td className="border-b p-3 flex space-x-2">
+                                        <td className="border-b p-3 text-gray-700">{purchaseStageLabels[purchase.stage]}</td>
+                                        <td className="border-b p-3 text-gray-700"> 
                                             <Link
                                                 href={route("procurements1.edit", purchase.id)}
                                                 className="px-2 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-xs flex items-center"
@@ -164,6 +171,10 @@ export default function Index({ auth, purchases, filters }) {
                                                 }[purchase.stage] || "Edit"}
   
                                             </Link>
+                                        </td>   
+
+                                        <td className="border-b p-3 text-gray-700">       
+
                                             <button
                                                 onClick={() => handleDelete(purchase.id)}
                                                 className="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs flex items-center"

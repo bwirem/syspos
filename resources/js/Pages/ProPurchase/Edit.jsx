@@ -20,7 +20,15 @@ const debounce = (func, delay) => {
 
 export default function Edit({ purchase }) {
     const { data, setData, put, errors, processing, reset } = useForm({
-        supplier_name: purchase.supplier.name,
+       
+        supplier_type: purchase.supplier.supplier_type,
+        first_name: purchase.supplier.first_name || '',
+        other_names: purchase.supplier.other_names || '',
+        surname: purchase.supplier.surname || '',
+        company_name: purchase.supplier.company_name || '',
+        email: purchase.supplier.email,
+        phone: purchase.supplier.phone || '',
+
         supplier_id: purchase.supplier_id,
         facility_name: purchase.facilityoption.name,
         facility_id: purchase.facilityoption_id,
@@ -41,11 +49,19 @@ export default function Edit({ purchase }) {
     const itemDropdownRef = useRef(null);
     const itemSearchInputRef = useRef(null);
 
-    const [supplierSearchQuery, setSupplierSearchQuery] = useState(data.supplier_name);
+    const [supplierSearchQuery, setSupplierSearchQuery] = useState('');
     const [supplierSearchResults, setSupplierSearchResults] = useState([]);
     const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
     const supplierDropdownRef = useRef(null);
     const supplierSearchInputRef = useRef(null);
+    const [supplierIDError, setSupplierIDError] = useState('');
+
+    // Approve Modal state    
+    const [approveModalOpen, setApproveModalOpen] = useState(false);   
+    const [approveRemarks, setApproveRemarks] = useState('');
+    const [remarksError, setRemarksError] = useState('');
+    const [approveModalLoading, setApproveModalLoading] = useState(false);
+    const [approveModalSuccess, setApproveModalSuccess] = useState(false);
 
     const [modalState, setModalState] = useState({
         isOpen: false,
@@ -296,14 +312,7 @@ export default function Edit({ purchase }) {
         const query = e.target.value;
         setItemSearchQuery(query);
         setShowItemDropdown(!!query.trim());
-    };
-
-    const handleSupplierSearchChange = (e) => {
-        const query = e.target.value;
-        setSupplierSearchQuery(query);
-        setShowSupplierDropdown(!!query.trim());
-        setData('supplier_name', query);
-    };
+    };   
 
     const handleClearItemSearch = () => {
         setItemSearchQuery('');
@@ -313,6 +322,25 @@ export default function Edit({ purchase }) {
             itemSearchInputRef.current.focus();
         }
     };
+      
+    const handleSupplierSearchChange = (e) => {
+        const query = e.target.value;
+        setSupplierSearchQuery(query);
+        setSupplierSearchResults([]); // Clear previous results
+        setShowSupplierDropdown(!!query.trim());
+
+        // Update appropriate fields based on supplier type
+        setData((prevData) => ({
+            ...prevData,
+            first_name: '',
+            other_names: '',
+            surname: '',
+            company_name: '',
+            email: '',
+            phone: '',
+            supplier_id: null,
+        }));
+    };
 
     const handleClearSupplierSearch = () => {
         setSupplierSearchQuery('');
@@ -321,15 +349,38 @@ export default function Edit({ purchase }) {
         if (supplierSearchInputRef.current) {
             supplierSearchInputRef.current.focus();
         }
+
+        setData((prevData) => ({
+            ...prevData,
+            first_name: '',
+            other_names: '',
+            surname: '',
+            company_name: '',
+            email: '',
+            phone: '',
+            supplier_id: null,
+        }));
     };
 
+    // Handle supplier selection
     const selectSupplier = (selectedSupplier) => {
-        setData('supplier_name', selectedSupplier.name);
-        setData('supplier_id', selectedSupplier.id);
-        setSupplierSearchQuery(selectedSupplier.name);
+        setData((prevData) => ({
+            ...prevData,
+            supplier_type: selectedSupplier.supplier_type,
+            first_name: selectedSupplier.first_name || '',
+            other_names: selectedSupplier.other_names || '',
+            surname: selectedSupplier.surname || '',
+            company_name: selectedSupplier.company_name || '',
+            email: selectedSupplier.email,
+            phone: selectedSupplier.phone || '',
+            supplier_id: selectedSupplier.id,
+        }));
+
+        setSupplierSearchQuery('');
         setSupplierSearchResults([]);
         setShowSupplierDropdown(false);
     };
+
 
     const handleFileSelect = (event) => {
         const file = event.target.files?.[0];
@@ -340,14 +391,60 @@ export default function Edit({ purchase }) {
         }
     };
 
-    const handleApproveClick = () => {
-        setModalState({
-            isOpen: true,
-            message: 'Are you sure you want to approve this purchase?',
-            isAlert: false,
-            itemToRemoveIndex: null,
+    
+
+    const handleApproveClick = (sale) => {  
+
+        setData('stage', 2);
+        setData('remarks', ''); // Reset remarks field in the form data
+
+        setApproveModalOpen(true);
+        setApproveRemarks('');
+        setRemarksError('');
+        setApproveModalLoading(false); // Reset loading state
+        setApproveModalSuccess(false); // Reset success state
+    };
+
+    
+    const handleApproveModalClose = () => {
+        
+        setData('stage', 1);
+        setData('remarks', ''); // Reset remarks field in the form data
+
+        setApproveModalOpen(false);
+        setApproveRemarks('');
+        setRemarksError('');
+        setApproveModalLoading(false); // Reset loading state
+        setApproveModalSuccess(false); // Reset success state
+    };
+
+    const handleApproveModalConfirm = () => {
+        if (!data.remarks.trim()) {
+            setRemarksError('Please enter Approve remarks.');
+            return;
+        }
+    
+        const formData = new FormData();
+        formData.append('remarks', data.remarks);
+    
+        setApproveModalLoading(true); // Set loading state
+    
+        put(route('procurements1.update', purchase.id), formData, {
+            forceFormData: true, // OK to keep
+            onSuccess: () => {
+                console.log('Sale approveed successfully!');
+                setApproveModalLoading(false);
+                setApproveModalSuccess(true);
+                handleApproveModalClose();
+            },
+            onError: (errors) => {
+                setApproveModalLoading(false);
+                console.error('Submission errors:', errors);
+            },
         });
-    }
+        
+        
+    };
 
     return (
         <AuthenticatedLayout
@@ -357,22 +454,28 @@ export default function Edit({ purchase }) {
             <div className="py-12">
                 <div className="mx-auto max-w-4xl sm:px-6 lg:px-8">
                     <div className="bg-white p-6 shadow sm:rounded-lg">
-                        <form onSubmit={handleSubmit} className="space-y-6">
+                        <form onSubmit={handleSubmit} className="space-y-6">                          
 
-                            <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
+                             {/* Supplier Search and New Supplier Button */}
+                             <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
                                 <div className="relative flex-1" ref={supplierDropdownRef}>
-                                    <label htmlFor="supplier_name" className="block text-sm font-medium text-gray-700">
-                                        Supplier Name
-                                    </label>
+                                    <div className="flex items-center justify-between h-10">
+                                        <label htmlFor="supplier_name" className="block text-sm font-medium text-gray-700 mr-2">
+                                            Supplier Name
+                                        </label>
+                                        
+                                    </div>
                                     <input
                                         type="text"
+                                        placeholder="Search supplier..."
                                         value={supplierSearchQuery}
                                         onChange={handleSupplierSearchChange}
                                         onFocus={() => setShowSupplierDropdown(!!supplierSearchQuery.trim())}
-                                        className="w-full border p-2 rounded text-sm pr-10"
+                                        className={`w-full border p-2 rounded text-sm pr-10 ${supplierIDError ? 'border-red-500' : ''}`}
                                         ref={supplierSearchInputRef}
-                                        autoComplete="new-password"
+                                        autoComplete="off"
                                     />
+                                    {supplierIDError && <p className="text-sm text-red-600 mt-1">{supplierIDError}</p>}
                                     {supplierSearchQuery && (
                                         <button
                                             type="button"
@@ -391,7 +494,7 @@ export default function Edit({ purchase }) {
                                                         className="p-2 hover:bg-gray-100 cursor-pointer"
                                                         onClick={() => selectSupplier(supplier)}
                                                     >
-                                                        {supplier.name}
+                                                        {supplier.supplier_type === 'company' ? supplier.company_name : `${supplier.first_name} ${supplier.surname}`}
                                                     </li>
                                                 ))
                                             ) : (
@@ -399,17 +502,44 @@ export default function Edit({ purchase }) {
                                             )}
                                         </ul>
                                     )}
-                                </div>
+                                    {/* Display Supplier Details After Selection */}
+                                    {data.supplier_id && (
+                                        <section className="border-b border-gray-200 pb-4">                                      
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">                                              
 
-                                <div className="relative flex-1">
+                                                {data.supplier_type === 'individual' ? (
+                                                    <>
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700">First Name:</label>
+                                                            <p className="mt-1 text-sm text-gray-500">{data.first_name || 'N/A'}</p>
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700">Other Names:</label>
+                                                            <p className="mt-1 text-sm text-gray-500">{data.other_names || 'N/A'}</p>
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700">Surname:</label>
+                                                            <p className="mt-1 text-sm text-gray-500">{data.surname || 'N/A'}</p>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700">Company Name:</label>
+                                                        <p className="mt-1 text-sm text-gray-500">{data.company_name || 'N/A'}</p>
+                                                    </div>
+                                                )}
 
-                                    <label htmlFor="facility_name" className="block text-sm font-medium text-gray-700">
-                                        Facility Name
-                                    </label>
-
-                                    <div className="mt-1  text-left font-bold text-gray-800 bg-gray-100 p-2 rounded">
-                                        {data.facility_name}
-                                    </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700">Email:</label>
+                                                    <p className="mt-1 text-sm text-gray-500">{data.email || 'N/A'}</p>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700">Phone:</label>
+                                                    <p className="mt-1 text-sm text-gray-500">{data.phone || 'N/A'}</p>
+                                                </div>
+                                            </div>
+                                        </section>
+                                    )}
                                 </div>
                             </div>
 
@@ -457,39 +587,6 @@ export default function Edit({ purchase }) {
                                         onChange={handleFileSelect}
                                         className="mt-1 block w-full text-sm text-gray-500 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                                     />
-                                </div>
-                            </div>
-
-
-                            <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
-                                <div className="flex-1">
-                                    <label htmlFor="total" className="block text-sm font-medium text-gray-700 text-right">
-                                        Total (Auto-calculated)
-                                    </label>
-                                    <div className="mt-1  text-right font-bold text-gray-800 bg-gray-100 p-2 rounded">
-                                        {parseFloat(data.total).toLocaleString(undefined, {
-                                            minimumFractionDigits: 2,
-                                            maximumFractionDigits: 2,
-                                        })}
-                                    </div>
-                                </div>
-
-                                <div className="flex-1">
-                                    <label htmlFor="stage" className="block text-sm font-medium text-gray-700">
-                                        Stage
-                                    </label>
-                                    <select
-                                        id="stage"
-                                        value={data.stage}
-                                        onChange={(e) => setData('stage', e.target.value)}
-                                        className={`mt-1 block w-full border-gray-300 rounded shadow-sm focus:ring-blue-500 focus:border-blue-500 ${errors.stage ? 'border-red-500' : ''}`}
-                                    >
-                                        <option value="1">Draft</option>
-                                        <option value="2">Approved</option>
-                                        <option value="3">Dispatched</option>
-                                        <option value="4">Received</option>
-                                    </select>
-                                    {errors.stage && <p className="text-sm text-red-600 mt-1">{errors.stage}</p>}
                                 </div>
                             </div>
 
@@ -588,6 +685,20 @@ export default function Edit({ purchase }) {
                                                 </td>
                                             </tr>
                                         ))}
+                                        {/* Total Row */}
+                                        <tr className="bg-gray-100 font-bold">
+                                            <td colSpan="3" className="px-6 py-4 text-right text-gray-700">
+                                                Total
+                                            </td>
+                                            <td className="px-6 py-4 text-right text-gray-800">
+                                                {parseFloat(data.total).toLocaleString(undefined, {
+                                                    minimumFractionDigits: 2,
+                                                    maximumFractionDigits: 2,
+                                                })}
+                                            </td>
+                                            <td className="px-6 py-4 text-right text-gray-700"></td>
+
+                                        </tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -625,6 +736,35 @@ export default function Edit({ purchase }) {
                     </div>
                 </div>
             </div>
+
+              {/* Approve Confirmation Modal */}
+              <Modal
+                isOpen={approveModalOpen}
+                onClose={handleApproveModalClose}
+                onConfirm={handleApproveModalConfirm}
+                title="Approve Confirmation"
+                confirmButtonText={approveModalLoading ? 'Loading...' : (approveModalSuccess ? "Success" : 'Approve')}
+                confirmButtonDisabled={approveModalLoading || approveModalSuccess}
+            >
+                <div>
+                    <p>
+                        Are you sure you want to approve this Tender ? This action can not be undone.  
+                    </p>
+
+                    <label htmlFor="Approve_remarks" className="block text-sm font-medium text-gray-700 mt-4">
+                        Approve Remarks:
+                    </label>
+                    <textarea
+                        id="Approve_remarks"
+                        rows="3"
+                        className="mt-1 block w-full border-gray-300 rounded shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                        value={data.remarks}
+                        onChange={(e) => setData('remarks', e.target.value)}
+                    />
+                    {remarksError && <p className="text-red-500 text-sm mt-1">{remarksError}</p>}
+                </div>
+            </Modal>
+
             <Modal
                 isOpen={modalState.isOpen}
                 onClose={handleModalClose}

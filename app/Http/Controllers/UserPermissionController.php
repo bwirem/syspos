@@ -231,11 +231,12 @@ class UserPermissionController extends Controller
     {
         return [
             ['modulekey' => 'dashboard', 'moduletext' => 'Dashboard', 'icon' => 'home'],
-            ['modulekey' => 'billing', 'moduletext' => 'Sales and Billing', 'icon' => 'add_shopping_cart'],
-            ['modulekey' => 'expenses', 'moduletext' => 'Expenses', 'icon' => 'attach_money'],
+            ['modulekey' => 'billing', 'moduletext' => 'Sales and Billing', 'icon' => 'add_shopping_cart'],           
             ['modulekey' => 'procurements', 'moduletext' => 'Procurements', 'icon' => 'inventory'],
             ['modulekey' => 'inventory', 'moduletext' => 'Inventory', 'icon' => 'storage'],
             ['modulekey' => 'material', 'moduletext' => 'Material Conversion', 'icon' => 'sync_alt'],
+            ['modulekey' => 'expenses', 'moduletext' => 'Expenses', 'icon' => 'attach_money'],
+            ['modulekey' => 'humanresurces', 'moduletext' => 'Human Resource', 'icon' => 'person'],
             ['modulekey' => 'accounting', 'moduletext' => 'Financial Accounting', 'icon' => 'account_balance'],
             ['modulekey' => 'reporting', 'moduletext' => 'Reporting/Analytics', 'icon' => 'analytics'],
             ['modulekey' => 'systemConfig', 'moduletext' => 'System Configuration', 'icon' => 'settings'],
@@ -265,11 +266,7 @@ class UserPermissionController extends Controller
                 ['key' => 'billing3', 'text' => 'Sales History', 'icon' => 'sales_history'],
                 ['key' => 'billing4', 'text' => 'Payments History', 'icon' => 'payments_history'],
                 ['key' => 'billing5', 'text' => 'Void History', 'icon' => 'void_history'],
-            ],
-            'expenses' => [
-                ['key' => 'expenses0', 'text' => 'Post Expenses', 'icon' => 'expenses_setup'],
-                ['key' => 'expenses0', 'text' => 'Expenses History', 'icon' => 'history'],
-            ],
+            ],            
             'procurements' => [
                 ['key' => 'procurements0', 'text' => 'Tender and Quotation', 'icon' => 'request_quote'],
                 ['key' => 'procurements1', 'text' => 'Purchase and Receiving', 'icon' => 'shopping_cart'],
@@ -283,6 +280,16 @@ class UserPermissionController extends Controller
             ],
             'material' => [
                 ['key' => 'material0', 'text' => 'Request Materials', 'icon' => 'autorenew'],
+            ],
+            'expenses' => [
+                ['key' => 'expenses0', 'text' => 'Post Expenses', 'icon' => 'expenses_setup'],
+                ['key' => 'expenses0', 'text' => 'Expenses History', 'icon' => 'history'],
+            ],
+            'humanresurces' => [
+                ['key' => 'humanresurces0', 'text' => 'Employee Bio Data', 'icon' => 'person'],
+                ['key' => 'humanresurces1', 'text' => 'Import Employee Data', 'icon' => 'upload'],
+                ['key' => 'humanresurces2', 'text' => 'Termination', 'icon' => 'person_outline'],
+                ['key' => 'humanresurces3', 'text' => 'Payroll', 'icon' => 'payroll'],
             ],
             'accounting' => [
                 ['key' => 'accounting0', 'text' => 'General Ledger', 'icon' => 'menu_book'],

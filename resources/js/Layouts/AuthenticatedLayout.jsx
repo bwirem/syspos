@@ -12,7 +12,7 @@ import {
     faBox,
     faClipboardList,
     faListAlt,
-    faBuilding  // <--- ADDED IMPORT for faBuilding
+    faBuilding,faUpload, faUserSlash, faMoneyCheckAlt
 } from "@fortawesome/free-solid-svg-icons";
 import { faHistory as faSalesHistory } from '@fortawesome/free-solid-svg-icons'; // Sales History
 import { faMoneyCheckAlt as faPaymentsHistory } from '@fortawesome/free-solid-svg-icons'; // Payments History
@@ -45,6 +45,11 @@ const iconMap = {
     //Expenses
     attach_money: faMoneyBillAlt,
     history: faHistory,
+
+    person: faUser,
+    upload: faUpload,
+    person_outline: faUserSlash,
+    payroll: faMoneyCheckAlt,
 
     //Inventories
     inventory: faBoxes,

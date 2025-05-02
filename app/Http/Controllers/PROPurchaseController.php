@@ -168,8 +168,7 @@ class PROPurchaseController extends Controller
  
     public function update(Request $request, PROPurchase $purchase)
     {
-        Log::info('Start processing purchase update:', ['purchase' => $purchase, 'request_data' => $request->all()]);
-
+       
         // 1. Validate input
         $validator = Validator::make($request->all(), [
             'supplier_id' => 'required|exists:siv_suppliers,id',
@@ -289,21 +288,14 @@ class PROPurchaseController extends Controller
 
     public function dispatch(Request $request, PROPurchase $purchase)
     {
-         dd($request->all());
-        Log::info('Start processing dispatch:', ['purchase' => $purchase, 'request_data' => $request->all()]);
-
+        
         // 1. Validate input including recipient data
         $validator = Validator::make($request->all(), [
             'supplier_id' => 'required|exists:siv_suppliers,id',
             'facility_id' => 'required|exists:facilityoptions,id',
             'total' => 'required|numeric|min:0',
-            'stage' => 'required|integer|min:3|max:3', // make sure the satge is dispatch
-            'purchaseitems' => 'required|array',
-        /*    'purchaseitems.*.id' => 'nullable|exists:pro_purchaseitems,id',
-            'purchaseitems.*.item_id' => 'required|exists:siv_products,id',
-            'purchaseitems.*.quantity' => 'required|numeric|min:0',
-            'purchaseitems.*.price' => 'required|numeric|min:0', */
-            'remarks' => 'nullable|string|max:255',
+            'stage' => 'required|integer|min:3|max:3', // make sure the satge is dispatch           
+           
             'recipient_name' => 'required|string|max:255',
             'recipient_contact' => 'required|string|max:255',
             'url' => 'nullable|string',
@@ -328,13 +320,13 @@ class PROPurchaseController extends Controller
                  // Generate Dispatch Number
                 $dispatchNumber = $this->generateDispatchNumber();
 
-                // Generate Purchase Order PDF
-                $pdf = Pdf::loadView('purchase_order', ['purchase' => $purchase, 'recipientName' => $recipientName, 'recipientContact' => $recipientContact]);
-                $pdfFilename = 'purchase_order_' . $purchase->id . '_' . time() . '.pdf';
+                // // Generate Purchase Order PDF
+                // $pdf = Pdf::loadView('purchase_order', ['purchase' => $purchase, 'recipientName' => $recipientName, 'recipientContact' => $recipientContact]);
+                // $pdfFilename = 'purchase_order_' . $purchase->id . '_' . time() . '.pdf';
 
-                // Save the PDF to storage. Adjust path as needed
-                Storage::disk('public')->put('purchase_orders/' . $pdfFilename, $pdf->output());
-                $pdfPath = 'purchase_orders/' . $pdfFilename;
+                // // Save the PDF to storage. Adjust path as needed
+                // Storage::disk('public')->put('purchase_orders/' . $pdfFilename, $pdf->output());
+                // $pdfPath = 'purchase_orders/' . $pdfFilename;
 
                 // update stage
 

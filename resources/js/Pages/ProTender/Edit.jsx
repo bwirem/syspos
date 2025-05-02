@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTrash, faSave, faTimesCircle, faCheck } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
-import { Inertia } from '@inertiajs/inertia';
 import axios from 'axios';
 
 import Modal from '../../Components/CustomModal.jsx';
@@ -20,11 +19,11 @@ const debounce = (func, delay) => {
 
 export default function Edit({ tender }) {
     const { data, setData, put, errors, processing, reset } = useForm({
-        description: tender.description,
-        facility_name: tender.facilityoption.name,
+        description: tender.description,      
         facility_id: tender.facilityoption_id,
-        stage: tender.stage,
+        stage: tender.stage,        
         tenderitems: tender.tenderitems || [],
+        remarks: '',
     });
 
     const [tenderItems, setTenderItems] = useState(data.tenderitems);
@@ -33,13 +32,14 @@ export default function Edit({ tender }) {
     const [itemSearchResults, setItemSearchResults] = useState([]);
     const [showItemDropdown, setShowItemDropdown] = useState(false);
     const itemDropdownRef = useRef(null);
-    const itemSearchInputRef = useRef(null);
+    const itemSearchInputRef = useRef(null);   
 
-    const [facilitySearchQuery, setFacilitySearchQuery] = useState(data.facility_name);
-    const [facilitySearchResults, setFacilitySearchResults] = useState([]);
-    const [showFacilityDropdown, setShowFacilityDropdown] = useState(false);
-    const facilityDropdownRef = useRef(null);
-    const facilitySearchInputRef = useRef(null);
+    // Approve Modal state    
+    const [approveModalOpen, setApproveModalOpen] = useState(false);   
+    const [approveRemarks, setApproveRemarks] = useState('');
+    const [remarksError, setRemarksError] = useState('');
+    const [approveModalLoading, setApproveModalLoading] = useState(false);
+    const [approveModalSuccess, setApproveModalSuccess] = useState(false);
 
     const [modalState, setModalState] = useState({
         isOpen: false,
@@ -65,27 +65,9 @@ export default function Edit({ tender }) {
                 showAlert('Failed to fetch products. Please try again later.');
                 setItemSearchResults([]);
             });
-    }, []);
+    }, []);   
 
-    const fetchFacilitys = useCallback((query) => {
-        if (!query.trim()) {
-            setFacilitySearchResults([]);
-            return;
-        }
-
-        axios.get(route('systemconfiguration4.facilityoptions.search'), { params: { query } })
-            .then((response) => {
-                setFacilitySearchResults(response.data.facilityoptions.slice(0, 5));
-            })
-            .catch((error) => {
-                console.error('Error fetching facilitys:', error);
-                showAlert('Failed to fetch facilitys. Please try again later.');
-                setFacilitySearchResults([]);
-            });
-    }, []);
-
-    const debouncedSearch = useMemo(() => debounce(fetchItems, 300), [fetchItems]);
-    const debouncedFacilitySearch = useMemo(() => debounce(fetchFacilitys, 300), [fetchFacilitys]);
+    const debouncedSearch = useMemo(() => debounce(fetchItems, 300), [fetchItems]);    
 
     useEffect(() => {
         if (itemSearchQuery.trim()) {
@@ -95,13 +77,7 @@ export default function Edit({ tender }) {
         }
     }, [itemSearchQuery, debouncedSearch]);
 
-    useEffect(() => {
-        if (facilitySearchQuery.trim()) {
-            debouncedFacilitySearch(facilitySearchQuery);
-        } else {
-            setFacilitySearchResults([]);
-        }
-    }, [facilitySearchQuery, debouncedFacilitySearch]);
+    
 
     useEffect(() => {
         setData('tenderitems', tenderItems);
@@ -130,17 +106,7 @@ export default function Edit({ tender }) {
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-
-    useEffect(() => {
-        const handleClickOutsideFacility = (event) => {
-            if (facilityDropdownRef.current && !facilityDropdownRef.current.contains(event.target)) {
-                setShowFacilityDropdown(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutsideFacility);
-        return () => document.removeEventListener('mousedown', handleClickOutsideFacility);
-    }, []);
+    }, []);    
 
     const handleTenderItemChange = (index, field, value) => {
         const updatedItems = [...tenderItems];
@@ -250,14 +216,7 @@ export default function Edit({ tender }) {
         const query = e.target.value;
         setItemSearchQuery(query);
         setShowItemDropdown(!!query.trim());
-    };
-
-    const handleFacilitySearchChange = (e) => {
-        const query = e.target.value;
-        setFacilitySearchQuery(query);
-        setShowFacilityDropdown(!!query.trim());
-        setData('facility_name', query);
-    };
+    };    
 
     const handleClearItemSearch = () => {
         setItemSearchQuery('');
@@ -266,32 +225,61 @@ export default function Edit({ tender }) {
         if (itemSearchInputRef.current) {
             itemSearchInputRef.current.focus();
         }
+    };  
+
+  
+    const handleApproveClick = (sale) => {  
+
+        setData('stage', 2);
+        setData('remarks', ''); // Reset remarks field in the form data
+
+        setApproveModalOpen(true);
+        setApproveRemarks('');
+        setRemarksError('');
+        setApproveModalLoading(false); // Reset loading state
+        setApproveModalSuccess(false); // Reset success state
     };
 
-    const handleClearFacilitySearch = () => {
-        setFacilitySearchQuery('');
-        setFacilitySearchResults([]);
-        setShowFacilityDropdown(false);
-        if (facilitySearchInputRef.current) {
-            facilitySearchInputRef.current.focus();
+    
+    const handleApproveModalClose = () => {
+        
+        setData('stage', 1);
+        setData('remarks', ''); // Reset remarks field in the form data
+
+        setApproveModalOpen(false);
+        setApproveRemarks('');
+        setRemarksError('');
+        setApproveModalLoading(false); // Reset loading state
+        setApproveModalSuccess(false); // Reset success state
+    };
+
+    const handleApproveModalConfirm = () => {
+        if (!data.remarks.trim()) {
+            setRemarksError('Please enter Approve remarks.');
+            return;
         }
-    };
-
-    const selectFacility = (selectedFacility) => {
-        setData('facility_name', selectedFacility.name);
-        setFacilitySearchQuery(selectedFacility.name);
-        setFacilitySearchResults([]);
-        setShowFacilityDropdown(false);
-    };
-
-    const handleApproveClick = (e) => {
-        e.preventDefault();
-        setModalState({
-            isOpen: true,
-            message: 'Are you sure you want to submit this tender?',
-            isAlert: false,
+    
+        const formData = new FormData();
+        formData.append('remarks', data.remarks);
+    
+        setApproveModalLoading(true); // Set loading state
+    
+        put(route('procurements0.update', tender.id), formData, {
+            forceFormData: true, // OK to keep
+            onSuccess: () => {
+                console.log('Sale approveed successfully!');
+                setApproveModalLoading(false);
+                setApproveModalSuccess(true);
+                handleApproveModalClose();
+            },
+            onError: (errors) => {
+                setApproveModalLoading(false);
+                console.error('Submission errors:', errors);
+            },
         });
-    }
+        
+        
+    };
 
     return (
         <AuthenticatedLayout
@@ -318,77 +306,7 @@ export default function Edit({ tender }) {
                                         rows="4" // Adjust the number of rows as needed
                                     />
                                     {errors.description && <p className="text-sm text-red-600 mt-1">{errors.description}</p>}
-                                </div>
-
-                                {/* Right Side Section */}
-                                <div className="flex flex-col space-y-4">
-                                    {/* Facility Name */}
-                                    <div className="relative flex-1" ref={facilityDropdownRef}>
-                                        <div className="flex items-center h-4">
-                                            <label htmlFor="facility_name" className="block text-sm font-medium text-gray-700">
-                                                Facility Name
-                                            </label>    
-                                        </div>                                        
-
-                                        <input
-                                            type="text"
-                                            value={facilitySearchQuery}
-                                            onChange={handleFacilitySearchChange}
-                                            onFocus={() => setShowFacilityDropdown(!!facilitySearchQuery.trim())}
-                                            className="w-full border p-2 rounded text-sm pr-10"
-                                            ref={facilitySearchInputRef}
-                                            autoComplete="new-password"
-                                        />
-                                        {facilitySearchQuery && (
-                                            <button
-                                                type="button"
-                                                onClick={handleClearFacilitySearch}
-                                                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                                            >
-                                                <FontAwesomeIcon icon={faTimesCircle} />
-                                            </button>
-                                        )}
-                                        {showFacilityDropdown && (
-                                            <ul className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded shadow-md max-h-48 overflow-y-auto">
-                                                {facilitySearchResults.length > 0 ? (
-                                                    facilitySearchResults.map((facility) => (
-                                                        <li
-                                                            key={facility.id}
-                                                            className="p-2 hover:bg-gray-100 cursor-pointer"
-                                                            onClick={() => selectFacility(facility)}
-                                                        >
-                                                            {facility.name}
-                                                        </li>
-                                                    ))
-                                                ) : (
-                                                    <li className="p-2 text-gray-500">No facilitys found.</li>
-                                                )}
-                                            </ul>
-                                        )}
-                                    </div>
-
-                                    {/* Stage Dropdown */}
-                                    <div className="flex-1">
-                                        <div className="flex items-center h-2">
-                                            <label htmlFor="stage" className="block text-sm font-medium text-gray-700">
-                                                Stage
-                                            </label>
-                                        </div>
-
-                                        <select
-                                            id="stage"
-                                            value={data.stage}
-                                            onChange={(e) => setData('stage', e.target.value)}
-                                            className={`mt-1 block w-full border-gray-300 rounded shadow-sm focus:ring-blue-500 focus:border-blue-500 ${errors.stage ? 'border-red-500' : ''}`}
-                                        >
-                                            <option value="1">Draft</option>
-                                            <option value="2">Approved</option>
-                                            <option value="3">Awarded</option>
-                                            <option value="5">Cancelled</option>
-                                        </select>
-                                        {errors.stage && <p className="text-sm text-red-600 mt-1">{errors.stage}</p>}
-                                    </div>
-                                </div>
+                                </div>                                
                             </div>
 
 
@@ -514,6 +432,35 @@ export default function Edit({ tender }) {
                 message={modalState.message}
                 isAlert={modalState.isAlert}
             />
+
+             {/* Approve Confirmation Modal */}
+             <Modal
+                isOpen={approveModalOpen}
+                onClose={handleApproveModalClose}
+                onConfirm={handleApproveModalConfirm}
+                title="Approve Confirmation"
+                confirmButtonText={approveModalLoading ? 'Loading...' : (approveModalSuccess ? "Success" : 'Approve')}
+                confirmButtonDisabled={approveModalLoading || approveModalSuccess}
+            >
+                <div>
+                    <p>
+                        Are you sure you want to approve this Tender ? This action can not be undone.  
+                    </p>
+
+                    <label htmlFor="Approve_remarks" className="block text-sm font-medium text-gray-700 mt-4">
+                        Approve Remarks:
+                    </label>
+                    <textarea
+                        id="Approve_remarks"
+                        rows="3"
+                        className="mt-1 block w-full border-gray-300 rounded shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                        value={data.remarks}
+                        onChange={(e) => setData('remarks', e.target.value)}
+                    />
+                    {remarksError && <p className="text-red-500 text-sm mt-1">{remarksError}</p>}
+                </div>
+            </Modal>
+
         </AuthenticatedLayout>
     );
 }

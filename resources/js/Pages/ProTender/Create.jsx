@@ -20,9 +20,8 @@ const debounce = (func, delay) => {
 
 export default function Create({facilityoption}) {
     const { data, setData, post, errors, processing, reset } = useForm({
-        description: '',
-        facility_name: facilityoption.name,
-        facility_id: facilityoption.id,       
+        description: '',       
+        facility_id: facilityoption.id || null,       
         stage: 1,
         tenderitems: [],
     });
@@ -34,12 +33,7 @@ export default function Create({facilityoption}) {
     const [showItemDropdown, setShowItemDropdown] = useState(false);
     const itemDropdownRef = useRef(null);
     const itemSearchInputRef = useRef(null);
-
-    const [facilitySearchQuery, setFacilitySearchQuery] = useState('');
-    const [facilitySearchResults, setFacilitySearchResults] = useState([]);
-    const [showFacilityDropdown, setShowFacilityDropdown] = useState(false);
-    const facilityDropdownRef = useRef(null);
-    const facilitySearchInputRef = useRef(null);
+   
 
     const [modalState, setModalState] = useState({
         isOpen: false,
@@ -64,27 +58,9 @@ export default function Create({facilityoption}) {
                 showAlert('Failed to fetch products. Please try again later.');
                 setItemSearchResults([]);
             });
-    }, []);
+    }, []);   
 
-    const fetchFacilitys = useCallback((query) => {
-        if (!query.trim()) {
-            setFacilitySearchResults([]);
-            return;
-        }
-
-        axios.get(route('systemconfiguration4.facilityoptions.search'), { params: { query } })
-            .then((response) => {
-                setFacilitySearchResults(response.data.facilityoptions.slice(0, 5));
-            })
-            .catch((error) => {
-                console.error('Error fetching facilitys:', error);
-                showAlert('Failed to fetch facilitys. Please try again later.');
-                setFacilitySearchResults([]);
-            });
-    }, []);
-
-    const debouncedItemSearch = useMemo(() => debounce(fetchItems, 300), [fetchItems]);
-    const debouncedFacilitySearch = useMemo(() => debounce(fetchFacilitys, 300), [fetchFacilitys]);
+    const debouncedItemSearch = useMemo(() => debounce(fetchItems, 300), [fetchItems]);  
 
     useEffect(() => {
         if (itemSearchQuery.trim()) {
@@ -93,15 +69,7 @@ export default function Create({facilityoption}) {
             setItemSearchResults([]);
         }
     }, [itemSearchQuery, debouncedItemSearch]);
-
-    useEffect(() => {
-        if (facilitySearchQuery.trim()) {
-            debouncedFacilitySearch(facilitySearchQuery);
-        } else {
-            setFacilitySearchResults([]);
-        }
-    }, [facilitySearchQuery, debouncedFacilitySearch]);
-
+  
     useEffect(() => {
         setData('tenderitems', tenderItems);
                
@@ -116,16 +84,7 @@ export default function Create({facilityoption}) {
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
-
-    useEffect(() => {
-        const handleClickOutsideFacility = (event) => {
-            if (facilityDropdownRef.current && !facilityDropdownRef.current.contains(event.target)) {
-                setShowFacilityDropdown(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutsideFacility);
-        return () => document.removeEventListener('mousedown', handleClickOutsideFacility);
-    }, []);
+   
 
     const handleTenderItemChange = (index, field, value) => {
         const updatedItems = [...tenderItems];
@@ -224,12 +183,7 @@ export default function Create({facilityoption}) {
         setShowItemDropdown(!!query.trim());
     };
 
-    const handleFacilitySearchChange = (e) => {
-        const query = e.target.value;
-        setFacilitySearchQuery(query);
-        setData('facility_name', query);
-        setShowFacilityDropdown(!!query.trim());
-    };
+   
 
     const handleClearSearch = () => {
         setItemSearchQuery('');
@@ -240,24 +194,8 @@ export default function Create({facilityoption}) {
         }
     };
 
-    const handleClearFacilitySearch = () => {
-        setFacilitySearchQuery('');
-        setFacilitySearchResults([]);
-        setShowFacilityDropdown(false);
-        if (facilitySearchInputRef.current) {
-            facilitySearchInputRef.current.focus();
-        }
-        setData('facility_name', '');
-        setData('facility_id', null);
-    };
-
-    const selectFacility = (selectedFacility) => {
-        setData('facility_name', selectedFacility.name);
-        setData('facility_id', selectedFacility.id);
-        setFacilitySearchQuery('');
-        setFacilitySearchResults([]);
-        setShowFacilityDropdown(false);
-    };
+   
+    
 
     return (
         <AuthenticatedLayout
@@ -285,78 +223,6 @@ export default function Create({facilityoption}) {
                                     />
                                     {errors.description && <p className="text-sm text-red-600 mt-1">{errors.description}</p>}
                                 </div> 
-
-                                {/* Right Side Section */}
-                                <div className="flex flex-col space-y-4">
-                                    
-                                    {/* Facility Name */}
-                                    <div className="relative flex-1" ref={facilityDropdownRef}>
-                                        <div className="flex items-center h-4">
-                                            <label htmlFor="facility_name" className="block text-sm font-medium text-gray-700 mr-2">
-                                                Facility Name
-                                            </label>
-                                        </div>
-                                        <input
-                                            type="text"
-                                            placeholder="Search facility..."
-                                            value={data.facility_name}
-                                            onChange={handleFacilitySearchChange}
-                                            onFocus={() => setShowFacilityDropdown(!!facilitySearchQuery.trim())}
-                                            className="w-full border p-2 rounded text-sm pr-10"
-                                            ref={facilitySearchInputRef}
-                                            autoComplete="new-password"
-                                        />
-                                        {facilitySearchQuery && (
-                                            <button
-                                                type="button"
-                                                onClick={handleClearFacilitySearch}
-                                                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                                            >
-                                                <FontAwesomeIcon icon={faTimesCircle} />
-                                            </button>
-                                        )}
-                                        {showFacilityDropdown && (
-                                            <ul className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded shadow-md max-h-48 overflow-y-auto">
-                                                {facilitySearchResults.length > 0 ? (
-                                                    facilitySearchResults.map((facility) => (
-                                                        <li
-                                                            key={facility.id}
-                                                            className="p-2 hover:bg-gray-100 cursor-pointer"
-                                                            onClick={() => selectFacility(facility)}
-                                                        >
-                                                            {facility.name}
-                                                        </li>
-                                                    ))
-                                                ) : (
-                                                    <li className="p-2 text-gray-500">No facilitys found.</li>
-                                                )}
-                                            </ul>
-                                        )}
-                                    </div>
-
-                                    {/* Stage Dropdown */}
-                                    <div className="flex-1">
-                                        <div className="flex items-center h-2">
-                                            <label htmlFor="stage" className="block text-sm font-medium text-gray-700  mr-2">
-                                                Stage
-                                            </label>
-                                        </div>  
-                                        <select
-                                            id="stage"
-                                            value={data.stage}
-                                            onChange={(e) => setData('stage', e.target.value)}
-                                            className={`mt-1 block w-full border-gray-300 rounded shadow-sm focus:ring-blue-500 focus:border-blue-500 ${errors.stage ? 'border-red-500' : ''}`}
-                                        >
-                                            <option value="1">Draft</option>
-                                            <option value="2">Quotation</option>
-                                            <option value="3">Awarded</option>
-                                            <option value="5">Cancelled</option>  
-                                        </select>
-                                        {errors.stage && <p className="text-sm text-red-600 mt-1">{errors.stage}</p>}
-                                    </div>
-
-                                </div>
-
                             </div>
 
                         

@@ -152,7 +152,8 @@ Route::middleware('auth')->group(function () {
         Route::post('award/{tender}', [PROTenderController::class, 'award'])->name('award');  
         Route::get('/{tender}/edit', [PROTenderController::class, 'edit'])->name('edit');
         Route::put('/{tender}', [PROTenderController::class, 'update'])->name('update');
-        Route::put('quotation/{tender}', [PROTenderController::class, 'quotation'])->name('quotation');                
+        Route::put('quotation/{tender}', [PROTenderController::class, 'quotation'])->name('quotation');   
+        Route::get('/{tender}/return', [PROTenderController::class, 'return'])->name('return');            
         Route::delete('/{tender}', [PROTenderController::class, 'destroy'])->name('destroy');
     });
 

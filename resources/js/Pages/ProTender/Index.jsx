@@ -150,8 +150,11 @@ export default function Index({ auth, tenders, filters }) {
                                                 href={route("procurements0.edit", tender.id)}
                                                 className="px-2 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-xs flex items-center"
                                             >
-                                                <FontAwesomeIcon icon={faEdit} className="mr-1" />
-                                                {tender.stage === 2 ? "Process" : "Edit"}                                                
+                                                <FontAwesomeIcon icon={faEdit} className="mr-1" />                                                
+                                                {{
+                                                    2: "Process",
+                                                    3: "Award"
+                                                }[tender.stage] || "Edit"}                                           
                                             </Link>
                                          </td>   
 

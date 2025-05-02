@@ -21,8 +21,7 @@ const debounce = (func, delay) => {
 export default function Create({facilityoption}) {
     const { data, setData, post, errors, processing, reset } = useForm({
         supplier_name: '',
-        supplier_id: null,
-        facility_name: facilityoption.name,
+        supplier_id: null,       
         facility_id: facilityoption.id,
         total: 0,
         stage: 1,
@@ -48,10 +47,20 @@ export default function Create({facilityoption}) {
     const supplierSearchInputRef = useRef(null);
     const [supplierIDError, setSupplierIDError] = useState(null);
 
-    const [newSupplierModalOpen, setNewSupplierModalOpen] = useState(false);
-    const [newSupplierName, setNewSupplierName] = useState('');
-    const [newSupplierModalLoading, setNewSupplierModalLoading] = useState(false);
-    const [newSupplierModalSuccess, setNewSupplierModalSuccess] = useState(false);
+    // New Supplier Modal State
+    const [newSupplierName, setNewSupplierName] = useState('');   
+     const [newSupplierModalOpen, setNewSupplierModalOpen] = useState(false);
+     const [newSupplier, setNewSupplier] = useState({
+         supplier_type: 'individual',
+         first_name: '',
+         other_names: '',
+         surname: '',
+         company_name: '',
+         email: '',
+         phone: '',
+     });
+     const [newSupplierModalLoading, setNewSupplierModalLoading] = useState(false);
+     const [newSupplierModalSuccess, setNewSupplierModalSuccess] = useState(false);
     
 
     const [modalState, setModalState] = useState({
@@ -276,14 +285,7 @@ export default function Create({facilityoption}) {
         const query = e.target.value;
         setItemSearchQuery(query);
         setShowItemDropdown(!!query.trim());
-    };
-
-    const handleSupplierSearchChange = (e) => {
-        const query = e.target.value;
-        setSupplierSearchQuery(query);
-        setData('supplier_name', query);
-        setShowSupplierDropdown(!!query.trim());
-    };
+    };    
    
     const handleClearSearch = () => {
         setItemSearchQuery('');
@@ -294,6 +296,27 @@ export default function Create({facilityoption}) {
         }
     };
 
+     // Handle supplier search input change
+     const handleSupplierSearchChange = (e) => {
+        const query = e.target.value;
+        setSupplierSearchQuery(query);
+        setSupplierSearchResults([]); // Clear previous results
+        setShowSupplierDropdown(!!query.trim());
+
+        // Update appropriate fields based on supplier type
+        setData((prevData) => ({
+            ...prevData,
+            first_name: '',
+            other_names: '',
+            surname: '',
+            company_name: '',
+            email: '',
+            phone: '',
+            supplier_id: null,
+        }));
+    };
+
+    // Clear supplier search
     const handleClearSupplierSearch = () => {
         setSupplierSearchQuery('');
         setSupplierSearchResults([]);
@@ -301,38 +324,79 @@ export default function Create({facilityoption}) {
         if (supplierSearchInputRef.current) {
             supplierSearchInputRef.current.focus();
         }
-        setData('supplier_name', '');
-        setData('supplier_id', null);
+
+        setData((prevData) => ({
+            ...prevData,
+            first_name: '',
+            other_names: '',
+            surname: '',
+            company_name: '',
+            email: '',
+            phone: '',
+            supplier_id: null,
+        }));
     };
-   
+
+
+    // Handle supplier selection
     const selectSupplier = (selectedSupplier) => {
-        setData('supplier_name', selectedSupplier.name);
-        setData('supplier_id', selectedSupplier.id);
+        setData((prevData) => ({
+            ...prevData,
+            supplier_type: selectedSupplier.supplier_type,
+            first_name: selectedSupplier.first_name || '',
+            other_names: selectedSupplier.other_names || '',
+            surname: selectedSupplier.surname || '',
+            company_name: selectedSupplier.company_name || '',
+            email: selectedSupplier.email,
+            phone: selectedSupplier.phone || '',
+            supplier_id: selectedSupplier.id,
+        }));
+
         setSupplierSearchQuery('');
         setSupplierSearchResults([]);
         setShowSupplierDropdown(false);
-    };     
-
-    const handleNewSupplierClick = () => {
-        setNewSupplierModalOpen(true);
-        setNewSupplierModalSuccess(false);
     };
 
+  
+    // Function to handle new supplier button click (Open the modal)
+    const handleNewSupplierClick = () => {
+        setNewSupplierModalOpen(true);
+        setNewSupplierModalSuccess(false); //reset state in case open again
+        setNewSupplier({
+            supplier_type: 'individual',
+            first_name: '',
+            other_names: '',
+            surname: '',
+            company_name: '',
+            email: '',
+            phone: '',
+        });
+    };
+    // Function to close the modal
     const handleNewSupplierModalClose = () => {
         setNewSupplierModalOpen(false);
-        setNewSupplierName('');
         setNewSupplierModalLoading(false);
         setNewSupplierModalSuccess(false);
     };
 
+    // Function to confirm new supplier (you should implement saving logic here)
     const handleNewSupplierModalConfirm = async () => {
         setNewSupplierModalLoading(true);
         try {
-            const response = await axios.post(route('systemconfiguration2.suppliers.directstore'), { name: newSupplierName });
+            const response = await axios.post(route('systemconfiguration2.suppliers.directstore'), newSupplier);
 
             if (response.data && response.data.id) {
-                setData('supplier_name', response.data.name);
-                setData('supplier_id', response.data.id);
+                setData((prevData) => ({
+                    ...prevData,
+                    supplier_type: response.data.supplier_type,
+                    first_name: response.data.first_name,
+                    other_names: response.data.other_names,
+                    surname: response.data.surname,
+                    company_name: response.data.company_name,
+                    email: response.data.email,
+                    phone: response.data.phone,
+                    supplier_id: response.data.id,
+                }));
 
                 setNewSupplierModalSuccess(true);
             } else {
@@ -345,12 +409,19 @@ export default function Create({facilityoption}) {
             setNewSupplierModalLoading(false);
             setTimeout(() => {
                 setNewSupplierModalOpen(false);
-                setNewSupplierName('');
                 setNewSupplierModalSuccess(false);
             }, 1000)
 
         }
 
+    };
+
+    const handleNewSupplierInputChange = (e) => {
+        const { id, value } = e.target;
+        setNewSupplier(prevState => ({
+            ...prevState,
+            [id]: value,
+        }));
     };
       
     const handleFileSelect = (event) => {
@@ -371,13 +442,15 @@ export default function Create({facilityoption}) {
                 <div className="mx-auto max-w-4xl sm:px-6 lg:px-8">
                     <div className="bg-white p-6 shadow sm:rounded-lg">
                         <form onSubmit={handleSubmit} className="space-y-6"  encType="multipart/form-data">
-                           
+
+                            {/* Supplier Search and New Supplier Button */}
                             <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
                                 <div className="relative flex-1" ref={supplierDropdownRef}>
                                     <div className="flex items-center justify-between h-10">
                                         <label htmlFor="supplier_name" className="block text-sm font-medium text-gray-700 mr-2">
                                             Supplier Name
                                         </label>
+                                        {/* New Supplier Button Added Here */}
                                         <button
                                             type="button"
                                             onClick={handleNewSupplierClick}
@@ -389,14 +462,14 @@ export default function Create({facilityoption}) {
                                     <input
                                         type="text"
                                         placeholder="Search supplier..."
-                                        value={data.supplier_name}
+                                        value={supplierSearchQuery}
                                         onChange={handleSupplierSearchChange}
                                         onFocus={() => setShowSupplierDropdown(!!supplierSearchQuery.trim())}
-                                        className={`w-full border p-2 rounded text-sm pr-10 ${data.supplier_id === null && supplierIDError ? 'border-red-500' : ''}`}
+                                        className={`w-full border p-2 rounded text-sm pr-10 ${supplierIDError ? 'border-red-500' : ''}`}
                                         ref={supplierSearchInputRef}
-                                        autoComplete="new-password"
+                                        autoComplete="off"
                                     />
-                                    {data.supplier_id === null && supplierIDError && <p className="text-sm text-red-600 mt-1">{supplierIDError}</p>}
+                                    {supplierIDError && <p className="text-sm text-red-600 mt-1">{supplierIDError}</p>}
                                     {supplierSearchQuery && (
                                         <button
                                             type="button"
@@ -415,7 +488,7 @@ export default function Create({facilityoption}) {
                                                         className="p-2 hover:bg-gray-100 cursor-pointer"
                                                         onClick={() => selectSupplier(supplier)}
                                                     >
-                                                        {supplier.name}
+                                                        {supplier.supplier_type === 'company' ? supplier.company_name : `${supplier.first_name} ${supplier.surname}`}
                                                     </li>
                                                 ))
                                             ) : (
@@ -423,24 +496,48 @@ export default function Create({facilityoption}) {
                                             )}
                                         </ul>
                                     )}
+                                    {/* Display Supplier Details After Selection */}
+                                    {data.supplier_id && (
+                                        <section className="border-b border-gray-200 pb-4">                                      
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">                                              
+
+                                                {data.supplier_type === 'individual' ? (
+                                                    <>
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700">First Name:</label>
+                                                            <p className="mt-1 text-sm text-gray-500">{data.first_name || 'N/A'}</p>
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700">Other Names:</label>
+                                                            <p className="mt-1 text-sm text-gray-500">{data.other_names || 'N/A'}</p>
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700">Surname:</label>
+                                                            <p className="mt-1 text-sm text-gray-500">{data.surname || 'N/A'}</p>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700">Company Name:</label>
+                                                        <p className="mt-1 text-sm text-gray-500">{data.company_name || 'N/A'}</p>
+                                                    </div>
+                                                )}
+
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700">Email:</label>
+                                                    <p className="mt-1 text-sm text-gray-500">{data.email || 'N/A'}</p>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700">Phone:</label>
+                                                    <p className="mt-1 text-sm text-gray-500">{data.phone || 'N/A'}</p>
+                                                </div>
+                                            </div>
+                                        </section>
+                                    )}
                                 </div>
+                            </div>                       
 
-                                <div className="relative flex-1">
-                                    <div className="flex items-center h-10">
-                                        <label htmlFor="facility_name" className="block text-sm font-medium text-gray-700 mr-2">
-                                            Facility Name
-                                        </label>
-                                    </div>
-
-                                    <div className="mt-1  text-left font-bold text-gray-800 bg-gray-100 p-2 rounded">
-                                        {data.facility_name}
-                                    </div>
-                                </div>
-
-                            </div>                            
-
-                             <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
-                                {/* Remarks */}
+                             <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">                               {/* Remarks */}
                                 <div className="flex-1">
                                     <label htmlFor="remarks" className="block text-sm font-medium text-gray-700">
                                         Remarks
@@ -475,38 +572,6 @@ export default function Create({facilityoption}) {
                                     </div>
                                 </div>
                                 
-                            </div>
-
-                            <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
-                                <div className="flex-1">
-                                    <label htmlFor="total" className="block text-sm font-medium text-gray-700 text-right">
-                                        Total (Auto-calculated)
-                                    </label>
-                                    <div className="mt-1  text-right font-bold text-gray-800 bg-gray-100 p-2 rounded">
-                                        {parseFloat(data.total).toLocaleString(undefined, {
-                                            minimumFractionDigits: 2,
-                                            maximumFractionDigits: 2,
-                                        })}
-                                    </div>
-                                </div>
-                                <div className="flex-1">
-                                    <label htmlFor="stage" className="block text-sm font-medium text-gray-700">
-                                        Stage
-                                    </label>
-                                    <select
-                                        id="stage"
-                                        value={data.stage}
-                                        onChange={(e) => setData('stage', e.target.value)}
-                                        className={`mt-1 block w-full border-gray-300 rounded shadow-sm focus:ring-blue-500 focus:border-blue-500 ${errors.stage ? 'border-red-500' : ''}`}
-                                    >
-                                        <option value="1">Draft</option>
-                                        <option value="2">Approved</option>
-                                        <option value="3">Dispatched</option>
-                                        <option value="4">Received</option>
-       
-                                    </select>
-                                    {errors.stage && <p className="text-sm text-red-600 mt-1">{errors.stage}</p>}
-                                </div>
                             </div>
 
                             <div className="flex items-center space-x-4 mb-2 py-1">
@@ -601,6 +666,20 @@ export default function Create({facilityoption}) {
                                                 </td>
                                             </tr>
                                         ))}
+                                        {/* Total Row */}
+                                        <tr className="bg-gray-100 font-bold">
+                                            <td colSpan="3" className="px-6 py-4 text-right text-gray-700">
+                                                Total
+                                            </td>
+                                            <td className="px-6 py-4 text-right text-gray-800">
+                                                {parseFloat(data.total).toLocaleString(undefined, {
+                                                    minimumFractionDigits: 2,
+                                                    maximumFractionDigits: 2,
+                                                })}
+                                            </td>
+                                            <td className="px-6 py-4 text-right text-gray-700"></td>
+
+                                        </tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -627,7 +706,7 @@ export default function Create({facilityoption}) {
                         </form>
                     </div>
                 </div>
-            </div>
+            </div>           
 
             {/* New Supplier Modal */}
             <Modal
@@ -638,19 +717,96 @@ export default function Create({facilityoption}) {
                 confirmButtonText={newSupplierModalLoading ? 'Loading...' : (newSupplierModalSuccess ? "Success" : 'Confirm')}
                 confirmButtonDisabled={newSupplierModalLoading || newSupplierModalSuccess}
             >
-                <div>
-                    <label htmlFor="new_supplier_name" className="block text-sm font-medium text-gray-700">
-                        Supplier Name
-                    </label>
-                    <input
-                        type="text"
-                        id="new_supplier_name"
-                        value={newSupplierName}
-                        onChange={(e) => setNewSupplierName(e.target.value)}
-                        className="mt-1 block w-full border-gray-300 rounded shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                        disabled={newSupplierModalLoading || newSupplierModalSuccess}
-                    />
-                </div>
+                <form className="space-y-4">
+                    <div>
+                        <label htmlFor="supplier_type" className="block text-sm font-medium text-gray-700">Supplier Type</label>
+                        <select
+                            id="supplier_type"
+                            value={newSupplier.supplier_type}
+                            onChange={handleNewSupplierInputChange}
+                            className="w-full border p-2 rounded text-sm"
+                            disabled={newSupplierModalLoading || newSupplierModalSuccess}
+                        >
+                            <option value="individual">Individual</option>
+                            <option value="company">Company</option>
+                        </select>
+                    </div>
+
+                    {newSupplier.supplier_type === 'individual' && (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label htmlFor="first_name" className="block text-sm font-medium text-gray-700">First Name</label>
+                                <input
+                                    type="text"
+                                    id="first_name"
+                                    value={newSupplier.first_name}
+                                    onChange={handleNewSupplierInputChange}
+                                    className="w-full border p-2 rounded text-sm"
+                                    disabled={newSupplierModalLoading || newSupplierModalSuccess}
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="other_names" className="block text-sm font-medium text-gray-700">Other Names</label>
+                                <input
+                                    type="text"
+                                    id="other_names"
+                                    value={newSupplier.other_names}
+                                    onChange={handleNewSupplierInputChange}
+                                    className="w-full border p-2 rounded text-sm"
+                                    disabled={newSupplierModalLoading || newSupplierModalSuccess}
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="surname" className="block text-sm font-medium text-gray-700">Surname</label>
+                                <input
+                                    type="text"
+                                    id="surname"
+                                    value={newSupplier.surname}
+                                    onChange={handleNewSupplierInputChange}
+                                    className="w-full border p-2 rounded text-sm"
+                                    disabled={newSupplierModalLoading || newSupplierModalSuccess}
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {newSupplier.supplier_type === 'company' && (
+                        <div>
+                            <label htmlFor="company_name" className="block text-sm font-medium text-gray-700">Company Name</label>
+                            <input
+                                type="text"
+                                id="company_name"
+                                value={newSupplier.company_name}
+                                onChange={handleNewSupplierInputChange}
+                                className="w-full border p-2 rounded text-sm"
+                                disabled={newSupplierModalLoading || newSupplierModalSuccess}
+                            />
+                        </div>
+                    )}
+
+                    <div>
+                        <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</label>
+                        <input
+                            type="email"
+                            id="email"
+                            value={newSupplier.email}
+                            onChange={handleNewSupplierInputChange}
+                            className="w-full border p-2 rounded text-sm"
+                            disabled={newSupplierModalLoading || newSupplierModalSuccess}
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="phone" className="block text-sm font-medium text-gray-700">Phone</label>
+                        <input
+                            type="text"
+                            id="phone"
+                            value={newSupplier.phone}
+                            onChange={handleNewSupplierInputChange}
+                            className="w-full border p-2 rounded text-sm"
+                            disabled={newSupplierModalLoading || newSupplierModalSuccess}
+                        />
+                    </div>
+                </form>
             </Modal>
 
             <Modal
