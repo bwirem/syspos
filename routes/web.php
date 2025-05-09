@@ -610,7 +610,7 @@ Route::middleware('auth')->group(function () {
             Route::post('/', [LOCStreetController::class, 'store'])->name('store');
             Route::get('/{street}/edit', [LOCStreetController::class, 'edit'])->name('edit');
             Route::put('/{street}', [LOCStreetController::class, 'update'])->name('update'); 
-            Route::delete('/{street}', [LOCStreeetController::class, 'destroy'])->name('destroy');
+            Route::delete('/{street}', [LOCStreetController::class, 'destroy'])->name('destroy');
         });   
         
 
