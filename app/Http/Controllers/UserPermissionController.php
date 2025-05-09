@@ -240,8 +240,7 @@ class UserPermissionController extends Controller
             ['modulekey' => 'accounting', 'moduletext' => 'Financial Accounting', 'icon' => 'account_balance'],
             ['modulekey' => 'reporting', 'moduletext' => 'Reporting/Analytics', 'icon' => 'analytics'],
             ['modulekey' => 'systemConfig', 'moduletext' => 'System Configuration', 'icon' => 'settings'],
-            ['modulekey' => 'usermanagement', 'moduletext' => 'User Management', 'icon' => 'manage_accounts'],
-            ['modulekey' => 'security', 'moduletext' => 'Security', 'icon' => 'security_settings'],
+            ['modulekey' => 'usermanagement', 'moduletext' => 'User Management', 'icon' => 'manage_accounts'],           
         ];
     }
 
@@ -292,10 +291,39 @@ class UserPermissionController extends Controller
                 ['key' => 'humanresurces3', 'text' => 'Payroll', 'icon' => 'payroll'],
             ],
             'accounting' => [
-                ['key' => 'accounting0', 'text' => 'General Ledger', 'icon' => 'menu_book'],
+                ['key' => 'accounting0', 'text' => 'General Journal', 'icon' => 'journal_whills'],
+                ['key' => 'accounting1', 'text' => 'General Ledger', 'icon' => 'menu_book'],
+                ['key' => 'accounting2', 'text' => 'Trial Balance', 'icon' => 'balance_scale'],
+                ['key' => 'accounting3', 'text' => 'Balance Sheet', 'icon' => 'balance_scale_left'],
+                ['key' => 'accounting4', 'text' => 'Income Statement', 'icon' => 'file_invoice_dollar'],
+                ['key' => 'accounting5', 'text' => 'Cash Flow Statement', 'icon' => 'exchange_alt'],
+                ['key' => 'accounting6', 'text' => 'Bank Reconciliation', 'icon' => 'landmark'],
+                // ['key' => 'accounting7', 'text' => 'Tax Report', 'icon' => 'receipt'],
+                // ['key' => 'accounting8', 'text' => 'Audit Trail', 'icon' => 'security'],
+                // ['key' => 'accounting9', 'text' => 'Budgeting', 'icon' => 'account_balance'],
+                // ['key' => 'accounting10', 'text' => 'Fixed Assets', 'icon' => 'attach_money'],
+                // ['key' => 'accounting11', 'text' => 'Accounts Payable', 'icon' => 'payments'],
+                // ['key' => 'accounting12', 'text' => 'Accounts Receivable', 'icon' => 'receipt'],
+                // ['key' => 'accounting13', 'text' => 'Inventory Valuation', 'icon' => 'inventory'],
+                // ['key' => 'accounting14', 'text' => 'Financial Ratios', 'icon' => 'assessment'],
+                // ['key' => 'accounting15', 'text' => 'Multi-Currency', 'icon' => 'language'],
+                // ['key' => 'accounting16', 'text' => 'Tax Compliance', 'icon' => 'receipt'],
+                // ['key' => 'accounting17', 'text' => 'Financial Statements', 'icon' => 'attach_money'],  
+                // ['key' => 'accounting18', 'text' => 'Year-End Closing', 'icon' => 'calendar_today'],
+                // ['key' => 'accounting19', 'text' => 'Financial Reporting', 'icon' => 'analytics'],
+                // ['key' => 'accounting20', 'text' => 'Cost Accounting', 'icon' => 'attach_money'],
+                // ['key' => 'accounting21', 'text' => 'Payroll Accounting', 'icon' => 'payroll'],
+                // ['key' => 'accounting22', 'text' => 'Financial Analysis', 'icon' => 'assessment'],
+                // ['key' => 'accounting23', 'text' => 'Financial Planning', 'icon' => 'account_balance'],
             ],
             'reporting' => [
-                ['key' => 'reporting0', 'text' => 'Loan Portfolio Reports', 'icon' => 'description'],
+                ['key' => 'reporting0', 'text' => 'Sales and Billing', 'icon' => 'add_shopping_cart'],
+                ['key' => 'reporting1', 'text' => 'Procurement', 'icon' => 'inventory'],
+                ['key' => 'reporting2', 'text' => 'Inventory', 'icon' => 'storage'],
+                ['key' => 'reporting3', 'text' => 'Material Conversion', 'icon' => 'sync_alt'],
+                ['key' => 'reporting4', 'text' => 'Expenses', 'icon' => 'attach_money'],
+                ['key' => 'reporting5', 'text' => 'Human Resource', 'icon' => 'person'],
+                ['key' => 'reporting6', 'text' => 'Accounting', 'icon' => 'account_balance'],               
             ],
             'systemConfig' => [
                 ['key' => 'systemconfiguration0', 'text' => 'Billing Setup', 'icon' => 'billing_setup'],
@@ -307,10 +335,7 @@ class UserPermissionController extends Controller
             ],
             'usermanagement' => [
                 ['key' => 'usermanagement', 'text' => 'Manage Users', 'icon' => 'manage_accounts'],
-            ],
-            'security' => [
-                ['key' => 'security', 'text' => 'Audit Trail', 'icon' => 'security_settings'],
-            ],
+            ],           
         ];
     }
 

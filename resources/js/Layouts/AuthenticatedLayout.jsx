@@ -12,7 +12,13 @@ import {
     faBox,
     faClipboardList,
     faListAlt,
-    faBuilding,faUpload, faUserSlash, faMoneyCheckAlt
+    faBuilding,faUpload, faUserSlash, faMoneyCheckAlt,
+
+    faJournalWhills,    
+    faBalanceScaleLeft, // or faFileContract if you choose that
+    faFileInvoiceDollar,
+    faExchangeAlt,      // or faCoins
+    faLandmark,         // or faTasks
 } from "@fortawesome/free-solid-svg-icons";
 import { faHistory as faSalesHistory } from '@fortawesome/free-solid-svg-icons'; // Sales History
 import { faMoneyCheckAlt as faPaymentsHistory } from '@fortawesome/free-solid-svg-icons'; // Payments History
@@ -74,7 +80,17 @@ const iconMap = {
     goods_receiving: faBox,          // New: For Goods Receiving
     inventory_reconciliation: faClipboardList, // New: For Inventory Reconciliation
     stock_history: faListAlt,       // New: For Stock History
-    facility_setup: faBuilding      // <--- ADDED facility_setup mapping
+    facility_setup: faBuilding,      // <--- ADDED facility_setup mapping
+
+    journal_whills: faJournalWhills,   
+    balance_scale: faBalanceScale,
+    balance_scale_left: faBalanceScaleLeft,
+    // 'file-contract': faFileContract, // if chosen for balance sheet
+    file_invoice_dollar: faFileInvoiceDollar,
+    exchange_alt: faExchangeAlt,
+    // 'coins': faCoins, // if chosen for cash flow
+    landmark: faLandmark,
+    // 'tasks': faTasks, // if chosen for bank reconciliation
 
 };
 
