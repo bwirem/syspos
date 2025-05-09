@@ -19,6 +19,11 @@ import {
     faFileInvoiceDollar,
     faExchangeAlt,      // or faCoins
     faLandmark,         // or faTasks
+
+   
+    faArrowDown,        // or faSortAmountDown
+    faTrashAlt,    
+    faWrench,    
 } from "@fortawesome/free-solid-svg-icons";
 import { faHistory as faSalesHistory } from '@fortawesome/free-solid-svg-icons'; // Sales History
 import { faMoneyCheckAlt as faPaymentsHistory } from '@fortawesome/free-solid-svg-icons'; // Payments History
@@ -82,6 +87,7 @@ const iconMap = {
     stock_history: faListAlt,       // New: For Stock History
     facility_setup: faBuilding,      // <--- ADDED facility_setup mapping
 
+    // New: Accounting
     journal_whills: faJournalWhills,   
     balance_scale: faBalanceScale,
     balance_scale_left: faBalanceScaleLeft,
@@ -92,6 +98,15 @@ const iconMap = {
     landmark: faLandmark,
     // 'tasks': faTasks, // if chosen for bank reconciliation
 
+    //Fixed Assets
+    fixed_assets: faBuilding, // You can change this to a more appropriate icon if needed
+
+    list_alt: faListAlt,
+    arrow_down: faArrowDown, // or 'sort-amount-down': faSortAmountDown,
+    trash_alt: faTrashAlt,       
+    wrench: faWrench,
+    shield_alt : faShieldAlt,
+    
 };
 
 // SidebarNavLink Component

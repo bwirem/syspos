@@ -53,6 +53,9 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\UserPermissionController;
 
 
+use App\Http\Controllers\Reports\SalesBillingController;
+
+
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -235,6 +238,97 @@ Route::middleware('auth')->group(function () {
         
     });
 
+    
+    
+    // ********************************************************************************************** */
+
+    // Routes for Sales and Bill (Version 3)
+    Route::prefix('reporting0')->name('reporting0.')->group(function () {
+
+        // Main index route
+        Route::get('/', function () {
+            return Inertia::render('Reports/SalesBilling/Index');
+        })->name('index'); // Added a proper route name for the index.
+
+    }); 
+
+
+    // Routes for Sales and Bill (Version 3)
+    Route::prefix('reporting1')->name('reporting1.')->group(function () {
+
+        // Main index route
+        Route::get('/', function () {
+            return Inertia::render('Reports/Procurement/Index');
+        })->name('index'); // Added a proper route name for the index.
+
+    }); 
+
+
+    // Routes for Sales and Bill (Version 3)
+    Route::prefix('reporting2')->name('reporting2.')->group(function () {
+
+        // Main index route
+        Route::get('/', function () {
+            return Inertia::render('Reports/Inventory/Index');
+        })->name('index'); // Added a proper route name for the index.
+
+    }); 
+
+
+    // Routes for Sales and Bill (Version 3)
+    Route::prefix('reporting3')->name('reporting3.')->group(function () {
+
+        // Main index route
+        Route::get('/', function () {
+            return Inertia::render('Reports/MaterialConversion/Index');
+        })->name('index'); // Added a proper route name for the index.
+
+    }); 
+
+
+    // Routes for Sales and Bill (Version 3)
+    Route::prefix('reporting4')->name('reporting4.')->group(function () {
+
+        // Main index route
+        Route::get('/', function () {
+            return Inertia::render('Reports/Expenses/Index');
+        })->name('index'); // Added a proper route name for the index.
+
+    }); 
+
+    // Routes for Sales and Bill (Version 3)
+    Route::prefix('reporting5')->name('reporting5.')->group(function () {
+
+        // Main index route
+        Route::get('/', function () {
+            return Inertia::render('Reports/HumanResource/Index');
+        })->name('index'); // Added a proper route name for the index.
+
+    }); 
+
+    // Routes for Sales and Bill (Version 3)
+    Route::prefix('reporting6')->name('reporting6.')->group(function () {
+
+        // Main index route
+        Route::get('/', function () {
+            return Inertia::render('Reports/FixedAssets/Index');
+        })->name('index'); // Added a proper route name for the index.
+
+    }); 
+
+     // Routes for Sales and Bill (Version 3)
+     Route::prefix('reporting7')->name('reporting7.')->group(function () {
+
+        // Main index route
+        Route::get('/', function () {
+            return Inertia::render('Reports/Accounting/Index');
+        })->name('index'); // Added a proper route name for the index.
+
+    }); 
+
+
+
+    //********************************************************************************************* */
 
     // Routes for Billing Setup (Version 3)
     Route::prefix('systemconfiguration0')->name('systemconfiguration0.')->group(function () {
