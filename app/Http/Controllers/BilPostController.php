@@ -237,7 +237,9 @@ class BilPostController extends Controller
 
     public function pay(Request $request, $order = null)
     {
-        // Log::info('Start processing payment:', ['order' => $order, 'request_data' => $request->all()]);
+         Log::info('Start processing payment:', ['order' => $order, 'request_data' => $request->all()]);
+
+         $order = $request->order;
 
         try {
                 if ($order) {
@@ -319,7 +321,8 @@ class BilPostController extends Controller
 
                 });
             
-                return response()->json(['success' => true, 'message' => 'Payment updated successfully.']);
+                return redirect()->route('billing1.index') // CHANGE 'billing1.index' to your actual route name
+                ->with('success', 'Payment processed successfully.');
 
             } else {
                     // Create mode: Handle POST request
@@ -382,7 +385,8 @@ class BilPostController extends Controller
                 });
 
                 
-                return response()->json(['success' => true, 'message' => 'Payment processed successfully.']);
+                return redirect()->route('billing1.index') // CHANGE 'billing1.index' to your actual route name
+                    ->with('success', 'Payment processed successfully.');
             }
 
         } catch (\Exception $e) {
@@ -395,6 +399,7 @@ class BilPostController extends Controller
             return response()->json(['success' => false, 'message' => 'Error during payment processing.'], 500);
         }
     }
+    
 
 
     // postBills

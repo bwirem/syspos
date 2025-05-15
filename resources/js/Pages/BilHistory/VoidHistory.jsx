@@ -1,173 +1,239 @@
-import React, { useEffect, useState } from "react";
-import { Head, Link, useForm, router } from "@inertiajs/react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
+import { Head, Link, useForm, router as inertiaRouter } from "@inertiajs/react"; // Correct router import
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faSearch, faPlus, faEdit, faTrash } from "@fortawesome/free-solid-svg-icons";
+import {
+    faSearch,
+    faEye,
+    faTrash,
+} from "@fortawesome/free-solid-svg-icons";
 import "@fortawesome/fontawesome-svg-core/styles.css";
 
-import Modal from '../../Components/CustomModal.jsx'; 
+import Modal from '@/Components/CustomModal.jsx'; // Assuming @ alias
 
-export default function Index({ auth, voidsales, filters }) {
-    const { data, setData, get, errors } = useForm({
-        search: filters.search || "",       
+const DEBOUNCE_DELAY = 300;
+
+// Default props to prevent errors if props are not passed
+const defaultVoidSales = { data: [], links: [], meta: {} };
+const defaultFilters = {};
+
+export default function Index({ auth, voidsales = defaultVoidSales, filters = defaultFilters }) {
+    const {
+        data: filterCriteria,
+        setData: setFilterCriteria,
+        errors: filterErrors,
+        processing: formProcessing, // For delete action
+        delete: destroyVoidSaleRecordAction,
+    } = useForm({
+        search: filters.search || "",
     });
 
     const [modalState, setModalState] = useState({
         isOpen: false,
         message: '',
         isAlert: false,
-        voidsaleToDeleteId: null,
+        voidSaleRecordToDeleteId: null,
     });
 
+    const searchTimeoutRef = useRef(null);
+
+    // Effect for fetching data (debounced search)
     useEffect(() => {
-        get(route("billing5.voidsalehistory"), { preserveState: true });
-    }, [data.search, data.stage, get]);
+        if (searchTimeoutRef.current) {
+            clearTimeout(searchTimeoutRef.current);
+        }
+        searchTimeoutRef.current = setTimeout(() => {
+            inertiaRouter.get(
+                route("billing5.voidsalehistory"),
+                {
+                    search: filterCriteria.search,
+                },
+                {
+                    preserveState: true,
+                    preserveScroll: true,
+                    replace: true,
+                }
+            );
+        }, DEBOUNCE_DELAY);
 
+        return () => {
+            if (searchTimeoutRef.current) {
+                clearTimeout(searchTimeoutRef.current);
+            }
+        };
+    }, [filterCriteria.search]);
 
-    const handleSearchChange = (e) => {
-        setData("search", e.target.value);
-    };
+    const handleSearchChange = useCallback((e) => {
+        setFilterCriteria("search", e.target.value);
+    }, [setFilterCriteria]);
 
-   
-    const handleVoidsale = (voidsale) => {
-        const customerName = voidsale.customer.customer_type === 'individual'
-            ? `${voidsale.customer.first_name} ${voidsale.customer.other_names ? voidsale.customer.other_names + ' ' : ''}${voidsale.customer.surname}`
-            : voidsale.customer.company_name;
-    
+    const handleDeleteVoidSaleRecordClick = useCallback((voidsale) => {
+        const customerName = voidsale.customer?.customer_type === 'individual'
+            ? `${voidsale.customer?.first_name || ''} ${voidsale.customer?.other_names || ''} ${voidsale.customer?.surname || ''}`.replace(/\s+/g, ' ').trim() || 'N/A'
+            : voidsale.customer?.company_name || 'N/A';
+
         setModalState({
             isOpen: true,
-            message: `Are you sure you want to voidsale this voidsale for ${customerName}?`,
+            message: `Are you sure you want to delete the record of this voided sale for ${customerName} (Invoice: ${voidsale.invoice_number || 'N/A'})? This action cannot be undone.`,
             isAlert: false,
-            voidsaleToDeleteId: voidsale.id,
+            voidSaleRecordToDeleteId: voidsale.id,
         });
-    };
-    
+    }, []);
 
-    const handleModalClose = () => {
-        setModalState({ isOpen: false, message: '', isAlert: false, voidsaleToDeleteId: null });
-    };
+    const handleModalClose = useCallback(() => {
+        setModalState({ isOpen: false, message: '', isAlert: false, voidSaleRecordToDeleteId: null });
+    }, []);
 
-    const handleModalConfirm = async () => {
-        try {
-            await router.delete(route("billing1.destroy", modalState.voidsaleToDeleteId));
-        } catch (error) {
-            console.error("Failed to delete voidsale:", error);
-            showAlert("There was an error deleting the voidsale. Please try again.");
-        }
-        setModalState({ isOpen: false, message: '', isAlert: false, voidsaleToDeleteId: null });
-    };
-
-    // Show alert modal
-    const showAlert = (message) => {
+    const showAlert = useCallback((message) => {
         setModalState({
             isOpen: true,
             message: message,
             isAlert: true,
-            voidsaleToDeleteId: null,
+            voidSaleRecordToDeleteId: null,
         });
-    };    
+    }, []);
+
+    const handleModalConfirm = useCallback(() => {
+        if (modalState.voidSaleRecordToDeleteId) {
+            destroyVoidSaleRecordAction(route("billing5.destroy", modalState.voidSaleRecordToDeleteId), {
+                preserveScroll: true,
+                onSuccess: () => {
+                    handleModalClose();
+                    // Optionally use Inertia flash messages for success
+                },
+                onError: (errorResponse) => {
+                    console.error("Failed to delete voided sale record:", errorResponse);
+                    const errorMessage = typeof errorResponse === 'string' ? errorResponse : (errorResponse?.message || Object.values(errorResponse).join(' ') || "An unknown error occurred.");
+                    showAlert(`Failed to delete record: ${errorMessage}. Please try again.`);
+                },
+            });
+        }
+    }, [destroyVoidSaleRecordAction, modalState.voidSaleRecordToDeleteId, handleModalClose, showAlert]);
+
+    const formatCurrency = (amount, currencyCodeParam = 'TZS') => {
+        const parsedAmount = parseFloat(amount);
+        if (isNaN(parsedAmount)) return 'N/A';
+        return parsedAmount.toLocaleString(undefined, {
+            style: 'currency',
+            currency: currencyCodeParam,
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        });
+    };
 
     return (
         <AuthenticatedLayout
-            header={<h2 className="text-xl font-semibold text-gray-800">Voidsales History</h2>}
+            user={auth.user}
+            header={<h2 className="text-xl font-semibold leading-tight text-gray-800">Voided Sales History</h2>}
         >
-            <Head title="Voidsales History" />
-            <div className="container mx-auto p-4">
-                {/* Header Actions */}
-                <div className="flex flex-col md:flex-row justify-between items-center mb-4">
-                    <div className="flex items-center space-x-2 mb-4 md:mb-0">
-                        <div className="relative flex items-center">
-                            <FontAwesomeIcon icon={faSearch} className="absolute left-3 text-gray-500" />
-                            <input
-                                type="text"
-                                name="search"
-                                placeholder="Search by customer name"
-                                value={data.search}
-                                onChange={handleSearchChange}
-                                className={`pl-10 border px-2 py-1 rounded text-sm ${errors.search ? "border-red-500" : ""
-                                    }`}
-                            />
-                        </div>                        
+            <Head title="Voided Sales History" />
+            <div className="py-12">
+                <div className="mx-auto max-w-7xl sm:px-6 lg:px-8">
+                    <div className="overflow-hidden bg-white shadow-sm sm:rounded-lg">
+                        <div className="p-6 text-gray-900">
+                            <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
+                                <div className="flex items-center space-x-2">
+                                    <div className="relative flex items-center">
+                                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                            <FontAwesomeIcon icon={faSearch} className="h-4 w-4 text-gray-400" />
+                                        </div>
+                                        <input
+                                            type="text"
+                                            name="search"
+                                            id="search-voidsales"
+                                            placeholder="Search by customer or invoice #"
+                                            value={filterCriteria.search}
+                                            onChange={handleSearchChange}
+                                            className={`block w-full rounded-md border-gray-300 py-2 pl-10 pr-4 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 md:w-64 ${filterErrors.search ? "border-red-500" : ""}`}
+                                        />
+                                    </div>
+                                </div>
+                                {/* No "Create" button for a voided sales history list */}
+                            </div>
+
+                            <div className="overflow-x-auto rounded-lg border border-gray-200">
+                                <table className="min-w-full divide-y divide-gray-200 bg-white">
+                                    <thead className="bg-gray-50">
+                                        <tr>
+                                            <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Customer Name</th>
+                                            <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Invoice #</th>
+                                            <th scope="col" className="px-4 py-3.5 text-right text-sm font-semibold text-gray-900">Original Total</th>
+                                            <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Void Remarks</th>
+                                            <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Voided On</th>
+                                            <th scope="col" className="px-4 py-3.5 text-center text-sm font-semibold text-gray-900">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-200">
+                                        {voidsales.data && voidsales.data.length > 0 ? (
+                                            voidsales.data.map((voidsale) => (
+                                                <tr key={voidsale.id} className="hover:bg-gray-50">
+                                                    <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-700">
+                                                        {voidsale.customer?.customer_type === 'individual' ? (
+                                                            `${voidsale.customer?.first_name || ''} ${voidsale.customer?.other_names || ''} ${voidsale.customer?.surname || ''}`.replace(/\s+/g, ' ').trim() || 'N/A'
+                                                        ) : (
+                                                            voidsale.customer?.company_name || 'N/A'
+                                                        )}
+                                                    </td>
+                                                    <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">
+                                                        {voidsale.invoice_number || 'N/A'}
+                                                    </td>
+                                                    <td className="whitespace-nowrap px-4 py-4 text-right text-sm text-gray-700">
+                                                        {formatCurrency(voidsale.total || voidsale.totaldue, voidsale.currency_code)}
+                                                    </td>
+                                                    <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500 max-w-xs truncate" title={voidsale.remarks}>
+                                                        {voidsale.remarks || 'N/A'}
+                                                    </td>
+                                                    <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">
+                                                        {voidsale.voided_at ? new Date(voidsale.voided_at).toLocaleDateString() : 'N/A'}
+                                                    </td>
+                                                    <td className="whitespace-nowrap px-4 py-4 text-sm text-center">
+                                                        <div className="flex items-center justify-center space-x-2">
+                                                            <Link
+                                                                href={route("billing5.preview", voidsale.id)}
+                                                                className="flex items-center rounded bg-sky-500 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-sky-600"
+                                                                title="Preview Voided Sale Details"
+                                                            >
+                                                                <FontAwesomeIcon icon={faEye} className="mr-1.5 h-3 w-3" />
+                                                                Preview
+                                                            </Link>
+                                                            {/* The ability to delete a voided sale record might depend on business rules */}
+                                                            <button
+                                                                onClick={() => handleDeleteVoidSaleRecordClick(voidsale)}
+                                                                className="flex items-center rounded bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-red-700"
+                                                                disabled={formProcessing && modalState.voidSaleRecordToDeleteId === voidsale.id}
+                                                                title="Delete This Void Record"
+                                                            >
+                                                                <FontAwesomeIcon icon={faTrash} className="mr-1.5 h-3 w-3" />
+                                                                Delete
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        ) : (
+                                            <tr>
+                                                <td colSpan="6" className="whitespace-nowrap px-4 py-10 text-center text-sm text-gray-500">
+                                                    No voided sales records found.
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {/* TODO: Add Pagination (e.g., <Pagination links={voidsales.links} />) */}
+                        </div>
                     </div>
-                </div>
-
-                {/* Voidsales Table */}
-                <div className="overflow-x-auto">
-                    <table className="min-w-full border border-gray-300 shadow-md rounded">
-                        <thead className="bg-gray-50">
-                            <tr>
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Customer Name</th>
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Total Due</th>
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Total Paid</th>
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Balance</th>                               
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {voidsales.data.length > 0 ? (
-                                voidsales.data.map((voidsale, index) => (
-                                    <tr key={voidsale.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                                        <td className="border-b p-3 text-gray-700">
-                                            {voidsale.customer.customer_type === 'individual' ? (
-                                                `${voidsale.customer.first_name} ${voidsale.customer.other_names ? voidsale.customer.other_names + ' ' : ''}${voidsale.customer.surname}`
-                                            ) : (
-                                                voidsale.customer.company_name
-                                            )}
-                                        </td>
-                                        <td className="border-b p-3 text-gray-700 text-right">
-                                            {parseFloat(voidsale.totaldue).toLocaleString(undefined, {
-                                                minimumFractionDigits: 2,
-                                                maximumFractionDigits: 2,
-                                            })}
-                                        </td>
-                                        <td className="border-b p-3 text-gray-700 text-right">
-                                            {parseFloat(voidsale.totalpaid).toLocaleString(undefined, {
-                                                minimumFractionDigits: 2,
-                                                maximumFractionDigits: 2,
-                                            })}
-                                        </td>
-
-                                        <td className="border-b p-3 text-gray-700 text-right">
-                                            {parseFloat(voidsale.totaldue-voidsale.totalpaid).toLocaleString(undefined, {
-                                                minimumFractionDigits: 2,
-                                                maximumFractionDigits: 2,
-                                            })}
-                                        </td>
-                                       
-                                        <td className="border-b p-3 flex space-x-2">
-                                            <Link
-                                                href={route("billing5.preview", voidsale.id)}
-                                                className="px-2 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-xs flex items-center"
-                                            >
-                                                <FontAwesomeIcon icon={faEdit} className="mr-1" />
-                                                 Preview
-                                            </Link>
-                                            <button
-                                                onClick={() => handleVoidsale(voidsale)}
-                                                className="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs flex items-center"
-                                            >
-                                                <FontAwesomeIcon icon={faTrash} className="mr-1" />
-                                                Voidsale
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))
-                            ) : (
-                                <tr>
-                                    <td colSpan="4" className="border-b p-3 text-center text-gray-700">No voidsales found.</td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
                 </div>
             </div>
             <Modal
                 isOpen={modalState.isOpen}
                 onClose={handleModalClose}
-                onConfirm={handleModalConfirm}
-                title={modalState.isAlert ? "Alert" : "Confirm Action"}
+                onConfirm={modalState.isAlert ? null : handleModalConfirm}
+                title={modalState.isAlert ? "Alert" : "Confirm Delete Record"}
                 message={modalState.message}
                 isAlert={modalState.isAlert}
+                isProcessing={formProcessing && modalState.voidSaleRecordToDeleteId !== null}
+                confirmButtonText={modalState.isAlert ? "OK" : (formProcessing ? "Deleting..." : "Confirm Delete")}
             />
         </AuthenticatedLayout>
     );

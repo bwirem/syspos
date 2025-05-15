@@ -1,173 +1,242 @@
-import React, { useEffect, useState } from "react";
-import { Head, Link, useForm, router } from "@inertiajs/react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
+import { Head, Link, useForm, router as inertiaRouter } from "@inertiajs/react"; // Import router and alias it
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faSearch, faPlus, faEdit, faTrash } from "@fortawesome/free-solid-svg-icons";
+import {
+    faSearch,
+    faEye,
+    faTrash,
+} from "@fortawesome/free-solid-svg-icons";
 import "@fortawesome/fontawesome-svg-core/styles.css";
 
-import Modal from '../../Components/CustomModal.jsx'; 
+import Modal from '@/Components/CustomModal.jsx'; // Assuming @ alias
 
-export default function Index({ auth, repayments, filters }) {
-    const { data, setData, get, errors } = useForm({
-        search: filters.search || "",       
+const DEBOUNCE_DELAY = 300;
+
+// Default props to prevent errors if props are not passed (though Inertia usually provides them)
+const defaultRepayments = { data: [], links: [], meta: {} };
+const defaultFilters = {};
+
+export default function Index({ auth, repayments = defaultRepayments, filters = defaultFilters }) {
+    const {
+        data: filterCriteria,
+        setData: setFilterCriteria,
+        errors: filterErrors, // Errors related to filter form fields if any (rare for GET)
+        processing: formProcessing, // General processing state from useForm
+        delete: destroyRepaymentAction, // Aliased delete method
+    } = useForm({
+        search: filters.search || "",
     });
 
     const [modalState, setModalState] = useState({
         isOpen: false,
         message: '',
         isAlert: false,
-        repaymentToDeleteId: null,
+        repaymentToVoidId: null,
     });
 
+    const searchTimeoutRef = useRef(null);
+
+    // Effect for fetching data (debounced search)
     useEffect(() => {
-        get(route("billing4.repaymenthistory"), { preserveState: true });
-    }, [data.search, data.stage, get]);
+        if (searchTimeoutRef.current) {
+            clearTimeout(searchTimeoutRef.current);
+        }
+        searchTimeoutRef.current = setTimeout(() => {
+            inertiaRouter.get(
+                route("billing4.repaymenthistory"),
+                {
+                    search: filterCriteria.search,
+                },
+                {
+                    preserveState: true,
+                    preserveScroll: true,
+                    replace: true,
+                }
+            );
+        }, DEBOUNCE_DELAY);
 
+        return () => {
+            if (searchTimeoutRef.current) {
+                clearTimeout(searchTimeoutRef.current);
+            }
+        };
+    }, [filterCriteria.search]);
 
-    const handleSearchChange = (e) => {
-        setData("search", e.target.value);
-    };
+    const handleSearchChange = useCallback((e) => {
+        setFilterCriteria("search", e.target.value);
+    }, [setFilterCriteria]);
 
-   
-    const handleVoid = (repayment) => {
-        const customerName = repayment.customer.customer_type === 'individual'
-            ? `${repayment.customer.first_name} ${repayment.customer.other_names ? repayment.customer.other_names + ' ' : ''}${repayment.customer.surname}`
-            : repayment.customer.company_name;
-    
+    const handleVoidClick = useCallback((repayment) => {
+        const customerName = repayment.customer?.customer_type === 'individual'
+            ? `${repayment.customer?.first_name || ''} ${repayment.customer?.other_names || ''} ${repayment.customer?.surname || ''}`.replace(/\s+/g, ' ').trim() || 'N/A'
+            : repayment.customer?.company_name || 'N/A';
+
         setModalState({
             isOpen: true,
-            message: `Are you sure you want to void this repayment for ${customerName}?`,
+            message: `Are you sure you want to void this repayment for ${customerName}? This action cannot be undone.`,
             isAlert: false,
-            repaymentToDeleteId: repayment.id,
+            repaymentToVoidId: repayment.id,
         });
-    };
-    
+    }, []);
 
-    const handleModalClose = () => {
-        setModalState({ isOpen: false, message: '', isAlert: false, repaymentToDeleteId: null });
-    };
+    const handleModalClose = useCallback(() => {
+        setModalState({ isOpen: false, message: '', isAlert: false, repaymentToVoidId: null });
+    }, []);
 
-    const handleModalConfirm = async () => {
-        try {
-            await router.delete(route("billing1.destroy", modalState.repaymentToDeleteId));
-        } catch (error) {
-            console.error("Failed to delete repayment:", error);
-            showAlert("There was an error deleting the repayment. Please try again.");
-        }
-        setModalState({ isOpen: false, message: '', isAlert: false, repaymentToDeleteId: null });
-    };
-
-    // Show alert modal
-    const showAlert = (message) => {
+    const showAlert = useCallback((message) => {
         setModalState({
             isOpen: true,
             message: message,
             isAlert: true,
-            repaymentToDeleteId: null,
+            repaymentToVoidId: null,
         });
-    };    
+    }, []);
+
+    const handleModalConfirm = useCallback(() => {
+        if (modalState.repaymentToVoidId) {
+            destroyRepaymentAction(route("billing4.destroy", modalState.repaymentToVoidId), {
+                preserveScroll: true,
+                onSuccess: () => {
+                    handleModalClose();
+                    // Consider using Inertia flash messages for success feedback
+                },
+                onError: (errorResponse) => {
+                    console.error("Failed to void repayment:", errorResponse);
+                    const errorMessage = typeof errorResponse === 'string' ? errorResponse : (errorResponse?.message || Object.values(errorResponse).join(' ') || "An unknown error occurred.");
+                    showAlert(`Failed to void repayment: ${errorMessage}. Please try again.`);
+                },
+            });
+        }
+    }, [destroyRepaymentAction, modalState.repaymentToVoidId, handleModalClose, showAlert]);
+
+    const formatCurrency = (amount, currencyCodeParam = 'TZS') => {
+        const parsedAmount = parseFloat(amount);
+        if (isNaN(parsedAmount)) return 'N/A';
+        return parsedAmount.toLocaleString(undefined, {
+            style: 'currency',
+            currency: currencyCodeParam,
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        });
+    };
 
     return (
         <AuthenticatedLayout
-            header={<h2 className="text-xl font-semibold text-gray-800">Repayments History</h2>}
+            user={auth.user}
+            header={<h2 className="text-xl font-semibold leading-tight text-gray-800">Repayments History</h2>}
         >
             <Head title="Repayments History" />
-            <div className="container mx-auto p-4">
-                {/* Header Actions */}
-                <div className="flex flex-col md:flex-row justify-between items-center mb-4">
-                    <div className="flex items-center space-x-2 mb-4 md:mb-0">
-                        <div className="relative flex items-center">
-                            <FontAwesomeIcon icon={faSearch} className="absolute left-3 text-gray-500" />
-                            <input
-                                type="text"
-                                name="search"
-                                placeholder="Search by customer name"
-                                value={data.search}
-                                onChange={handleSearchChange}
-                                className={`pl-10 border px-2 py-1 rounded text-sm ${errors.search ? "border-red-500" : ""
-                                    }`}
-                            />
-                        </div>                        
+            <div className="py-12">
+                <div className="mx-auto max-w-7xl sm:px-6 lg:px-8">
+                    <div className="overflow-hidden bg-white shadow-sm sm:rounded-lg">
+                        <div className="p-6 text-gray-900">
+                            <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
+                                <div className="flex items-center space-x-2">
+                                    <div className="relative flex items-center">
+                                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                            <FontAwesomeIcon icon={faSearch} className="h-4 w-4 text-gray-400" />
+                                        </div>
+                                        <input
+                                            type="text"
+                                            name="search"
+                                            id="search-repayments" // Added id for label association (optional)
+                                            placeholder="Search by customer or invoice"
+                                            value={filterCriteria.search}
+                                            onChange={handleSearchChange}
+                                            className={`block w-full rounded-md border-gray-300 py-2 pl-10 pr-4 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 md:w-64 ${filterErrors.search ? "border-red-500" : ""}`}
+                                        />
+                                    </div>
+                                </div>
+                                {/* Add "Create Repayment" button if applicable */}
+                            </div>
+
+                            <div className="overflow-x-auto rounded-lg border border-gray-200">
+                                <table className="min-w-full divide-y divide-gray-200 bg-white">
+                                    <thead className="bg-gray-50">
+                                        <tr>
+                                            <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Customer Name</th>
+                                            <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Invoice(s) Paid</th>
+                                            <th scope="col" className="px-4 py-3.5 text-right text-sm font-semibold text-gray-900">Amount Paid</th>
+                                            <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Payment Method</th>
+                                            <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Date</th>
+                                            <th scope="col" className="px-4 py-3.5 text-center text-sm font-semibold text-gray-900">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-200">
+                                        {repayments.data && repayments.data.length > 0 ? (
+                                            repayments.data.map((repayment) => (
+                                                <tr key={repayment.id} className="hover:bg-gray-50">
+                                                    <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-700">
+                                                        {repayment.customer?.customer_type === 'individual' ? (
+                                                            `${repayment.customer?.first_name || ''} ${repayment.customer?.other_names || ''} ${repayment.customer?.surname || ''}`.replace(/\s+/g, ' ').trim() || 'N/A'
+                                                        ) : (
+                                                            repayment.customer?.company_name || 'N/A'
+                                                        )}
+                                                    </td>
+                                                    <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">
+                                                        {/* Assuming repayment.items is an array of paid invoice details */}
+                                                        {repayment.items && repayment.items.length > 0
+                                                            ? repayment.items.map(item => item.invoiceno).join(', ')
+                                                            : 'N/A'}
+                                                    </td>
+                                                    <td className="whitespace-nowrap px-4 py-4 text-right text-sm text-gray-700">
+                                                        {formatCurrency(repayment.totalpaid, repayment.currency_code)}
+                                                    </td>
+                                                    <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">
+                                                        {repayment.payment_method_name || 'N/A'} {/* Assuming this field exists */}
+                                                    </td>
+                                                    <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">
+                                                        {repayment.payment_date ? new Date(repayment.payment_date).toLocaleDateString() : 'N/A'}
+                                                    </td>
+                                                    <td className="whitespace-nowrap px-4 py-4 text-sm text-center">
+                                                        <div className="flex items-center justify-center space-x-2">
+                                                            <Link
+                                                                href={route("billing4.preview", repayment.id)}
+                                                                className="flex items-center rounded bg-sky-500 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-sky-600"
+                                                                title="Preview Repayment"
+                                                            >
+                                                                <FontAwesomeIcon icon={faEye} className="mr-1.5 h-3 w-3" />
+                                                                Preview
+                                                            </Link>
+                                                            {/* Conditionally show Void button based on repayment status or policy */}
+                                                            <button
+                                                                onClick={() => handleVoidClick(repayment)}
+                                                                className="flex items-center rounded bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-red-700"
+                                                                disabled={formProcessing && modalState.repaymentToVoidId === repayment.id}
+                                                                title="Void Repayment"
+                                                            >
+                                                                <FontAwesomeIcon icon={faTrash} className="mr-1.5 h-3 w-3" />
+                                                                Void
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        ) : (
+                                            <tr>
+                                                <td colSpan="6" className="whitespace-nowrap px-4 py-10 text-center text-sm text-gray-500">
+                                                    No repayments found matching your criteria.
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {/* TODO: Add Pagination (e.g., <Pagination links={repayments.links} />) */}
+                        </div>
                     </div>
-                </div>
-
-                {/* Repayments Table */}
-                <div className="overflow-x-auto">
-                    <table className="min-w-full border border-gray-300 shadow-md rounded">
-                        <thead className="bg-gray-50">
-                            <tr>
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Customer Name</th>
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Total Due</th>
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Total Paid</th>
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Balance</th>                               
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {repayments.data.length > 0 ? (
-                                repayments.data.map((repayment, index) => (
-                                    <tr key={repayment.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                                        <td className="border-b p-3 text-gray-700">
-                                            {repayment.customer.customer_type === 'individual' ? (
-                                                `${repayment.customer.first_name} ${repayment.customer.other_names ? repayment.customer.other_names + ' ' : ''}${repayment.customer.surname}`
-                                            ) : (
-                                                repayment.customer.company_name
-                                            )}
-                                        </td>
-                                        <td className="border-b p-3 text-gray-700 text-right">
-                                            {parseFloat(repayment.totaldue).toLocaleString(undefined, {
-                                                minimumFractionDigits: 2,
-                                                maximumFractionDigits: 2,
-                                            })}
-                                        </td>
-                                        <td className="border-b p-3 text-gray-700 text-right">
-                                            {parseFloat(repayment.totalpaid).toLocaleString(undefined, {
-                                                minimumFractionDigits: 2,
-                                                maximumFractionDigits: 2,
-                                            })}
-                                        </td>
-
-                                        <td className="border-b p-3 text-gray-700 text-right">
-                                            {parseFloat(repayment.totaldue-repayment.totalpaid).toLocaleString(undefined, {
-                                                minimumFractionDigits: 2,
-                                                maximumFractionDigits: 2,
-                                            })}
-                                        </td>
-                                       
-                                        <td className="border-b p-3 flex space-x-2">
-                                            <Link
-                                                href={route("billing4.preview", repayment.id)}
-                                                className="px-2 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-xs flex items-center"
-                                            >
-                                                <FontAwesomeIcon icon={faEdit} className="mr-1" />
-                                                 Preview
-                                            </Link>
-                                            <button
-                                                onClick={() => handleVoid(repayment)}
-                                                className="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs flex items-center"
-                                            >
-                                                <FontAwesomeIcon icon={faTrash} className="mr-1" />
-                                                Void
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))
-                            ) : (
-                                <tr>
-                                    <td colSpan="4" className="border-b p-3 text-center text-gray-700">No repayments found.</td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
                 </div>
             </div>
             <Modal
                 isOpen={modalState.isOpen}
                 onClose={handleModalClose}
-                onConfirm={handleModalConfirm}
-                title={modalState.isAlert ? "Alert" : "Confirm Action"}
+                onConfirm={modalState.isAlert ? null : handleModalConfirm}
+                title={modalState.isAlert ? "Alert" : "Confirm Void Repayment"}
                 message={modalState.message}
                 isAlert={modalState.isAlert}
+                isProcessing={formProcessing && modalState.repaymentToVoidId !== null}
+                confirmButtonText={modalState.isAlert ? "OK" : (formProcessing ? "Voiding..." : "Confirm Void")}
             />
         </AuthenticatedLayout>
     );

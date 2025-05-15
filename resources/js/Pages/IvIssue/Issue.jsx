@@ -1,372 +1,364 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, useForm , Link} from '@inertiajs/react';
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Head, useForm, Link, router as inertiaRouter } from '@inertiajs/react';
+import React, { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimesCircle, faArrowLeft, faCheck, faTrash} from '@fortawesome/free-solid-svg-icons';
-import '@fortawesome/fontawesome-svg-core/styles.css'; // Corrected import
+import { faTimesCircle, faCheck, faTruckRampBox } from '@fortawesome/free-solid-svg-icons';
+import '@fortawesome/fontawesome-svg-core/styles.css';
 import Modal from '../../Components/CustomModal.jsx';
 
-export default function Approve({ requistion,fromstore,tostore }) {
-    const { data, setData, put, errors, processing, reset } = useForm({
-        from_store_name: requistion.fromstore?.name || '',
+// Define constants for StoreType integer values based on your PHP Enum
+const STORE_TYPE_STORE = 1;
+const STORE_TYPE_CUSTOMER = 2;
+const STORE_TYPE_SUPPLIER = 3;
+
+// Helper to get display label (optional, but good for UI consistency)
+const getStoreTypeLabel = (value) => {
+    switch (value) {
+        case STORE_TYPE_STORE: return 'Store';
+        case STORE_TYPE_CUSTOMER: return 'Customer';
+        case STORE_TYPE_SUPPLIER: return 'Supplier';
+        default: return 'Unknown';
+    }
+};
+
+export default function IssueGoods({ auth, requistion }) {
+    const { data, setData, put, errors, processing, reset, clearErrors } = useForm({
+        from_store_name: requistion.fromstore?.name || 'N/A',
         from_store_id: requistion.fromstore_id || null,
-        to_store_name: requistion.tostore?.name || '',
+
+        // CRITICAL: Ensure requistion.tostore_type from PHP is the integer (1, 2, or 3)
+        // The fallback to STORE_TYPE_STORE (1) is a guess if requistion.tostore_type is missing.
+        // It's better if requistion.tostore_type is always reliably provided as an integer.
+        tostore_type: Number.isInteger(requistion.tostore_type) ? requistion.tostore_type : STORE_TYPE_STORE,
+
+        to_store_name: requistion.tostore?.name ||
+            (requistion.tostore?.customer_type === 'individual' ? // This logic is for display name, separate from tostore_type
+                `${requistion.tostore.first_name || ''} ${requistion.tostore.other_names || ''} ${requistion.tostore.surname || ''}`.trim() :
+                requistion.tostore?.company_name) || 'N/A',
         to_store_id: requistion.tostore_id || null,
-        tostore_type: requistion.tostore_type || '',
-        total: requistion.total,
+
+        total: parseFloat(requistion.total) || 0,
+        current_stage_display: requistion.stage,
         stage: requistion.stage,
-        delivery_no:null,
-        expiry_date : null,
-        double_entry: true,
-        remarks: '',        
-        requistionitems: requistion.requistionitems || [],
-    });
 
-    const [requistionItems, setRequistionItems] = useState(() => {
-        return data.requistionitems.map(item => ({
-            item_name: item.item_name || item.item?.name || '',
+        requistionitems: requistion.requistionitems?.map(item => ({
+            id: item.id,
+            _listId: `item-issue-${item.id || Date.now()}-${Math.random().toString(16).slice(2)}`,
+            item_name: item.item_name || item.item?.name || 'Unknown Item',
             item_id: item.item_id || item.item?.id || null,
-            quantity: item.quantity || 1,
-            price: item.price || 0,
-            item: item.item || null,
-        }));
-    });
-   
+            quantity: parseInt(item.quantity) || 0,
+            price: parseFloat(item.price) || 0,
+        })) || [],
 
-    const [modalState, setModalState] = useState({
-        isOpen: false,
-        message: '',
-        isAlert: false,
-        itemToRemoveIndex: null,
+        delivery_no: requistion.delivery_no || '',
+        expiry_date: requistion.expiry_date || null,
+        double_entry: requistion.double_entry ?? true,
+        remarks: '',
     });
 
-    const [submitModalOpen, setSubmitModalOpen] = useState(false);
-    const [submitRemarks, setSubmitRemarks] = useState('');
-    const [remarksError, setRemarksError] = useState('');
-    const [submitModalLoading, setSubmitModalLoading] = useState(false);
-    const [submitModalSuccess, setSubmitModalSuccess] = useState(false);
+    const [uiFeedbackModal, setUiFeedbackModal] = useState({
+        isOpen: false, message: '', isAlert: true, onConfirmAction: null, title: 'Alert', confirmText: 'OK'
+    });
+    const [issueConfirmationModal, setIssueConfirmationModal] = useState({
+        isOpen: false, isLoading: false, isSuccess: false,
+    });
 
-    
     useEffect(() => {
-        setData('requistionitems', requistionItems);
-        const calculatedTotal = requistionItems.reduce(
-            (sum, item) => sum + (parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0),
-            0
+        const calculatedTotal = data.requistionitems.reduce(
+            (sum, item) => sum + (parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0), 0
         );
-        setData('total', calculatedTotal);
-    }, [requistionItems, setData]);
-
-    useEffect(() => {
-        // This useEffect is designed to only run when data.requistionitems changes in identity
-        // not on every render, to prevent infinite loops.
-        const newItemList = data.requistionitems.map(item => ({
-            item_name: item.item_name || item.item?.name || '',
-            item_id: item.item_id || item.item?.id || null,
-            quantity: item.quantity || 1,
-            price: item.price || 0,
-            item: item.item || null,
-        }));
-
-        // Use a simple equality check to prevent unnecessary state updates
-        const areEqual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-
-        if (!areEqual(requistionItems, newItemList)) {
-            setRequistionItems(newItemList);
+        if (data.total !== calculatedTotal) {
+            setData('total', calculatedTotal);
         }
     }, [data.requistionitems]);
-     
-    const handleModalConfirm = () => {
-        if (modalState.itemToRemoveIndex !== null) {
-            const updatedItems = requistionItems.filter((_, idx) => idx !== modalState.itemToRemoveIndex);
-            setRequistionItems(updatedItems);
+
+    const showGeneralAlert = (title, message) => {
+        setUiFeedbackModal({
+            isOpen: true, title: title, message: message, isAlert: true, confirmText: 'OK',
+            onConfirmAction: () => setUiFeedbackModal(prev => ({ ...prev, isOpen: false })),
+        });
+    };
+
+    const openIssueConfirmationModal = () => {
+        clearErrors();
+        // CORRECTED: Compare with the integer value for Customer
+        if (data.tostore_type !== STORE_TYPE_CUSTOMER && !data.delivery_no.trim()) {
+             showGeneralAlert("Validation Error", "Please enter a Delivery Note Number for non-customer transfers.");
+             return;
         }
-        setModalState({ isOpen: false, message: '', isAlert: false, itemToRemoveIndex: null });
+        setIssueConfirmationModal({ isOpen: true, isLoading: false, isSuccess: false });
     };
 
-    const handleModalClose = () => {
-        setModalState({ isOpen: false, message: '', isAlert: false, itemToRemoveIndex: null });
-    };
-
-    const showAlert = (message) => {
-        setModalState({
-            isOpen: true,
-            message: message,
-            isAlert: true,
-            itemToRemoveIndex: null,
-        });
-    };
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-
-        const hasEmptyFields = requistionItems.some((item) => {
-            const itemName = item.item_name;
-            const itemID = item.item_id;
-            const parsedQuantity = parseFloat(item.quantity);
-            const parsedPrice = parseFloat(item.price);
-
-            return !itemName ||
-                !itemID ||
-                isNaN(parsedQuantity) || (parsedQuantity <= 0) ||
-                isNaN(parsedPrice) || parsedPrice < 0;
-        });
-
-        if (hasEmptyFields) {
-            showAlert('Please ensure all requistion items have valid item names, quantities, prices, and item IDs.');
+    const handleConfirmIssue = () => {
+        if (!data.remarks.trim()) {
+            setData(prev => ({ ...prev, errors: { ...prev.errors, remarks: 'Issuance remarks are required.' } }));
             return;
         }
-
-        setIsSaving(true);
+        clearErrors('remarks');
+        console.log("Submitting data:", data); // Good for debugging what's being sent
+        setIssueConfirmationModal(prev => ({ ...prev, isLoading: true }));
 
         put(route('inventory1.update', requistion.id), {
+            preserveScroll: true,
             onSuccess: () => {
-                setIsSaving(false);
-                resetForm();
+                setIssueConfirmationModal(prev => ({ ...prev, isLoading: false, isSuccess: true }));
             },
-            onError: (errors) => {
-                console.error(errors);
-                setIsSaving(false)
-                showAlert('An error occurred while saving the requistion. Please check the console for details.');
+            onError: (pageErrors) => {
+                setIssueConfirmationModal(prev => ({ ...prev, isLoading: false, isSuccess: false }));
+                console.error("Issuance errors:", pageErrors);
             },
         });
     };
 
-    const resetForm = () => {
-        reset();
-        setRequistionItems([]);
-        showAlert('Requistion updated successfully!');
+    const formatCurrency = (amount, currencyCode = 'TZS') => {
+        const parsedAmount = parseFloat(amount);
+        if (isNaN(parsedAmount)) return '0.00 ' + currencyCode;
+        return parsedAmount.toLocaleString(undefined, { style: 'currency', currency: currencyCode, minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
-
-   
-    const handleSubmitClick = () => {
-        if (data.requistionitems.length === 0) {
-            showAlert('Please add at least one guarantor before submitting.');
-            return;
-        }       
-
-        setSubmitModalOpen(true);
-        setSubmitRemarks('');
-        setRemarksError('');
-        setSubmitModalLoading(false); // Reset loading state
-        setSubmitModalSuccess(false); // Reset success state
-    };
-
-    
-    const handleSubmitModalClose = () => {
-        setSubmitModalOpen(false);
-        setSubmitRemarks('');
-        setRemarksError('');
-        setSubmitModalLoading(false); // Reset loading state
-        setSubmitModalSuccess(false); // Reset success state
-    };
-
-    const handleSubmitModalConfirm = () => {
-       
-        const formData = new FormData();        
-    
-        setSubmitModalLoading(true); // Set loading state
-    
-        put(route('inventory1.update', requistion.id), formData, {
-            forceFormData: true,
-            onSuccess: () => {
-                setSubmitModalLoading(false);
-                reset(); // Reset form data
-                setSubmitModalSuccess(true); // Set success state
-                handleSubmitModalClose(); // Close the modal on success
-            },
-            onError: (errors) => {
-                setSubmitModalLoading(false);
-                console.error('Submission errors:', errors);
-            },
-        });
-    };
-       
 
     return (
         <AuthenticatedLayout
+            user={auth?.user}
             header={<h2 className="text-xl font-semibold leading-tight text-gray-800">Goods Issuance</h2>}
         >
             <Head title="Goods Issuance" />
             <div className="py-12">
-                <div className="mx-auto max-w-4xl sm:px-6 lg:px-8">
-                    <div className="bg-white p-6 shadow sm:rounded-lg">
-                        <form onSubmit={handleSubmit} className="space-y-6">
-
-                            {/* From Store Name and To Store Name */}
-                            <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
-                                <div className="relative flex-1">
-                                    <label htmlFor="from_store_name" className="block text-sm font-medium text-gray-700">
-                                        From Store
-                                    </label>
-                                    
-                                    <select
-                                        id="from_store_id"
-                                        value={data.from_store_id}
-                                        onChange={(e) => setData("from_store_id", e.target.value)}
-                                        className={`w-full border p-2 rounded text-sm ${errors.from_store_id ? "border-red-500" : ""}`}
-                                    >
-                                        <option value="">Select From Store...</option>
-                                        {fromstore.map(store => (
-                                            <option key={store.id} value={store.id}>
-                                                {store.name} 
-                                            </option>
-                                        ))}
-                                    </select>
-                                {errors.from_store_id && <p className="text-sm text-red-600 mt-1">{errors.from_store_id}</p>}
-
-                                </div>
-
-                                <div className="relative flex-1">
-                                    <label htmlFor="to_store_name" className="block text-sm font-medium text-gray-700">
-                                        To Store
-                                    </label>
-
-                                    <select
-                                        id="to_store_id"
-                                        value={data.to_store_id}
-                                        onChange={(e) => setData("to_store_id", e.target.value)}
-                                        className={`w-full border p-2 rounded text-sm ${errors.to_store_id ? "border-red-500" : ""}`}
-                                    >
-                                        <option value="">Select To Store...</option>
-                                        {tostore.map(store => (
-                                        <option key={store.id} value={store.id}>
-                                            {store.customer_type ? (
-                                            store.customer_type === 'individual' ? (
-                                                `${store.first_name} ${store.other_names ? store.other_names + ' ' : ''}${store.surname}`
-                                            ) : (
-                                                store.company_name
-                                            )
-                                            ) : (
-                                            store.name || "n/a"
-                                            )}
-                                        </option>
-                                        ))}
-                                    </select>
-
-                                    {errors.to_store_id && <p className="text-sm text-red-600 mt-1">{errors.to_store_id}</p>}
-                                    
-                                </div>
+                <div className="mx-auto max-w-5xl sm:px-6 lg:px-8">
+                    <div className="bg-white p-6 shadow-sm sm:rounded-lg">
+                        <div className="space-y-6">
+                            <div className="border-b border-gray-200 pb-5">
+                                <h3 className="text-lg font-medium leading-6 text-gray-900">Requisition to Issue</h3>
+                                <p className="mt-1 text-sm text-gray-500">Review approved requisition details and provide issuance information.</p>
                             </div>
 
-                            {/* Requistion Summary and Stage*/}
-                            <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
+                            <dl className="grid grid-cols-1 gap-x-4 gap-y-8 sm:grid-cols-2">
+                                {/* ... other dl items ... */}
+                                <div className="sm:col-span-1">
+                                    <dt className="text-sm font-medium text-gray-500">To Store / Customer Type</dt>
+                                    {/* Displaying the label for the tostore_type integer */}
+                                    <dd className="mt-1 text-sm text-gray-900">{data.to_store_name} ({getStoreTypeLabel(data.tostore_type)})</dd>
+                                </div>
+                                {/* ... other dl items ... */}
+                                <div className="sm:col-span-1">
+                                    <dt className="text-sm font-medium text-gray-500">Requisition ID</dt>
+                                    <dd className="mt-1 text-sm text-gray-900">{requistion.id || 'N/A'}</dd>
+                                </div>
+                                <div className="sm:col-span-1">
+                                    <dt className="text-sm font-medium text-gray-500">Current Stage</dt>
+                                    <dd className="mt-1 text-sm text-gray-900">
+                                        {data.current_stage_display === 3 ? 'Approved, Pending Issuance' : `Status: ${data.current_stage_display}`}
+                                    </dd>
+                                </div>
+                                <div className="sm:col-span-1">
+                                    <dt className="text-sm font-medium text-gray-500">From Store</dt>
+                                    <dd className="mt-1 text-sm text-gray-900">{data.from_store_name}</dd>
+                                </div>
+                                 <div className="sm:col-span-2">
+                                    <dt className="text-sm font-medium text-gray-500">Approval Remarks (if any)</dt>
+                                    <dd className="mt-1 text-sm text-gray-900 whitespace-pre-wrap">{requistion.remarks || 'N/A'}</dd>
+                                </div>
+                            </dl>
 
-                                <div className="flex-1">
-                                    <label htmlFor="total" className="block text-sm font-medium text-gray-700 text-right">
-                                        Total (Auto-calculated)
+                            <div className="border-t border-gray-200 pt-6 space-y-4">
+                                <h3 className="text-lg font-medium leading-6 text-gray-900">Issuance Information</h3>
+                                <div>
+                                    <label htmlFor="delivery_no" className="block text-sm font-medium leading-6 text-gray-900">
+                                        Delivery Note Number {data.tostore_type !== STORE_TYPE_CUSTOMER && <span className="text-red-500">*</span>}
                                     </label>
-                                    <div className="mt-1  text-right font-bold text-gray-800 bg-gray-100 p-2 rounded">
-                                        {parseFloat(data.total).toLocaleString(undefined, {
-                                            minimumFractionDigits: 2,
-                                            maximumFractionDigits: 2,
-                                        })}
+                                    <div className="mt-2">
+                                        <input
+                                            type="text"
+                                            name="delivery_no"
+                                            id="delivery_no"
+                                            value={data.delivery_no}
+                                            onChange={(e) => setData('delivery_no', e.target.value)}
+                                            className={`block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 ${errors.delivery_no ? "ring-red-500" : ""}`}
+                                        />
+                                        {errors.delivery_no && <p className="mt-1 text-sm text-red-600">{errors.delivery_no}</p>}
                                     </div>
                                 </div>
-                                
-                            </div>                           
-
-                            {/* Requistion Items Table */}
-                            <div className="overflow-x-auto bg-white border border-gray-300 rounded-lg">
-                                <table className="min-w-full divide-y divide-gray-200">
-                                    <thead className="bg-gray-50">
-                                        <tr>
-                                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
-                                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
-                                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
-                                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>                                            
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-200">
-                                        {requistionItems.map((item, index) => (
-                                            <tr key={index} className="bg-gray-50">
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                                    {item.item_name || (item.item ? item.item.name : 'Unknown Item')}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">                                                   
-                                                    {parseFloat(item.quantity).toLocaleString(undefined, {
-                                                        minimumFractionDigits: 2,
-                                                        maximumFractionDigits: 2,
-                                                    })}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">
-                                                   
-                                                    {parseFloat(item.price).toLocaleString(undefined, {
-                                                        minimumFractionDigits: 2,
-                                                        maximumFractionDigits: 2,
-                                                    })}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">
-                                                    {parseFloat(item.quantity * item.price).toLocaleString(undefined, {
-                                                        minimumFractionDigits: 2,
-                                                        maximumFractionDigits: 2,
-                                                    })}
-                                                </td>                                                
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                                <div>
+                                    <label htmlFor="expiry_date" className="block text-sm font-medium leading-6 text-gray-900">
+                                        Global Expiry Date (if applicable)
+                                    </label>
+                                    <div className="mt-2">
+                                        <input
+                                            type="date"
+                                            name="expiry_date"
+                                            id="expiry_date"
+                                            value={data.expiry_date || ''}
+                                            onChange={(e) => setData('expiry_date', e.target.value || null)}
+                                            className={`block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 ${errors.expiry_date ? "ring-red-500" : ""}`}
+                                        />
+                                        {errors.expiry_date && <p className="mt-1 text-sm text-red-600">{errors.expiry_date}</p>}
+                                    </div>
+                                </div>
+                                 <div>
+                                    <label htmlFor="double_entry" className="flex items-center text-sm font-medium leading-6 text-gray-900">
+                                        Enable Double Entry Accounting
+                                        <input
+                                            type="checkbox"
+                                            name="double_entry"
+                                            id="double_entry"
+                                            checked={data.double_entry}
+                                            onChange={(e) => setData('double_entry', e.target.checked)}
+                                            className="ml-2 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+                                        />
+                                    </label>
+                                    {errors.double_entry && <p className="mt-1 text-sm text-red-600">{errors.double_entry}</p>}
+                                </div>
                             </div>
 
-                            {/* Submit Button */}
-                            <div className="flex justify-end space-x-4 mt-6">                                
-                                <Link
-                                    href={route('inventory1.index')}  // Using the route for navigation
-                                    method="get"  // Optional, if you want to define the HTTP method (GET is default)
-                                    preserveState={true}  // Keep the page state (similar to `preserveState: true` in the button)
-                                    className="bg-gray-300 text-gray-700 rounded p-2 flex items-center space-x-2"
-                                >
-                                    <FontAwesomeIcon icon={faTimesCircle} />
-                                    <span>Close</span>
-                                </Link>
-
-                                <Link
-                                    href={route('inventory1.return', requistion.id)}
-                                    className="bg-blue-300 text-blue-700 rounded p-2 flex items-center space-x-2"
-                                >
-                                    <FontAwesomeIcon icon={faArrowLeft} />
-                                    <span>Return</span>
-                                </Link>
-
-                                <button
-                                    type="button"
-                                    onClick={handleSubmitClick}
-                                    className="bg-green-500 text-white rounded p-2 flex items-center space-x-2 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
-                                >
-                                    <FontAwesomeIcon icon={faCheck} />
-                                    <span>Issue</span>
-                                </button>
-                                
+                            {/* ... Requisition Items Table and Actions ... */}
+                            <div className="border-t border-gray-200 pt-6">
+                                <h3 className="text-lg font-medium leading-6 text-gray-900 mb-3">Items to Issue</h3>
+                                {errors.total && <p className="my-2 text-sm text-red-600">Total Error: {errors.total}</p>}
+                                {errors.requistionitems && <p className="my-2 text-sm text-red-600">Item Error: {typeof errors.requistionitems === 'string' ? errors.requistionitems : 'Please check item details.'}</p>}
+                                {data.requistionitems.length > 0 ? (
+                                    <div className="flow-root">
+                                        <div className="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
+                                            <div className="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
+                                                <table className="min-w-full divide-y divide-gray-300">
+                                                    <thead className="bg-gray-50">
+                                                        <tr>
+                                                            <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-3">Item</th>
+                                                            <th scope="col" className="w-28 px-3 py-3.5 text-center text-sm font-semibold text-gray-900">Qty to Issue</th>
+                                                            <th scope="col" className="w-32 px-3 py-3.5 text-center text-sm font-semibold text-gray-900">Price</th>
+                                                            <th scope="col" className="w-36 px-3 py-3.5 text-right text-sm font-semibold text-gray-900 sm:pr-3">Subtotal</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="bg-white divide-y divide-gray-200">
+                                                        {data.requistionitems.map((item, index) => (
+                                                            <tr key={item._listId}>
+                                                                <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-3">
+                                                                    {item.item_name || 'N/A'}
+                                                                    {errors[`requistionitems.${index}.item_id`] && <p className="mt-1 text-xs text-red-600">{errors[`requistionitems.${index}.item_id`]}</p>}
+                                                                </td>
+                                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center text-gray-500">
+                                                                    {item.quantity}
+                                                                    {errors[`requistionitems.${index}.quantity`] && <p className="mt-1 text-xs text-red-600">{errors[`requistionitems.${index}.quantity`]}</p>}
+                                                                </td>
+                                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center text-gray-500">
+                                                                    {formatCurrency(item.price)}
+                                                                    {errors[`requistionitems.${index}.price`] && <p className="mt-1 text-xs text-red-600">{errors[`requistionitems.${index}.price`]}</p>}
+                                                                </td>
+                                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-gray-500 sm:pr-3">{formatCurrency(item.quantity * item.price)}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                    <tfoot className="bg-gray-50">
+                                                        <tr>
+                                                            <th scope="row" colSpan={3} className="pl-4 pr-3 pt-3 text-right text-sm font-semibold text-gray-900 sm:pl-3">Grand Total</th>
+                                                            <td className="pl-3 pr-4 pt-3 text-right text-sm font-semibold text-gray-900 sm:pr-3">{formatCurrency(data.total)}</td>
+                                                        </tr>
+                                                    </tfoot>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-gray-500">No items in this requisition.</p>
+                                )}
                             </div>
-                        </form>
+
+                            {data.current_stage_display === 3 && (
+                                <div className="mt-8 flex items-center justify-end gap-x-4 border-t border-gray-200 pt-6">
+                                    <Link
+                                        href={route('inventory1.index')}
+                                        className="rounded-md bg-gray-200 px-3.5 py-2.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-400"
+                                    >
+                                        <FontAwesomeIcon icon={faTimesCircle} className="mr-2" />
+                                        Cancel
+                                    </Link>
+                                    <button
+                                        type="button"
+                                        onClick={openIssueConfirmationModal}
+                                        disabled={processing || issueConfirmationModal.isLoading}
+                                        className="rounded-md bg-blue-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50"
+                                    >
+                                        <FontAwesomeIcon icon={faTruckRampBox} className="mr-2"/>
+                                        Confirm Issue
+                                    </button>
+                                </div>
+                            )}
+                            {data.current_stage_display !== 3 && (
+                                 <div className="mt-8 flex items-center justify-end gap-x-4 border-t border-gray-200 pt-6">
+                                     <Link
+                                        href={route('inventory1.index')}
+                                        className="rounded-md bg-gray-200 px-3.5 py-2.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-400"
+                                    >
+                                        <FontAwesomeIcon icon={faTimesCircle} className="mr-2" />
+                                        Close
+                                    </Link>
+                                 </div>
+                             )}
+
+                        </div>
                     </div>
                 </div>
             </div>
+
             <Modal
-                isOpen={modalState.isOpen}
-                onClose={handleModalClose}
-                onConfirm={handleModalConfirm}
-                title={modalState.isAlert ? "Alert" : "Confirm Action"}
-                message={modalState.message}
-                isAlert={modalState.isAlert}
+                isOpen={uiFeedbackModal.isOpen}
+                onClose={() => setUiFeedbackModal(prev => ({ ...prev, isOpen: false }))}
+                onConfirm={uiFeedbackModal.onConfirmAction || (() => setUiFeedbackModal(prev => ({ ...prev, isOpen: false })))}
+                title={uiFeedbackModal.title}
+                message={uiFeedbackModal.message}
+                isAlert={uiFeedbackModal.isAlert}
+                confirmButtonText={uiFeedbackModal.confirmText}
             />
 
-             {/* Submit Confirmation Modal */}
-             <Modal
-                isOpen={submitModalOpen}
-                onClose={handleSubmitModalClose}
-                onConfirm={handleSubmitModalConfirm}
-                title="Issuance Confirmation"
-                confirmButtonText={submitModalLoading ? 'Loading...' : (submitModalSuccess ? "Success" : 'Issue')}
-                confirmButtonDisabled={submitModalLoading || submitModalSuccess}
+            <Modal
+                isOpen={issueConfirmationModal.isOpen}
+                onClose={() => {
+                    if (issueConfirmationModal.isSuccess) {
+                        setIssueConfirmationModal({ isOpen: false, isLoading: false, isSuccess: false });
+                        inertiaRouter.visit(route('inventory1.index'));
+                    } else {
+                        setIssueConfirmationModal({ isOpen: false, isLoading: false, isSuccess: false });
+                    }
+                }}
+                onConfirm={issueConfirmationModal.isSuccess ? () => {
+                    setIssueConfirmationModal({ isOpen: false, isLoading: false, isSuccess: false });
+                    inertiaRouter.visit(route('inventory1.index'));
+                } : handleConfirmIssue}
+                title={issueConfirmationModal.isSuccess ? "Issuance Successful" : "Confirm Goods Issuance"}
+                confirmButtonText={
+                    issueConfirmationModal.isSuccess ? "Close" :
+                    issueConfirmationModal.isLoading ? "Processing..." : "Confirm Issue"
+                }
+                confirmButtonDisabled={issueConfirmationModal.isLoading || (processing && !issueConfirmationModal.isSuccess)}
+                isProcessing={issueConfirmationModal.isLoading || processing}
             >
-                <div>
-                    <p>
-                        Are you sure you want to issue the order to <strong>
-                            {data.to_store_name}                            
-                        </strong>?
-                    </p>
-                   
-                </div>
+                {issueConfirmationModal.isSuccess ? (
+                    <div className="text-center py-4">
+                        <FontAwesomeIcon icon={faCheck} className="text-green-500 fa-3x mb-3"/>
+                        <p className="text-lg">Goods issued successfully!</p>
+                        <p className="text-sm text-gray-600">You will be redirected, or click "Close".</p>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        <p className="text-sm text-gray-600">
+                            Please provide remarks for this issuance.
+                        </p>
+                        <div>
+                            <label htmlFor="issuance_remarks" className="block text-sm font-medium text-gray-700">
+                                Issuance Remarks <span className="text-red-500">*</span>
+                            </label>
+                            <textarea
+                                id="remarks" // Changed id to match data key
+                                name="remarks"
+                                rows="3"
+                                className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-600 focus:border-indigo-600 sm:text-sm ${errors.remarks ? 'border-red-500 ring-red-500' : ''}`}
+                                value={data.remarks}
+                                onChange={(e) => setData('remarks', e.target.value)}
+                                disabled={issueConfirmationModal.isLoading || processing}
+                            />
+                            {errors.remarks && <p className="mt-1 text-sm text-red-600">{errors.remarks}</p>}
+                        </div>
+                        {errors.message && <p className="mt-2 text-sm text-red-600">{errors.message}</p>}
+                    </div>
+                )}
             </Modal>
         </AuthenticatedLayout>
     );

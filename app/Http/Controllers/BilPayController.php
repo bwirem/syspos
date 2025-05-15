@@ -25,6 +25,8 @@ use App\Models\{
 
     BILVoidedSale,
     BILCollection,
+
+    BLSPaymentType,
 };
 
 use App\Enums\{
@@ -76,56 +78,75 @@ class BilPayController extends Controller
 
         return inertia('BilPays/PayBills', [
             'debtor' => $debtor,
+            'payment_types' => BLSPaymentType::all(),
         ]);
     }   
      
-    // ... other methods
-
-    public function pay(Request $request, $debtor = null)
+    
+   
+    public function pay(Request $request, $debtor = null) // Assuming $debtor might be part of the route or not strictly used here
     {
-        //Log::info('Start processing payment:', ['pay' => $debtor, 'request_data' => $request->all()]);
+        Log::info('Start processing payment:', ['pay_debtor_param' => $debtor, 'request_data' => $request->all()]);
 
         try {
-            // Create mode: Handle POST request
             $validator = Validator::make($request->all(), [
-                'debtorItems' => 'required|array', // Updated to debtorItems
-                'debtorItems.*.invoiceno' => 'required|string', // Updated field
-                'debtorItems.*.totaldue' => 'required|numeric', // Updated field
-                'debtorItems.*.balancedue' => 'required|numeric', // Updated field
-                'payment_method' => 'nullable|integer',
-                'paid_amount' => 'nullable|numeric',
-                'total_paid' => 'nullable|numeric',
-                'total' => 'nullable|numeric',  // Total Due     
-                'customer_id' => 'required|integer',            
+                'debtorItems' => 'required|array',
+                'debtorItems.*.invoiceno' => 'required|string',
+                'debtorItems.*.totaldue' => 'required|numeric',
+                'debtorItems.*.balancedue' => 'required|numeric',
+                'payment_method' => 'nullable|integer', // Make it required if it always should be
+                'paid_amount' => 'required|numeric|min:0.01', // Usually paid amount must be > 0
+                'total_paid' => 'required|numeric|min:0.01',  // Same as paid_amount
+                'total' => 'required|numeric|min:0', // Total Due for selected items
+                'customer_id' => 'required|integer|exists:bls_customers,id', // Example: ensure customer exists
             ]);
 
             if ($validator->fails()) {
                 Log::error('Validation errors during payment create:', [
-                    'errors' => $validator->errors()->all(),
+                    'errors' => $validator->errors()->toArray(), // Send errors as an array
                     'request_data' => $request->all(),
                 ]);
-                return response()->json(['success' => false, 'message' => $validator->errors()->first()], 422);
+                // Inertia expects validation errors to be returned with a 422 status.
+                // It will automatically handle them on the frontend.
+                // No need to return JSON here if it's an Inertia request.
+                // The `post` method from `useForm` will automatically handle this.
+                // However, if you *must* return JSON for some reason, you'd need to
+                // handle it differently on the frontend (not as a standard Inertia form submission).
+                // For standard Inertia form submissions, just let the validation exception happen
+                // or redirect back with errors.
+                //
+                // For Inertia, on validation failure, Laravel's default behavior of redirecting
+                // back with errors in the session is what Inertia expects.
+                // If you're manually creating the validator, you might need to manually redirect.
+                // A simpler way is to use $request->validate() which does this automatically.
+
+                // If using manual Validator, redirect back with errors for Inertia:
+                 return back()->withErrors($validator)->withInput();
             }
 
             $validated = $validator->validated();
-            
-            // Fill post Bills table            
-            $this->payBills($validated);
-            
 
-            return response()->json(['success' => true, 'message' => 'Payment processed successfully.']);
+            // Fill post Bills table
+            $this->payBills($validated); // Assuming this method exists and works
+
+            // SUCCESS RESPONSE FOR INERTIA:
+            return redirect()->route('billing2.index') // Or any other relevant route
+                             ->with('success', 'Payment processed successfully.'); // Flash message
 
         } catch (\Exception $e) {
             Log::error('Error during payment processing:', [
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
-                'order' => $debtor,
+                'order_param' => $debtor, // Changed key to avoid conflict if $order is a variable
                 'request_data' => $request->all(),
             ]);
-            return response()->json(['success' => false, 'message' => 'Error during payment processing.'], 500);
+
+            // For general exceptions, redirect back with an error message
+            return back()->with('error', 'Error during payment processing. ' . $e->getMessage());
+            // OR if you want to stay on the same page but show a general error (less common for POST success/fail):
+            // return inertia('YourPaymentPage', ['error' => 'Error during payment processing.']);
         }
     }
-      
 
 
     public function payBills($data)

@@ -184,7 +184,9 @@ class IVIssueController extends Controller
      * Update the specified requistion in storage.
      */
     public function update(Request $request, IVRequistion $requistion)
-    {    
+    {  
+        
+               
         
         $StoreToStore = false;
 

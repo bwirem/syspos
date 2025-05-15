@@ -1,14 +1,14 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, useForm } from '@inertiajs/react';
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Head, useForm, Link, router as inertiaRouter } from '@inertiajs/react'; // Added Link, inertiaRouter
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'; // Added React
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimesCircle, faTrash, faSave } from '@fortawesome/free-solid-svg-icons';
+import { faTimesCircle, faTrash, faSave, faPlus, faSpinner } from '@fortawesome/free-solid-svg-icons'; // Added faSave, faPlus, faSpinner
 import '@fortawesome/fontawesome-svg-core/styles.css';
-import { Inertia } from '@inertiajs/inertia';
+// import { Inertia } from '@inertiajs/inertia'; // Not typically needed
 import axios from 'axios';
 
-import Modal from '@/Components/CustomModal';
-import InputField from '@/Components/CustomInputField';
+import Modal from '@/Components/CustomModal.jsx'; // Assuming path is correct
+// Removing InputField for direct Tailwind styling
 
 // Utility function for debouncing
 const debounce = (func, delay) => {
@@ -19,565 +19,506 @@ const debounce = (func, delay) => {
     };
 };
 
-export default function Edit({ physicalinventory }) {
-    const { data, setData, put, errors, processing, reset } = useForm({
+export default function EditPhysicalInventory({ auth, physicalinventory }) { // Added auth
+    const { data, setData, put, errors, processing, reset, clearErrors } = useForm({
         store_name: physicalinventory.store?.name || '',
         store_id: physicalinventory.store_id || null,
         description: physicalinventory.description || '',
-        stage: physicalinventory.stage,
-        physicalinventoryitems: physicalinventory.physicalinventoryitems || [],
-    });
-
-    // Initialize physicalinventoryItems with countedqty and expectedqty
-    const [physicalinventoryItems, setPhysicalinventoryItems] = useState(() => {
-        return data.physicalinventoryitems.map(item => ({
-            item_name: item.item_name || item.item?.name || '',
-            item_id: item.item_id || item.item?.id || null,
-            countedqty: item.countedqty || 0,    // Use countedqty
-            expectedqty: item.expectedqty || 0,  // Use expectedqty
-            price: item.price || 0,
-            item: item.item || null,
-        }));
+        total_counted_value: 0, // Will be calculated
+        stage: physicalinventory.stage || 1,
+        physicalinventoryitems: physicalinventory.physicalinventoryitems?.map(item => ({
+            id: item.id, // This is the ID of the physicalinventoryitem itself
+            _listId: `physitem-edit-${item.id || Date.now()}-${Math.random().toString(16).slice(2)}`,
+            item_name: item.item_name || item.item?.name || 'Unknown Item',
+            item_id: item.item_id || item.item?.id || null, // This is the product ID
+            countedqty: item.countedqty === null || item.countedqty === undefined ? '' : item.countedqty, // Allow empty for input
+            expectedqty: item.expectedqty === null || item.expectedqty === undefined ? 0 : item.expectedqty,
+            price: parseFloat(item.price) || 0,
+        })) || [],
     });
 
     // Item Search State
     const [itemSearchQuery, setItemSearchQuery] = useState('');
     const [itemSearchResults, setItemSearchResults] = useState([]);
     const [showItemDropdown, setShowItemDropdown] = useState(false);
-    const itemDropdownRef = useRef(null);
+    const [isItemSearchLoading, setIsItemSearchLoading] = useState(false);
+    const itemSearchContainerRef = useRef(null);
     const itemSearchInputRef = useRef(null);
 
     // Store Search State
-    const [storeSearchQuery, setStoreSearchQuery] = useState(data.store_name);
+    const [storeSearchQuery, setStoreSearchQuery] = useState(data.store_name); // Initialize with current store name
     const [storeSearchResults, setStoreSearchResults] = useState([]);
     const [showStoreDropdown, setShowStoreDropdown] = useState(false);
-    const storeDropdownRef = useRef(null);
+    const [isStoreSearchLoading, setIsStoreSearchLoading] = useState(false);
+    const storeSearchContainerRef = useRef(null);
     const storeSearchInputRef = useRef(null);
-    const [storeIDError, setStoreIDError] = useState(null);
 
-    const [modalState, setModalState] = useState({
+    // Unified UI Feedback Modal
+    const [uiFeedbackModal, setUiFeedbackModal] = useState({
         isOpen: false,
         message: '',
-        isAlert: false,
-        itemToRemoveIndex: null,
+        isAlert: true,
+        itemIndexToRemove: null,
+        onConfirmAction: null,
+        title: 'Alert',
+        confirmText: 'OK'
     });
 
-    const [isSaving, setIsSaving] = useState(false);
+    const isReadOnly = data.stage > 1; // Determine if form should be read-only
 
     // Fetch items dynamically
-    const fetchItems = useCallback((query) => {
-        if (!query.trim()) {
+    const fetchItems = useCallback(async (query) => {
+        if (!query.trim() || isReadOnly) { // Don't fetch if read-only
             setItemSearchResults([]);
+            setShowItemDropdown(false);
             return;
         }
-
-        axios.get(route('systemconfiguration2.products.search'), { params: { query } })
-            .then((response) => {
-                setItemSearchResults(response.data.products.slice(0, 5));
-            })
-            .catch((error) => {
-                console.error('Error fetching products:', error);
-                showAlert('Failed to fetch products. Please try again later.');
-                setItemSearchResults([]);
-            });
-    }, []);
+        setIsItemSearchLoading(true);
+        try {
+            const response = await axios.get(route('systemconfiguration2.products.search'), { params: { query } });
+            setItemSearchResults(response.data.products?.slice(0, 10) || []);
+            setShowItemDropdown(true);
+        } catch (error) {
+            console.error('Error fetching products:', error);
+            showGeneralAlert('Fetch Error', 'Failed to fetch products.');
+            setItemSearchResults([]); setShowItemDropdown(false);
+        } finally {
+            setIsItemSearchLoading(false);
+        }
+    }, [isReadOnly]); // Add showGeneralAlert if it's not defined in a stable way
 
     // Fetch Stores dynamically
-    const fetchStores = useCallback((query) => {
-        if (!query.trim()) {
+    const fetchStores = useCallback(async (query) => {
+        if (!query.trim() || isReadOnly) { // Don't fetch if read-only
             setStoreSearchResults([]);
+            setShowStoreDropdown(false);
             return;
         }
+        setIsStoreSearchLoading(true);
+        try {
+            const response = await axios.get(route('systemconfiguration2.stores.search'), { params: { query } });
+            setStoreSearchResults(response.data.stores?.slice(0, 10) || []);
+            setShowStoreDropdown(true);
+        } catch (error) {
+            console.error('Error fetching stores:', error);
+            showGeneralAlert('Fetch Error', 'Failed to fetch stores.');
+            setStoreSearchResults([]); setShowStoreDropdown(false);
+        } finally {
+            setIsStoreSearchLoading(false);
+        }
+    }, [isReadOnly]); // Add showGeneralAlert if it's not defined in a stable way
 
-        axios.get(route('systemconfiguration2.stores.search'), { params: { query } })
-            .then((response) => {
-                setStoreSearchResults(response.data.stores.slice(0, 5));
-            })
-            .catch((error) => {
-                console.error('Error fetching stores:', error);
-                showAlert('Failed to fetch Stores. Please try again later.');
-                setStoreSearchResults([]);
-            });
-    }, []);
-
-
-
-    // Debounced search handler
-    const debouncedSearch = useMemo(() => debounce(fetchItems, 300), [fetchItems]);
-    // Debounced store search handler
-    const debouncedStoreSearch = useMemo(() => debounce(fetchStores, 300), [fetchStores]);
-
+    const debouncedItemSearch = useMemo(() => debounce(fetchItems, 350), [fetchItems]);
+    const debouncedStoreSearch = useMemo(() => debounce(fetchStores, 350), [fetchStores]);
 
     useEffect(() => {
-        if (itemSearchQuery.trim()) {
-            debouncedSearch(itemSearchQuery);
-        } else {
-            setItemSearchResults([]);
-        }
-    }, [itemSearchQuery, debouncedSearch]);
+        debouncedItemSearch(itemSearchQuery);
+    }, [itemSearchQuery, debouncedItemSearch]);
 
     useEffect(() => {
-        if (storeSearchQuery.trim()) {
-            debouncedStoreSearch(storeSearchQuery);
-        } else {
-            setStoreSearchResults([]);
-        }
+        debouncedStoreSearch(storeSearchQuery);
     }, [storeSearchQuery, debouncedStoreSearch]);
 
-    //Update physicalinventoryitems
+
+    // Calculate total counted value
     useEffect(() => {
-        setData('physicalinventoryitems', physicalinventoryItems);
-    }, [physicalinventoryItems, setData]);
-
-
-    useEffect(() => {
-        // This useEffect is designed to only run when data.physicalinventoryitems changes in identity
-        // not on every render, to prevent infinite loops.
-        const newItemList = data.physicalinventoryitems.map(item => ({
-            item_name: item.item_name || item.item?.name || '',
-            item_id: item.item_id || item.item?.id || null,
-            countedqty: item.countedqty || 0,  // Use countedqty
-            expectedqty: item.expectedqty || 0, // Use expectedqty
-            price: item.price || 0,
-            item: item.item || null,
-        }));
-
-        // Use a simple equality check to prevent unnecessary state updates
-        const areEqual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-
-        if (!areEqual(physicalinventoryItems, newItemList)) {
-            setPhysicalinventoryItems(newItemList);
+        const calculatedTotal = data.physicalinventoryitems.reduce(
+            (sum, item) => sum + (parseFloat(item.countedqty) || 0) * (parseFloat(item.price) || 0),
+            0
+        );
+        if (data.total_counted_value !== calculatedTotal) {
+            setData('total_counted_value', calculatedTotal);
         }
-    }, [data.physicalinventoryitems]);
+    }, [data.physicalinventoryitems, data.total_counted_value, setData]);
 
-    // Handle click outside item dropdown
+    // Handle click outside dropdowns
     useEffect(() => {
         const handleClickOutside = (event) => {
-            if (itemDropdownRef.current && !itemDropdownRef.current.contains(event.target)) {
+            if (itemSearchContainerRef.current && !itemSearchContainerRef.current.contains(event.target)) {
                 setShowItemDropdown(false);
+            }
+            if (storeSearchContainerRef.current && !storeSearchContainerRef.current.contains(event.target)) {
+                setShowStoreDropdown(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Handle click outside Store dropdown
-    useEffect(() => {
-        const handleClickOutsideStore = (event) => {
-            if (storeDropdownRef.current && !storeDropdownRef.current.contains(event.target)) {
-                setShowStoreDropdown(false);
-            }
+    const handlePhysicalInventoryItemChange = (index, field, value) => {
+        if (isReadOnly) return;
+        setData(prevData => {
+            const updatedItems = prevData.physicalinventoryitems.map((item, i) => {
+                if (i === index) {
+                    let processedValue = value;
+                     if (['countedqty', 'expectedqty', 'price'].includes(field)) {
+                        const parsedValue = parseFloat(value);
+                        processedValue = isNaN(parsedValue) ? '' : (parsedValue < 0 ? 0 : parsedValue);
+                        if (value === '' && ['countedqty', 'expectedqty'].includes(field)) processedValue = '';
+                    }
+                    return { ...item, [field]: processedValue };
+                }
+                return item;
+            });
+            return { ...prevData, physicalinventoryitems: updatedItems };
+        });
+    };
+
+    const addPhysicalInventoryItem = (selectedItem) => {
+        if (isReadOnly || !selectedItem || !selectedItem.id) return;
+
+        const newItem = {
+            _listId: `physitem-edit-new-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            item_name: selectedItem.name,
+            item_id: selectedItem.id,
+            countedqty: '',
+            expectedqty: parseFloat(selectedItem.stock_quantity) || 0,
+            price: parseFloat(selectedItem.price) || 0,
+            id: null, // This new item doesn't have a DB ID yet
         };
-        document.addEventListener('mousedown', handleClickOutsideStore);
-        return () => document.removeEventListener('mousedown', handleClickOutsideStore);
-    }, []);
-
-
-    // Updated handlePhysicalinventoryItemChange to handle new fields
-    const handlePhysicalinventoryItemChange = (index, field, value) => {
-        const updatedItems = [...physicalinventoryItems];
-        if (field === 'countedqty' || field === 'expectedqty' || field === 'price') {
-            let parsedValue = parseFloat(value);
-            if (field === 'countedqty' || field === 'expectedqty') {
-                parsedValue = parseInt(value, 10); // Parse as integer for quantities
-            }
-            updatedItems[index][field] = isNaN(parsedValue) || parsedValue < 0 ? 0 : parsedValue;
-        } else {
-            updatedItems[index][field] = value;
+        if (data.physicalinventoryitems.some(item => item.item_id === newItem.item_id)) {
+            showGeneralAlert('Item Already Added', `"${newItem.item_name}" is already in the list.`);
+            return;
         }
-        setPhysicalinventoryItems(updatedItems);
+        setData(prevData => ({
+            ...prevData,
+            physicalinventoryitems: [...prevData.physicalinventoryitems, newItem]
+        }));
+        setItemSearchQuery(''); setItemSearchResults([]); setShowItemDropdown(false); itemSearchInputRef.current?.focus();
     };
 
-    //addphysicalinventory
-    const addPhysicalinventoryItem = (selectedItem = null) => {
-        const newItem = selectedItem
-            ? {
-                item_name: selectedItem.name,
-                item_id: selectedItem.id,
-                countedqty: 0,     // Initialize countedqty
-                expectedqty: 0,   // Initialize expectedqty
-                price: selectedItem.price,
-                item: selectedItem
-            }
-            : {
-                item_name: '',
-                item_id: null,
-                countedqty: 0,
-                expectedqty: 0,
-                price: 0,
-                item: null
-            };
-
-        setPhysicalinventoryItems((prevItems) => {
-            const updatedItems = [...prevItems, newItem];
-            setData('physicalinventoryitems', updatedItems); // Update Inertia data here
-            return updatedItems;
-        });
-
-
-        setItemSearchQuery('');
-        setItemSearchResults([]);
-        setShowItemDropdown(false);
+    const handleRemoveItemConfirmed = (indexToRemove) => {
+        // No isReadOnly check here, as modal wouldn't open if it was.
+        if (indexToRemove !== null && typeof indexToRemove === 'number') {
+            setData(prevData => ({
+                ...prevData,
+                physicalinventoryitems: prevData.physicalinventoryitems.filter((_, idx) => idx !== indexToRemove)
+            }));
+        }
+        setUiFeedbackModal(prev => ({ ...prev, isOpen: false, itemIndexToRemove: null, onConfirmAction: null }));
     };
 
-    const removePhysicalinventoryItem = (index) => {
-        setModalState({
+    const confirmRemovePhysicalInventoryItem = (index) => {
+        if (isReadOnly) return;
+        setUiFeedbackModal({
             isOpen: true,
-            message: 'Are you sure you want to remove this item?',
+            message: `Are you sure you want to remove "${data.physicalinventoryitems[index]?.item_name || 'this item'}"?`,
             isAlert: false,
-            itemToRemoveIndex: index,
+            itemIndexToRemove: index,
+            onConfirmAction: () => handleRemoveItemConfirmed(index),
+            title: 'Confirm Removal',
+            confirmText: 'Yes, Remove'
         });
     };
 
-    const handleModalConfirm = () => {
-        if (modalState.itemToRemoveIndex !== null) {
-            const updatedItems = physicalinventoryItems.filter((_, idx) => idx !== modalState.itemToRemoveIndex);
-            setPhysicalinventoryItems(updatedItems);
-        }
-        setModalState({ isOpen: false, message: '', isAlert: false, itemToRemoveIndex: null });
-    };
-
-    const handleModalClose = () => {
-        setModalState({ isOpen: false, message: '', isAlert: false, itemToRemoveIndex: null });
-    };
-
-    const showAlert = (message) => {
-        setModalState({
-            isOpen: true,
-            message: message,
-            isAlert: true,
-            itemToRemoveIndex: null,
+    const showGeneralAlert = (title, message) => {
+        setUiFeedbackModal({
+            isOpen: true, title: title, message: message, isAlert: true, confirmText: 'OK',
+            onConfirmAction: () => setUiFeedbackModal(prev => ({ ...prev, isOpen: false, itemIndexToRemove: null, onConfirmAction: null })),
+            itemIndexToRemove: null
         });
     };
 
-    const handleSubmit = (e) => {
+    const handleSelectStore = (selectedStore) => {
+        if (isReadOnly) return;
+        setData(prevData => ({
+            ...prevData,
+            store_id: selectedStore.id,
+            store_name: selectedStore.name
+        }));
+        setStoreSearchQuery(selectedStore.name);
+        setShowStoreDropdown(false); setStoreSearchResults([]);
+        storeSearchInputRef.current?.blur();
+    };
+
+    const handleSubmitChanges = (e) => {
         e.preventDefault();
-        // Validate store_id
-        if (data.store_id !== null && !Number.isInteger(Number(data.store_id))) {
-            setStoreIDError('Store ID must be an integer.');
-            return; // Stop form submission
-        } else {
-            setStoreIDError(null);
+        if (isReadOnly) {
+            showGeneralAlert("Read Only", "This record cannot be edited in its current stage.");
+            return;
         }
+        clearErrors();
 
-        //Check for validation
-        const hasEmptyFields = physicalinventoryItems.some((item) => {
-            const itemName = item.item_name;
-            const itemID = item.item_id;
-            const parsedCountedQty = parseFloat(item.countedqty);
-            const parsedExpectedQty = parseFloat(item.expectedqty);
-            const parsedPrice = parseFloat(item.price);
-
-            return !itemName ||
-                !itemID ||
-                isNaN(parsedCountedQty) || (parsedCountedQty < 0) ||  // Check for valid countedqty
-                isNaN(parsedExpectedQty) || (parsedExpectedQty < 0) ||// Check for valid expectedqty
-                isNaN(parsedPrice) || parsedPrice < 0;
-        });
-
-        if (hasEmptyFields) {
-            showAlert('Please ensure all physicalinventory items have valid item names, counted quantities, expected quantities, prices, and item IDs.');
+        if (!data.store_id) {
+            showGeneralAlert("Validation Error", "Please select a store.");
+            return;
+        }
+        if (data.physicalinventoryitems.length === 0) {
+            showGeneralAlert("Validation Error", "Please add at least one item.");
+            return;
+        }
+        const hasInvalidItems = data.physicalinventoryitems.some(item =>
+            item.countedqty === '' || isNaN(parseFloat(item.countedqty)) || parseFloat(item.countedqty) < 0 ||
+            isNaN(parseFloat(item.expectedqty)) || parseFloat(item.expectedqty) < 0 ||
+            isNaN(parseFloat(item.price)) || parseFloat(item.price) < 0
+        );
+        if (hasInvalidItems) {
+            showGeneralAlert("Validation Error", "Some items have invalid quantities/prices.");
             return;
         }
 
-        setIsSaving(true);
-
         put(route('inventory3.physical-inventory.update', physicalinventory.id), {
+            preserveScroll: true,
             onSuccess: () => {
-                setIsSaving(false);
-                resetForm();
+                showGeneralAlert("Success", "Physical inventory updated successfully!");
+                // Optionally, redirect or update local state based on response
+                // For example, if the stage changed in backend, Inertia would reload `physicalinventory` prop
             },
-            onError: (errors) => {
-                console.error(errors);
-                setIsSaving(false)
-                showAlert('An error occurred while saving the physicalinventory. Please check the console for details.');
+            onError: (pageErrors) => {
+                console.error("Update errors:", pageErrors);
+                showGeneralAlert("Update Error", pageErrors.message || 'Failed to update physical inventory.');
             },
         });
     };
 
-    const resetForm = () => {
-        reset();
-        setPhysicalinventoryItems([]);
-        showAlert('Physicalinventory updated successfully!');
+    const formatCurrency = (amount, currencyCode = 'TZS') => {
+        const parsedAmount = parseFloat(amount);
+        if (isNaN(parsedAmount)) return '0.00';
+        return parsedAmount.toLocaleString(undefined, { style: 'currency', currency: currencyCode, minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
-
-    const handleItemSearchChange = (e) => {
-        const query = e.target.value;
-        setItemSearchQuery(query);
-        setShowItemDropdown(!!query.trim());
-    };
-
-    // Handle Store search input change
-    const handleStoreSearchChange = (e) => {
-        const query = e.target.value;
-        setStoreSearchQuery(query);
-        setShowStoreDropdown(!!query.trim());
-        setData('store_name', query);
-    };
-
-
-
-    const handleClearItemSearch = () => {
-        setItemSearchQuery('');
-        setItemSearchResults([]);
-        setShowItemDropdown(false);
-        if (itemSearchInputRef.current) {
-            itemSearchInputRef.current.focus();
-        }
-    };
-
-    // Clear Store search
-    const handleClearStoreSearch = () => {
-        setStoreSearchQuery('');
-        setStoreSearchResults([]);
-        setShowStoreDropdown(false);
-        if (storeSearchInputRef.current) {
-            storeSearchInputRef.current.focus();
-        }
-        setData('store_name', '');
-        setData('store_id', null);
-    };
-
-
-
-    // Handle Store selection
-    const selectStore = (selectedStore) => {
-        setData('store_name', selectedStore.name);
-        setData('store_id', selectedStore.id);
-        setStoreSearchQuery(selectedStore.name);
-        setStoreSearchResults([]);
-        setShowStoreDropdown(false);
-    };
-
-
 
     return (
         <AuthenticatedLayout
-            header={<h2 className="text-xl font-semibold leading-tight text-gray-800">Edit Physical Inventory</h2>}
+            user={auth?.user}
+            header={<h2 className="text-xl font-semibold leading-tight text-gray-800">Edit Physical Inventory Count</h2>}
         >
             <Head title="Edit Physical Inventory" />
             <div className="py-12">
-                <div className="mx-auto max-w-4xl sm:px-6 lg:px-8">
-                    <div className="bg-white p-6 shadow sm:rounded-lg">
-                        <form onSubmit={handleSubmit} className="space-y-6">
-
-                            {/* Store Name and Description */}
-                            <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
-                                <div className="relative flex-1" ref={storeDropdownRef}>
-                                    <div className="flex items-center  h-6">
-                                        <label htmlFor="store_name" className="block text-sm font-medium text-gray-700">
-                                            Store
-                                        </label>
+                <div className="mx-auto max-w-5xl sm:px-6 lg:px-8">
+                    <div className="bg-white p-6 shadow-sm sm:rounded-lg">
+                        <form onSubmit={handleSubmitChanges} className="space-y-6">
+                            {/* Store Search and Description */}
+                            <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+                                <div className="relative" ref={storeSearchContainerRef}>
+                                    <label htmlFor="store-search-edit" className="block text-sm font-medium leading-6 text-gray-900">
+                                        Store <span className="text-red-500">*</span>
+                                    </label>
+                                    <div className="mt-2 flex rounded-md shadow-sm">
+                                        <div className="relative flex flex-grow items-stretch focus-within:z-10">
+                                            <input
+                                                type="text"
+                                                name="store-search-edit"
+                                                id="store-search-edit"
+                                                ref={storeSearchInputRef}
+                                                placeholder="Search store by name..."
+                                                value={storeSearchQuery}
+                                                onChange={(e) => {
+                                                    if (isReadOnly) return;
+                                                    setStoreSearchQuery(e.target.value);
+                                                    if (!e.target.value.trim()) {
+                                                        setData('store_id', null);
+                                                        // Keep data.store_name as is if clearing search temporarily
+                                                    }
+                                                }}
+                                                onFocus={() => !isReadOnly && storeSearchQuery.trim() && setShowStoreDropdown(true)}
+                                                className={`block w-full rounded-l-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ${errors.store_id ? 'ring-red-500' : 'ring-gray-300'} placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6`}
+                                                autoComplete="off"
+                                                readOnly={isReadOnly}
+                                            />
+                                            {isStoreSearchLoading && <FontAwesomeIcon icon={faSpinner} spin className="absolute right-10 top-1/2 transform -translate-y-1/2 text-gray-400"/>}
+                                            {storeSearchQuery && !isStoreSearchLoading && !isReadOnly && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setStoreSearchQuery('');
+                                                        setData('store_id', null);
+                                                        setData('store_name', '');
+                                                        setStoreSearchResults([]);
+                                                        setShowStoreDropdown(false);
+                                                        storeSearchInputRef.current?.focus();
+                                                    }}
+                                                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                                    title="Clear store search"
+                                                >
+                                                    <FontAwesomeIcon icon={faTimesCircle} />
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
-                                    {/* Added autocomplete attribute here */}
-                                    <input
-                                        type="text"
-                                        value={storeSearchQuery}
-                                        onChange={handleStoreSearchChange}
-                                        onFocus={() => setShowStoreDropdown(!!storeSearchQuery.trim())}
-                                        className={`w-full border p-2 rounded text-sm pr-10 ${storeIDError ? 'border-red-500' : ''}`}
-                                        ref={storeSearchInputRef}
-                                        autoComplete="new-password"
-                                    />
-                                    {storeIDError && <p className="text-sm text-red-600 mt-1">{storeIDError}</p>}
-                                    {storeSearchQuery && (
-                                        <button
-                                            type="button"
-                                            onClick={handleClearStoreSearch}
-                                            className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                                        >
-                                            <FontAwesomeIcon icon={faTimesCircle} />
-                                        </button>
-                                    )}
-                                    {showStoreDropdown && (
-                                        <ul className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded shadow-md max-h-48 overflow-y-auto">
+                                    {errors.store_id && <p className="mt-1 text-sm text-red-600">{errors.store_id}</p>}
+                                    {showStoreDropdown && storeSearchQuery.trim() && !isReadOnly && (
+                                        <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
                                             {storeSearchResults.length > 0 ? (
                                                 storeSearchResults.map((store) => (
-                                                    <li
-                                                        key={store.id}
-                                                        className="p-2 hover:bg-gray-100 cursor-pointer"
-                                                        onClick={() => selectStore(store)}
-                                                    >
+                                                    <li key={store.id} className="p-3 hover:bg-indigo-50 cursor-pointer text-sm" onClick={() => handleSelectStore(store)}>
                                                         {store.name}
                                                     </li>
                                                 ))
-                                            ) : (
-                                                <li className="p-2 text-gray-500">No stores found.</li>
-                                            )}
+                                            ) : !isStoreSearchLoading && ( <li className="p-3 text-sm text-gray-500">No stores found.</li> )}
+                                            {isStoreSearchLoading && <li className="p-3 text-sm text-gray-500 text-center">Loading...</li>}
                                         </ul>
                                     )}
                                 </div>
 
-                                {/* Description Input */}
-                                <div className="flex-1">
-                                    <InputField
-                                        label="Description"
-                                        id="description"
-                                        name="description"
-                                        value={data.description}
-                                        onChange={(e) => setData('description', e.target.value)}
-                                        placeholder="Enter description"
-                                        error={errors.description}
-                                        required
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Physicalinventory Summary and Stage*/}
-                            <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
-                               <div className="flex-1">
-                                    <label htmlFor="stage" className="block text-sm font-medium text-gray-700">
-                                        Stage
+                                <div>
+                                    <label htmlFor="description-edit" className="block text-sm font-medium leading-6 text-gray-900">
+                                        Description / Reason
                                     </label>
-                                    <select
-                                        id="stage"
-                                        value={data.stage}
-                                        onChange={(e) => setData('stage', e.target.value)}
-                                        className={`mt-1 block w-full border-gray-300 rounded shadow-sm focus:ring-blue-500 focus:border-blue-500 ${errors.stage ? 'border-red-500' : ''}`}
-                                    >
-                                        <option value="1">Draft</option>
-                                        <option value="2">Checked</option>
-                                        <option value="6">Cancelled</option>
-                                    </select>
-                                    {errors.stage && <p className="text-sm text-red-600 mt-1">{errors.stage}</p>}
+                                    <div className="mt-2">
+                                        <textarea
+                                            id="description-edit"
+                                            name="description"
+                                            rows="3"
+                                            value={data.description}
+                                            onChange={(e) => { if (!isReadOnly) setData('description', e.target.value); }}
+                                            className={`block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 ${errors.description ? "ring-red-500" : ""}`}
+                                            placeholder="e.g., Monthly stock count"
+                                            readOnly={isReadOnly}
+                                        />
+                                        {errors.description && <p className="mt-1 text-sm text-red-600">{errors.description}</p>}
+                                    </div>
                                 </div>
                             </div>
 
-                            {/* Physicalinventory Items Section */}
-                            <div className="flex items-center space-x-4 mb-2 py-1">
-                                <div className="relative flex-1" ref={itemDropdownRef}>
-                                    <input
-                                        type="text"
-                                        placeholder="Search item..."
-                                        value={itemSearchQuery}
-                                        onChange={handleItemSearchChange}
-                                        onFocus={() => setShowItemDropdown(!!itemSearchQuery.trim())}
-                                        className="w-full border p-2 rounded text-sm pr-10"
-                                        ref={itemSearchInputRef}
-                                        autoComplete="off"
-                                    />
-                                    {itemSearchQuery && (
-                                        <button
-                                            type="button"
-                                            onClick={handleClearItemSearch}
-                                            className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                                        >
-                                            <FontAwesomeIcon icon={faTimesCircle} />
-                                        </button>
-                                    )}
-                                    {showItemDropdown && (
-                                        <ul className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded shadow-md max-h-48 overflow-y-auto">
-                                            {itemSearchResults.length > 0 ? (
-                                                itemSearchResults.map((item) => (
-                                                    <li
-                                                        key={item.id}
-                                                        className="p-2 hover:bg-gray-100 cursor-pointer"
-                                                        onClick={() => addPhysicalinventoryItem(item)}
-                                                    >
-                                                        {item.name}
-                                                        <span className="text-gray-500 text-xs ml-2">({item.price})</span>
-                                                    </li>
-                                                ))
-                                            ) : (
-                                                <li className="p-2 text-gray-500">No items found.</li>
-                                            )}
-                                        </ul>
-                                    )}
-                                </div>
+                            {/* Stage Display (typically not editable here, or by specific actions) */}
+                             <div className="sm:col-span-1">
+                                <dt className="text-sm font-medium text-gray-500">Current Stage</dt>
+                                <dd className="mt-1 text-sm text-gray-900 p-2 bg-gray-100 rounded-md">
+                                    {data.stage === 1 ? 'Draft' : data.stage === 2 ? 'Checked' : data.stage === 6 ? 'Cancelled' : `Stage ${data.stage}`}
+                                </dd>
                             </div>
 
-                            {/* Physicalinventory Items Table */}
-                            <div className="overflow-x-auto bg-white border border-gray-300 rounded-lg">
-                                <table className="min-w-full divide-y divide-gray-200">
-                                    <thead className="bg-gray-50">
-                                        <tr>
-                                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
-                                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Counted Qty</th>
-                                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Expected Qty</th>
-                                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-200">
-                                        {physicalinventoryItems.map((item, index) => (
-                                            <tr key={index} className="bg-gray-50">
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                                    {item.item_name || (item.item ? item.item.name : 'Unknown Item')}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">
-                                                    <InputField
-                                                        id={`countedqty_${index}`}
-                                                        type="number"
-                                                        value={item.countedqty}
-                                                        onChange={(e) => handlePhysicalinventoryItemChange(index, 'countedqty', e.target.value)}
-                                                        error={errors.physicalinventoryitems && errors.physicalinventoryitems[index]?.countedqty}
-                                                    />
-                                                </td>
-                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">
-                                                    <InputField
-                                                        id={`expectedqty_${index}`}
-                                                        type="number"
-                                                        value={item.expectedqty}
-                                                        onChange={(e) => handlePhysicalinventoryItemChange(index, 'expectedqty', e.target.value)}
-                                                        error={errors.physicalinventoryitems && errors.physicalinventoryitems[index]?.expectedqty}
-                                                    />
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">
-                                                    <InputField
-                                                        id={`price_${index}`}
-                                                        type="number"
-                                                        value={item.price}
-                                                        onChange={(e) => handlePhysicalinventoryItemChange(index, 'price', e.target.value)}
-                                                        error={errors.physicalinventoryitems && errors.physicalinventoryitems[index]?.price}
-                                                    />
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                    {item.item_id && <span className="text-xs text-gray-400">ID: {item.item_id}</span>}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => removePhysicalinventoryItem(index)}
-                                                        className="text-red-600 hover:text-red-800"
-                                                    >
-                                                        <FontAwesomeIcon icon={faTrash} />
+
+                            {/* Item Search & Add */}
+                            {!isReadOnly && (
+                                <div className="border-t border-gray-200 pt-6">
+                                    <label htmlFor="item-search-edit" className="block text-sm font-medium leading-6 text-gray-900">
+                                        Add Items to Count
+                                    </label>
+                                    <div className="relative" ref={itemSearchContainerRef}>
+                                        <div className="mt-2 flex rounded-md shadow-sm">
+                                            <div className="relative flex flex-grow items-stretch focus-within:z-10">
+                                                <input
+                                                    type="text"
+                                                    name="item-search-edit"
+                                                    id="item-search-edit"
+                                                    ref={itemSearchInputRef}
+                                                    placeholder="Search item by name or code..."
+                                                    value={itemSearchQuery}
+                                                    onChange={(e) => setItemSearchQuery(e.target.value)}
+                                                    onFocus={() => itemSearchQuery.trim() && setShowItemDropdown(true)}
+                                                    className="block w-full rounded-l-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                                                    autoComplete="off"
+                                                />
+                                                {isItemSearchLoading && <FontAwesomeIcon icon={faSpinner} spin className="absolute right-10 top-1/2 transform -translate-y-1/2 text-gray-400"/>}
+                                                {itemSearchQuery && !isItemSearchLoading && (
+                                                    <button type="button" onClick={() => { setItemSearchQuery(''); setItemSearchResults([]); setShowItemDropdown(false); itemSearchInputRef.current?.focus(); }}
+                                                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600" title="Clear item search" >
+                                                        <FontAwesomeIcon icon={faTimesCircle} />
                                                     </button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        {showItemDropdown && itemSearchQuery.trim() && (
+                                            <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                                                {itemSearchResults.length > 0 ? (
+                                                    itemSearchResults.map((item) => (
+                                                        <li key={item.id} className="p-3 hover:bg-indigo-50 cursor-pointer text-sm" onClick={() => addPhysicalInventoryItem(item)}>
+                                                            <div className="font-medium">{item.name}</div>
+                                                            <div className="text-xs text-gray-500">Price: {formatCurrency(item.price)} / System Stock: {item.stock_quantity ?? 'N/A'}</div>
+                                                        </li>
+                                                    ))
+                                                ) : !isItemSearchLoading && ( <li className="p-3 text-sm text-gray-500">No items found.</li> )}
+                                                {isItemSearchLoading && <li className="p-3 text-sm text-gray-500 text-center">Loading...</li>}
+                                            </ul>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
 
-                            {/* Submit Button */}
-                            <div className="flex justify-end space-x-4 mt-6">
-                                <button
-                                    type="button"
-                                    onClick={() => Inertia.get(route('inventory3.physical-inventory.index'))}
-                                    className="bg-gray-300 text-gray-700 rounded p-2 flex items-center space-x-2"
-                                >
-                                    <FontAwesomeIcon icon={faTimesCircle} />
-                                    <span>Cancel</span>
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={processing || isSaving}
-                                    className="bg-blue-600 text-white rounded p-2 flex items-center space-x-2"
-                                >
-                                    <FontAwesomeIcon icon={faSave} />
-                                    <span>{isSaving ? 'Saving...' : 'Save Inventory'}</span>
-                                </button>
+                            {/* Physical Inventory Items Table */}
+                            {data.physicalinventoryitems.length > 0 && (
+                                <div className="mt-6 flow-root">
+                                   <div className="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
+                                        <div className="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
+                                            <table className="min-w-full divide-y divide-gray-300">
+                                                <thead className="bg-gray-50">
+                                                    <tr>
+                                                        <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-3">Item</th>
+                                                        <th scope="col" className="w-32 px-3 py-3.5 text-center text-sm font-semibold text-gray-900">Expected Qty</th>
+                                                        <th scope="col" className="w-32 px-3 py-3.5 text-center text-sm font-semibold text-gray-900">Counted Qty <span className="text-red-500">*</span></th>
+                                                        <th scope="col" className="w-32 px-3 py-3.5 text-center text-sm font-semibold text-gray-900">Unit Price</th>
+                                                        <th scope="col" className="w-36 px-3 py-3.5 text-right text-sm font-semibold text-gray-900">Counted Value</th>
+                                                        {!isReadOnly && <th scope="col" className="w-20 relative py-3.5 pl-3 pr-4 sm:pr-3 text-center"><span className="sr-only">Remove</span></th>}
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="bg-white divide-y divide-gray-200">
+                                                    {data.physicalinventoryitems.map((item, index) => (
+                                                        <tr key={item._listId || item.id}>
+                                                            <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-3">{item.item_name || 'N/A'}</td>
+                                                            <td className="whitespace-nowrap px-3 py-4 text-sm">
+                                                                <input type="number" value={item.expectedqty} readOnly={isReadOnly}
+                                                                    onChange={(e) => handlePhysicalInventoryItemChange(index, 'expectedqty', e.target.value)}
+                                                                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-right"
+                                                                    min="0" placeholder="0" />
+                                                            </td>
+                                                            <td className="whitespace-nowrap px-3 py-4 text-sm">
+                                                                <input type="number" value={item.countedqty} readOnly={isReadOnly}
+                                                                    onChange={(e) => handlePhysicalInventoryItemChange(index, 'countedqty', e.target.value)}
+                                                                    className={`w-full rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-right ${errors[`physicalinventoryitems.${index}.countedqty`] ? 'border-red-500 ring-red-500' : 'border-gray-300'}`}
+                                                                    min="0" placeholder="Enter count" required />
+                                                            </td>
+                                                            <td className="whitespace-nowrap px-3 py-4 text-sm">
+                                                                <input type="number" value={item.price} readOnly
+                                                                    className="w-full rounded-md border-gray-300 bg-gray-100 shadow-sm sm:text-sm text-right"
+                                                                    title="Price is based on current item cost" />
+                                                            </td>
+                                                            <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-gray-500">
+                                                                {formatCurrency((parseFloat(item.countedqty) || 0) * (parseFloat(item.price) || 0))}
+                                                            </td>
+                                                            {!isReadOnly && (
+                                                                <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-center text-sm font-medium sm:pr-3">
+                                                                    <button type="button" onClick={() => confirmRemovePhysicalInventoryItem(index)}
+                                                                        className="text-red-500 hover:text-red-700" title="Remove item" >
+                                                                        <FontAwesomeIcon icon={faTrash} />
+                                                                    </button>
+                                                                </td>
+                                                            )}
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                                <tfoot className="bg-gray-50">
+                                                    <tr>
+                                                        <th scope="row" colSpan={isReadOnly ? 4 : 4} className="pl-4 pr-3 pt-3 text-right text-sm font-semibold text-gray-900 sm:pl-3">Total Counted Value</th>
+                                                        <td className="pl-3 pr-4 pt-3 text-right text-sm font-semibold text-gray-900 sm:pr-3">{formatCurrency(data.total_counted_value)}</td>
+                                                        {!isReadOnly && <td></td>}
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            {errors.physicalinventoryitems && typeof errors.physicalinventoryitems === 'string' && <p className="mt-1 text-sm text-red-600">{errors.physicalinventoryitems}</p>}
+                            {Object.keys(errors).some(key => key.startsWith('physicalinventoryitems.')) && <p className="mt-1 text-sm text-red-600">Please check item details for errors.</p>}
+
+                            {/* Actions */}
+                            <div className="mt-8 flex items-center justify-end gap-x-4 border-t border-gray-200 pt-6">
+                                <Link href={route('inventory3.physical-inventory.index')}
+                                    className="rounded-md bg-gray-200 px-3.5 py-2.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-400" >
+                                    <FontAwesomeIcon icon={faTimesCircle} className="mr-2" />
+                                    Cancel
+                                </Link>
+                                {!isReadOnly && ( // Only show save if not read-only
+                                    <button type="submit" disabled={processing}
+                                        className="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50" >
+                                        <FontAwesomeIcon icon={faSave} className="mr-2" />
+                                        {processing ? 'Saving...' : 'Save Changes'}
+                                    </button>
+                                )}
                             </div>
                         </form>
                     </div>
                 </div>
             </div>
-            <Modal
-                isOpen={modalState.isOpen}
-                onClose={handleModalClose}
-                onConfirm={handleModalConfirm}
-                title={modalState.isAlert ? "Alert" : "Confirm Action"}
-                message={modalState.message}
-                isAlert={modalState.isAlert}
-            />
+
+            <Modal isOpen={uiFeedbackModal.isOpen}
+                onClose={() => setUiFeedbackModal(prev => ({ ...prev, isOpen: false, itemIndexToRemove: null, onConfirmAction: null }))}
+                onConfirm={() => {
+                    if (uiFeedbackModal.onConfirmAction) uiFeedbackModal.onConfirmAction();
+                    else setUiFeedbackModal(prev => ({ ...prev, isOpen: false, itemIndexToRemove: null, onConfirmAction: null }));
+                }}
+                title={uiFeedbackModal.title} message={uiFeedbackModal.message} isAlert={uiFeedbackModal.isAlert} confirmButtonText={uiFeedbackModal.confirmText} />
         </AuthenticatedLayout>
     );
 }
