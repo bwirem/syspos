@@ -2,21 +2,36 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BILProductControl;
+use App\Models\BILProductExpiryDates;
+use App\Models\BILProductTransactions;
+use App\Models\IVIssue;
+use App\Models\IVReceive;
+
 use App\Models\IVNormalAdjustment;
 use App\Models\IVNormalAdjustmentItem;
 
 use App\Models\IVPhysicalInventory;
 use App\Models\IVPhysicalInventoryItem;
+use App\Models\SIV_Store;
+use App\Models\SIV_AdjustmentReason;
 
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
+
 
 
 class IVReconciliationController extends Controller
 {
+
+    // Constants for transaction types.  MUCH better than hardcoding strings.
+    const TRANSACTION_TYPE_ISSUE = 'Issue';
+    const TRANSACTION_TYPE_RECEIVE = 'Receive';
+
     /**
      * Display a listing of normaladjustments.
      */
@@ -58,7 +73,10 @@ class IVReconciliationController extends Controller
      */
     public function createNormalAdjustment()
     {
-        return inertia('IvReconciliation/NormalAdjustment/Create');
+        return inertia('IvReconciliation/NormalAdjustment/Create', [
+            'stores' => SIV_Store::all(), // Assuming you have a Store model
+            'adjustmentreasons' => SIV_AdjustmentReason::all(), // Assuming you have an AdjustmentReason model              
+        ]);
     }
 
 
@@ -111,6 +129,18 @@ class IVReconciliationController extends Controller
      
              // Update normaladjustment with the correct total
              $normaladjustment->update(['total' => $calculatedTotal]);
+
+            if($normaladjustment->stage == 2){                
+
+                $AdjamentReason = SIV_AdjustmentReason::find($validated['adjustment_reason_id']);
+                
+                if ($AdjamentReason->action == "Add") {
+                    $this->performReception($validated);
+                } elseif ($AdjamentReason->action == "Deduct") {
+                    $this->performIssuance($validated);
+                }
+            }
+            
          });
      
          return redirect()->route('inventory3.normal-adjustment.index')->with('success', 'NormalAdjustment created successfully.');
@@ -127,6 +157,8 @@ class IVReconciliationController extends Controller
 
         return inertia('IvReconciliation/NormalAdjustment/Edit', [
             'normaladjustment' => $normaladjustment,
+            'stores' => SIV_Store::all(), // Assuming you have a Store model
+            'adjustmentreasons' => SIV_AdjustmentReason::all(), // Assuming you have an AdjustmentReason model
         ]);
     }
 
@@ -205,9 +237,195 @@ class IVReconciliationController extends Controller
                  'total' => $calculatedTotal,
                  'user_id' => Auth::id(),
              ]);
+
+
+            if($normaladjustment->stage == 2){                
+
+                $AdjamentReason = SIV_AdjustmentReason::find($validated['adjustment_reason_id']);
+                
+                if ($AdjamentReason->action == "Add") {
+                    $this->performReception($validated);
+                } elseif ($AdjamentReason->action == "Deduct") {
+                    $this->performIssuance($validated);
+                }
+            }
+
+            
          });
      
          return redirect()->route('inventory3.normal-adjustment.index')->with('success', 'NormalAdjustment updated successfully.');
+     }
+
+
+     private function performIssuance($validated): void
+     {
+         $fromstore_id = $validated['store_id'];
+         $tostore_id = $validated['adjustment_reason_id'];
+         $tostore_type = 4; // For stock adjustment, set to 4
+         $total = $validated['total'];
+ 
+ 
+         $expiryDate = $validated['expiry_date'] ?? null; // Use validated expiry date
+         $transDate = Carbon::now();
+         $deliveryNo = $validated['delivery_no'] ?? ''; // Use validated delivery number
+ 
+         
+       
+        
+        $toStore = SIV_AdjustmentReason::find($tostore_id);
+        $toStoreName = $toStore ? $toStore->name : 'Unknown Store';
+         
+ 
+ 
+         $issue = IVIssue::create([
+             'transdate' => $transDate,
+             'fromstore_id' => $fromstore_id,
+             'tostore_id' => $tostore_id,
+             'tostore_type' => $tostore_type, // Use the validated tostore type
+             'total' => $total,
+             'stage' => 4,
+             'user_id' => Auth::id(),
+         ]);
+ 
+       
+         foreach ($validated['normaladjustmentitems'] as $item) {
+             //  // Check if sufficient quantity is available *before* any updates
+             // $totalAvailable = BILProductControl::where('product_id', $item['item_id'])->value('qty_' . $fromstore_id) ?? 0;
+ 
+             // if ($totalAvailable < $item['quantity']) {
+             //      throw new \Exception("Insufficient quantity available for product ID: {$item['item_id']} in store ID: {$fromstore_id}");
+             // }
+             
+             // --- Update/Delete Product Expiry Dates ---
+             $productExpiry = BILProductExpiryDates::where('store_id', $fromstore_id)
+                 ->where('product_id', $item['item_id'])
+                 ->where('expirydate', $expiryDate)
+                 ->first();
+ 
+             if ($productExpiry) {
+                 $productExpiry->decrement('quantity', $item['quantity']);
+                 if ($productExpiry->quantity <= 0) {
+                     $productExpiry->delete();
+                 }
+             }
+         
+             // --- Update/Insert Product Control ---
+             $productControl = BILProductControl::firstOrCreate(
+                 ['product_id' => $item['item_id']],
+                 ['qty_' . $fromstore_id => 0]
+             );
+             $column = 'qty_' . $fromstore_id;
+             $productControl->decrement($column, $item['quantity']);
+ 
+             // --- Insert Product Transaction (Issuance) ---
+             BILProductTransactions::create([
+                 'transdate' => $transDate,
+                 'sourcecode' => $tostore_id,
+                 'sourcedescription' => $toStoreName,
+                 'product_id' => $item['item_id'],
+                 'expirydate' => $expiryDate,
+                 'reference' => $deliveryNo,
+                 'transprice' => $item['price'],
+                 'transtype' => self::TRANSACTION_TYPE_ISSUE, // Use the constant
+                 'transdescription' => 'Issued to Store: ' . $toStoreName,
+                 'qtyout_' . $fromstore_id => $item['quantity'],
+                 'user_id' => Auth::id(),
+             ]);
+ 
+ 
+             // Issue Items
+             $issue->items()->create([
+                 'product_id' => $item['item_id'],
+                 'quantity' => $item['quantity'],
+                 'price' => $item['price'],
+             ]);            
+             
+         } 
+         
+     }
+ 
+ 
+     private function performReception($validated): void
+     {
+         $fromstore_id = $validated['adjustment_reason_id'];;
+         $tostore_id = $validated['store_id'];
+         $tostore_type = 4; // For stock adjustment, set to 4
+         $total = $validated['total'];
+         $expiryDate = $validated['expiry_date'] ?? null;
+         $transDate = Carbon::now();
+         $deliveryNo = $validated['delivery_no'] ?? '';
+ 
+         $fromStore = SIV_AdjustmentReason::find($fromstore_id);
+         $fromStoreName = $fromStore ? $fromStore->name : 'Unknown Store';
+ 
+         
+         $received = IVReceive::create([
+             'transdate' => $transDate,
+             'fromstore_id' => $fromstore_id,
+             'tostore_id' => $tostore_id,
+             'tostore_type' => $tostore_type, // Use the validated tostore type
+             'total' => $total,
+             'stage' => 4,
+             'user_id' => Auth::id(),
+         ]);
+ 
+         foreach ($validated['normaladjustmentitems'] as $item) {
+ 
+             if($expiryDate != null){
+             
+                 // --- Update/Insert Product Expiry Dates ---
+                 $productExpiry = BILProductExpiryDates::where('store_id', $tostore_id)
+                     ->where('product_id', $item['item_id'])
+                     ->where('expirydate', $expiryDate)
+                     ->first();            
+ 
+                 if ($productExpiry) {
+                     $productExpiry->increment('quantity', $item['quantity']);
+                 } else {
+                     BILProductExpiryDates::create([
+                         'store_id' => $tostore_id,
+                         'product_id' => $item['item_id'],
+                         'expirydate' => $expiryDate,
+                         'quantity' => $item['quantity'],
+                         // 'butchno' => $item['batch_no'] ?? null,         // Add if you have batch info
+                         // 'butchbarcode' => $item['batch_barcode'] ?? null,  // Add if you have batch info
+                     ]);
+                 }
+             }
+ 
+             // --- Update/Insert Product Control ---
+             $productControl = BILProductControl::firstOrCreate(
+                 ['product_id' => $item['item_id']],
+                 ['qty_' . $tostore_id => 0]
+             );
+             $column = 'qty_' . $tostore_id;
+             $productControl->increment($column, $item['quantity']);
+ 
+             // --- Insert Product Transaction (Reception) ---
+             BILProductTransactions::create([
+                 'transdate' => $transDate,
+                 'sourcecode' => $fromstore_id,
+                 'sourcedescription' => $fromStoreName,
+                 'product_id' => $item['item_id'],
+                 'expirydate' => $expiryDate,
+                 'reference' => $deliveryNo,
+                 'transprice' => $item['price'],
+                 'transtype' => self::TRANSACTION_TYPE_RECEIVE, // Use the constant
+                 'transdescription' => 'Received from Store: ' . $fromStoreName,
+                 'qtyin_' . $tostore_id => $item['quantity'],
+                 'user_id' => Auth::id(),
+             ]);
+ 
+             
+             // Received Items
+             $received->items()->create([
+                 'product_id' => $item['item_id'],
+                 'quantity' => $item['quantity'],
+                 'price' => $item['price'],
+             ]); 
+         }
+ 
+      
      }
 
 
@@ -248,7 +466,9 @@ class IVReconciliationController extends Controller
      */
     public function createPhysicalInventory()
     {
-        return inertia('IvReconciliation/PhysicalInventory/Create');
+        return inertia('IvReconciliation/PhysicalInventory/Create', [
+            'stores' => SIV_Store::all(), // Assuming you have a Store model             
+        ]);
     }
 
      public function storePhysicalInventory(Request $request)
@@ -313,6 +533,7 @@ class IVReconciliationController extends Controller
 
         return inertia('IvReconciliation/PhysicalInventory/Edit', [
             'physicalinventory' => $physicalinventory,
+            'stores' => SIV_Store::all(), // Assuming you have a Store model
         ]);
     }
    

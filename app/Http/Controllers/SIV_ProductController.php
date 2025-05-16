@@ -5,6 +5,9 @@ use App\Models\SIV_Product;
 use App\Models\BLSItem; 
 use App\Models\BLSItemGroup; 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+
 
 class SIV_ProductController extends Controller
 {
@@ -177,14 +180,58 @@ class SIV_ProductController extends Controller
     /**
      * Search for products based on query.
      */
+    // public function search(Request $request)
+    // {
+    //     $query = $request->input('query');
+    //     $storeId = $request->input('store_id', null); // Optional store ID
+
+    //     //$products = SIV_Product::where('name', 'like', '%' . $query . '%')->get();
+    //     $products = SIV_Product::where('name', 'like', '%' . $query . '%')
+    //     ->select('id', 'name', 'costprice as price','iv_productcontrol.qty_' . $storeId. 'as stock_quantity')
+    //     innerJoin('iv_productcontrol', 'iv_productcontrol.product_id', '=', 'siv_products.id')
+    //     ->get();
+
+
+    //     return response()->json(['products' => $products]);
+    // }
+
+
+
+
     public function search(Request $request)
     {
+        // Validate the request
         $query = $request->input('query');
-        //$products = SIV_Product::where('name', 'like', '%' . $query . '%')->get();
-        $products = SIV_Product::where('name', 'like', '%' . $query . '%')
-        ->select('id', 'name', 'costprice as price')
-        ->get();
+        $storeId = $request->input('store_id', null);
 
+        $productsQuery = SIV_Product::where('name', 'like', '%' . $query . '%')
+            ->select('siv_products.id', 'siv_products.name', 'siv_products.costprice as price'); // Alias siv_products columns
+
+        if ($storeId) {
+            // **Important Security Note:** Directly concatenating user input into column names is risky.
+            // Ensure $storeId is validated to be an integer and within an expected range.
+            // For example, if store IDs are always single digits or small numbers.
+            if (is_numeric($storeId) && (int)$storeId > 0) { // Basic validation
+                $qtyColumn = 'iv_productcontrol.qty_' . (int)$storeId; // Construct column name
+
+                // Check if this dynamic column actually exists to prevent SQL errors
+                // This check is conceptual; actual implementation depends on DB & schema access.
+                // For simplicity, we'll assume it exists if $storeId is valid.
+                // A more robust solution involves a schema check or a different DB structure.
+
+                $productsQuery->join('iv_productcontrol', 'iv_productcontrol.product_id', '=', 'siv_products.id')
+                            ->addSelect($qtyColumn . ' as stock_quantity');
+            } else {
+                // If storeId is invalid or not provided for quantity, select null or 0 as stock_quantity
+                // Or simply don't join / don't select stock_quantity if it's truly optional
+                $productsQuery->addSelect(DB::raw('NULLIF(0,0) as stock_quantity')); // Or DB::raw('0 as stock_quantity')
+            }
+        } else {
+            // If no store_id, stock_quantity might be null or not applicable
+            $productsQuery->addSelect(DB::raw('NULLIF(0,0) as stock_quantity')); // Or DB::raw('0 as stock_quantity')
+        }
+
+        $products = $productsQuery->take(10)->get(); // Limit results       
 
         return response()->json(['products' => $products]);
     }

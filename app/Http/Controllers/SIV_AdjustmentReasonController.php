@@ -43,12 +43,14 @@ class SIV_AdjustmentReasonController extends Controller
     {
         // Validate input
         $validated = $request->validate([
-            'name' => 'required|string|max:255',            
+            'name' => 'required|string|max:255',
+            'action' => 'required|string|max:255',
         ]);
 
         // Create the adjustmentreason
         SIV_AdjustmentReason::create([
-            'name' => $validated['name'],            
+            'name' => $validated['name'],  
+            'action' => $validated['action'],            
         ]);
 
         return redirect()->route('systemconfiguration2.adjustmentreasons.index')
@@ -72,12 +74,14 @@ class SIV_AdjustmentReasonController extends Controller
     {
         // Validate input
         $validated = $request->validate([
-            'name' => 'required|string|max:255',            
+            'name' => 'required|string|max:255',  
+            'action' => 'required|string|max:255',            
         ]);
 
         // Update the adjustmentreason
         $adjustmentreason->update([
-            'name' => $validated['name'],            
+            'name' => $validated['name'],   
+            'action' => $validated['action'],            
         ]);
 
         return redirect()->route('systemconfiguration2.adjustmentreasons.index')
