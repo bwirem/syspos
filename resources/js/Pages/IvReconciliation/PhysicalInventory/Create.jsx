@@ -196,8 +196,10 @@ export default function CreatePhysicalInventory({ auth, stores: initialStores = 
     const handleSaveDraft = (e) => {
         e.preventDefault();
         if (!validatePhysicalInventoryForm(false)) return;
-        const payload = { ...data, stage: 1 };
-        post(route('inventory3.physical-inventory.store'), payload, {
+        setData(prevData => ({ ...prevData, stage: 1 })); // Ensure stage is 1 for draft
+
+        //const payload = { ...data, stage: 1 };
+        post(route('inventory3.physical-inventory.store'), {
             preserveScroll: true,
             onSuccess: () => { showAppModal("Success", "Physical inventory saved as draft successfully!"); },
             onError: (pageErrors) => { console.error("Save draft errors:", pageErrors); const errorMsg = Object.values(pageErrors).flat().join(' ') || 'Failed to save draft.'; showAppModal("Save Error", errorMsg); },
@@ -206,6 +208,7 @@ export default function CreatePhysicalInventory({ auth, stores: initialStores = 
 
     const openCommitConfirmationModal = () => {
         if (!validatePhysicalInventoryForm(false)) return;
+        setData(prevData => ({ ...prevData, stage: 2, remarks: '' })); // Set stage for commit, clear remarks for modal
         setCommitConfirmationModal({ isOpen: true, isLoading: false, isSuccess: false });
     };
 
@@ -213,8 +216,8 @@ export default function CreatePhysicalInventory({ auth, stores: initialStores = 
         if (!data.remarks.trim()) { setError('remarks', 'Remarks are required for committing.'); return; }
         clearErrors('remarks');
         setCommitConfirmationModal(prev => ({ ...prev, isLoading: true }));
-        const payload = { ...data, stage: 2 };
-        post(route('inventory3.physical-inventory.store'), payload, {
+       // const payload = { ...data, stage: 2 };
+        post(route('inventory3.physical-inventory.commit'), {
             preserveScroll: true,
             onSuccess: () => { setCommitConfirmationModal({ isOpen: true, isLoading: false, isSuccess: true }); reset(); },
             onError: (pageErrors) => { setCommitConfirmationModal(prev => ({ ...prev, isLoading: false, isSuccess: false })); console.error("Commit errors:", pageErrors); const errorMsg = pageErrors.message || Object.values(pageErrors).flat().join(' ') || 'Commit failed.'; setData(prevData => ({ ...prevData, errors: { ...prevData.errors, commitError: errorMsg } })); },

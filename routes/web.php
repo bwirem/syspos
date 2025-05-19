@@ -231,6 +231,7 @@ Route::middleware('auth')->group(function () {
             Route::post('/', [IVReconciliationController::class, 'storePhysicalInventory'])->name('store'); // Commented out, as in the original
             Route::get('/{physicalinventory}/edit', [IVReconciliationController::class, 'editPhysicalInventory'])->name('edit');
             Route::put('/{physicalinventory}', [IVReconciliationController::class, 'updatePhysicalInventory'])->name('update');  //Simplified route definition
+            Route::put('/{physicalinventory}/commit', [IVReconciliationController::class, 'commitPhysicalInventory'])->name('commit'); // Added destroy route
        
         });
 

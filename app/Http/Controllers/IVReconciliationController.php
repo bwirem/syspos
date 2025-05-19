@@ -5,6 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\BILProductControl;
 use App\Models\BILProductExpiryDates;
 use App\Models\BILProductTransactions;
+use App\Models\BILProductCostLog;
+use App\Models\BILPhysicalStockBalance;
+
 use App\Models\IVIssue;
 use App\Models\IVReceive;
 
@@ -15,6 +18,8 @@ use App\Models\IVPhysicalInventory;
 use App\Models\IVPhysicalInventoryItem;
 use App\Models\SIV_Store;
 use App\Models\SIV_AdjustmentReason;
+use App\Models\SIV_Product;
+
 
 
 use Illuminate\Http\Request;
@@ -31,6 +36,13 @@ class IVReconciliationController extends Controller
     // Constants for transaction types.  MUCH better than hardcoding strings.
     const TRANSACTION_TYPE_ISSUE = 'Issue';
     const TRANSACTION_TYPE_RECEIVE = 'Receive';
+    const TRANSACTION_TYPE_ADJUSTMENT = 'SystemAdjustment';
+
+    const STAGE_OPEN = 1;       // Example stage
+    const STAGE_COUNTED = 2;    // Example stage
+    const STAGE_CLOSED = 3;     // Example: Corresponds to C# 'Closed' status
+
+   
 
     /**
      * Display a listing of normaladjustments.
@@ -543,7 +555,8 @@ class IVReconciliationController extends Controller
      */
 
      public function updatePhysicalInventory(Request $request, IVPhysicalinventory $physicalinventory)
-     {
+     {        
+
          // Validate input
          $validated = $request->validate([             
              'store_id' => 'required|exists:siv_stores,id', //validate customer id             
@@ -618,6 +631,251 @@ class IVReconciliationController extends Controller
      
          return redirect()->route('inventory3.physical-inventory.index')->with('success', 'Physicalinventory updated successfully.');
      }
+
+   
+    public function commitPhysicalInventory(Request $request, IVPhysicalInventory $physicalinventory)
+    {
+       
+
+        // 0. Authorization Check (Example)
+        // if (Gate::denies('commit-physical-inventory', $physicalinventory)) {
+        //     return response()->json(['message' => 'Access Denied. You do not have permission to commit this physical inventory.'], 403);
+        // }
+
+        // 1. Validate input (Request validation happens before this via FormRequest or $this->validate())
+        // The validation provided in the question is a good start.
+        // Add transdate and potentially calculated_date to your request validation
+        $validated = $request->validate([         
+            'store_id' => 'required|exists:siv_stores,id',
+            'description' => 'nullable|string|max:255',
+            // 'stage' => 'required|integer|min:1', // Stage is on $physicalinventory
+            'physicalinventoryitems' => 'required|array',
+            'physicalinventoryitems.*.id' => 'nullable|exists:iv_physicalinventoryitems,id', // ID of existing IVPhysicalInventoryItem
+            'physicalinventoryitems.*.item_id' => 'required|exists:siv_products,id', // product_id
+            'physicalinventoryitems.*.butchno' => 'nullable|string|max:50',
+            'physicalinventoryitems.*.expirydate' => 'nullable|date_format:Y-m-d',
+            'physicalinventoryitems.*.countedqty' => 'required|numeric|min:0',
+            'physicalinventoryitems.*.expectedqty' => 'required|numeric|min:0', // This might come from IVPhysicalInventoryItem
+            'physicalinventoryitems.*.price' => 'required|numeric|min:0', // Cost price at time of count
+        ]);
+
+      
+        $transDate = Carbon::now();
+        // $calculatedDate = isset($validated['calculated_date']) ? Carbon::parse($validated['calculated_date'])->startOfDay() : $transDate;
+        $calculatedDate = $transDate; // Assuming same as transDate for simplicity
+        $userId = Auth::id();
+        $storeId = $validated['store_id']; // store_id from the loaded IVPhysicalInventory model
+
+        // Determine the qty_X column for BILProductControl and BILProductTransactions
+        // This assumes store_id 1 -> qty_1, 2 -> qty_2 etc.
+        // IMPORTANT: Validate this mapping for your system.
+        if (!in_array($storeId, [1, 2, 3, 4])) {
+             return response()->json(['message' => "Invalid store_id mapping for BILProductControl/Transactions: {$storeId}"], 400);
+        }
+        $qtyStoreSuffix = $storeId;
+
+
+        // 2. Check Physical Inventory Status
+        if ($physicalinventory->stage == self::STAGE_CLOSED) {
+            return response()->json(['message' => 'This physical inventory count has already been closed and cannot be re-committed.'], 409); // Conflict
+        }
+
+        DB::beginTransaction();
+        try {
+            // 3. Update IVPhysicalInventory status
+            $physicalinventory->update([
+                'closed_date' => $transDate,         // Add 'closed_date' to IVPhysicalInventory fillable & migration
+                'calculated_date' => $calculatedDate, // Add 'calculated_date' to IVPhysicalInventory fillable & migration
+                'stage' => self::STAGE_CLOSED,
+                // 'description' => $validated['description'] ?? $physicalInventory->description, // If description can be updated at commit
+            ]);
+            // TODO: Audit IVPhysicalInventory update (e.g., using Spatie Activity Log or custom log)
+
+            $inventoryItemsData = $validated['physicalinventoryitems'];
+            $productIds = array_unique(array_column($inventoryItemsData, 'item_id'));
+
+            // Pre-fetch products to reduce DB queries in loop
+            $products = SIV_Product::whereIn('id', $productIds)->get()->keyBy('id');
+
+            // 4. Clear existing BILProductExpiryDates for these products in this store
+            BILProductExpiryDates::where('store_id', $storeId)
+                                 ->whereIn('product_id', $productIds)
+                                 ->delete();
+
+            // To correctly update BILProductControl, we need to sum quantities per product first
+            // because one product might have multiple batches/expiry dates in inventoryItemsData
+            $productControlQuantities = []; // [product_id => total_counted_qty]
+
+            foreach ($inventoryItemsData as $itemData) {
+                $productId = $itemData['item_id'];
+                $product = $products->get($productId);
+
+                if (!$product) {
+                    // Should not happen if validation is correct
+                    throw new \Exception("Product with ID {$productId} not found during commit.");
+                }
+
+                // Assuming quantities are base units. If not, multiply by pieces_in_package here.
+                // floatval is important for calculations
+                $countedQty = floatval($itemData['countedqty']);
+                $expectedQty = floatval($itemData['expectedqty']); // This should be the system's expected quantity for this item/batch
+                $transPrice = floatval($itemData['price']); // This is the cost price for this item
+                $butchNo = $itemData['butchno'] ?? null;
+                $expiryDate = isset($itemData['expirydate']) ? Carbon::parse($itemData['expirydate'])->startOfDay() : null;
+
+                // Update IVPhysicalInventoryItem with actual counted quantities (if they were placeholders)
+                // Or create if they don't exist and physicalinventoryitems.*.id is null
+                // This assumes IVPhysicalInventoryItem also stores butchno and expirydate.
+                // The question shows IVPhysicalInventoryItem has butchno, so it's batch-specific.
+                $physicalinventoryItem = $physicalinventory->physicalinventoryitems()
+                                           ->where('product_id', $productId)
+                                           ->where('butchno', $butchNo) // Assuming one item per product/batch
+                                           ->first();
+                if ($physicalinventoryItem) {
+                    $physicalinventoryItem->update([
+                        'countedqty' => $countedQty,
+                        'expectedqty' => $expectedQty, // Update expected if it can change, or ensure it's correct
+                        'price' => $transPrice,
+                    ]);
+                } else {
+                    // This case implies items are being added during commit, which is unusual but possible.
+                    // Or, if physicalinventoryitems.*.id was not provided for new items.
+                    $physicalinventory->physicalinventoryitems()->create([
+                        'product_id' => $productId,
+                        'butchno' => $butchNo,
+                        'expirydate' => $expiryDate, // If IVPhysicalInventoryItem stores it
+                        'countedqty' => $countedQty,
+                        'expectedqty' => $expectedQty,
+                        'price' => $transPrice,
+                    ]);
+                }
+
+
+                // Accumulate total counted quantity for BILProductControl
+                if (!isset($productControlQuantities[$productId])) {
+                    $productControlQuantities[$productId] = 0;
+                }
+                $productControlQuantities[$productId] += $countedQty;
+
+
+                // 5. Update BILProductExpiryDates
+                if ($expiryDate && $butchNo && $countedQty > 0) {
+                    BILProductExpiryDates::create([
+                        'store_id' => $storeId,
+                        'product_id' => $productId,
+                        'expirydate' => $expiryDate,
+                        'quantity' => $countedQty,
+                        'butchno' => $butchNo,
+                        'butchbarcode' => $product->name . $butchNo, // Or product->code if it exists
+                    ]);
+                }
+
+                // 6. Handle Discrepancies (Delta Quantity)
+                $deltaQty = $countedQty - $expectedQty;
+
+                if ($deltaQty != 0) {
+                    // Create BILProductTransactions
+                    $qtyInColumn = 'qtyin_' . $qtyStoreSuffix;
+                    $qtyOutColumn = 'qtyout_' . $qtyStoreSuffix;
+
+                    BILProductTransactions::create([
+                        'transdate' => $transDate,
+                        'sourcecode' => 'PHYSINV', // Or a more specific code
+                        'sourcedescription' => $physicalinventory->description ?: 'Physical Inventory Adjustment',
+                        'product_id' => $productId,
+                        'expirydate' => $expiryDate,
+                        'reference' => 'PI-' . $physicalinventory->id, // Example reference
+                        'transprice' => $transPrice, // Cost price of the item
+                        'transtype' => self::TRANSACTION_TYPE_ADJUSTMENT,
+                        'transdescription' => 'Stock Count Adjustment',
+                        $qtyInColumn => $deltaQty > 0 ? $deltaQty : 0,
+                        $qtyOutColumn => $deltaQty < 0 ? -$deltaQty : 0,
+                        // Qty_2,3,4 columns will be 0 if not this store
+                        'qtyin_1' => $qtyStoreSuffix == 1 && $deltaQty > 0 ? $deltaQty : 0,
+                        'qtyout_1' => $qtyStoreSuffix == 1 && $deltaQty < 0 ? -$deltaQty : 0,
+                        'qtyin_2' => $qtyStoreSuffix == 2 && $deltaQty > 0 ? $deltaQty : 0,
+                        'qtyout_2' => $qtyStoreSuffix == 2 && $deltaQty < 0 ? -$deltaQty : 0,
+                        'qtyin_3' => $qtyStoreSuffix == 3 && $deltaQty > 0 ? $deltaQty : 0,
+                        'qtyout_3' => $qtyStoreSuffix == 3 && $deltaQty < 0 ? -$deltaQty : 0,
+                        'qtyin_4' => $qtyStoreSuffix == 4 && $deltaQty > 0 ? $deltaQty : 0,
+                        'qtyout_4' => $qtyStoreSuffix == 4 && $deltaQty < 0 ? -$deltaQty : 0,
+                        'user_id' => $userId,
+                    ]);
+                    // TODO: Audit BILProductTransactions creation
+
+                    // 7. Update Product Costing (SIV_Product)
+                    // The C# logic for average cost is: ((prevCost * prevQty) + (currentCost * currentQty)) / (prevQty + currentQty)
+                    // BUT mPrevCost and mPreviousQty are initialized to 0 in the C# loop, making averagecost = currentCost.
+                    // We will replicate that simplification, but it's often more complex.
+                    $currentUnitCost = $transPrice; // Assuming transPrice is per base unit.
+                                                    // If transPrice is for package, divide by pieces_in_package.
+
+                    $previousCostPrice = $product->costprice; // Cost price before this transaction
+
+                    $product->prevcost = $previousCostPrice;
+                    $product->costprice = $currentUnitCost;
+                    // Based on C# simplification where previous qty/cost in formula were 0 for the item.
+                    $product->averagecost = $currentUnitCost;
+                    $product->save();
+                    // TODO: Audit SIV_Product cost update
+
+                    // Log to BILProductCostLog
+                    BILProductCostLog::create([
+                        'sysdate' => now(), // Or Carbon::now()
+                        'transdate' => $transDate, // The date of the inventory transaction
+                        'product_id' => $productId,
+                        'costprice' => $currentUnitCost,
+                    ]);
+                }
+            }
+
+            // 8. Update BILProductControl (final quantities for the store)
+            $qtyColumn = 'qty_' . $qtyStoreSuffix;
+            foreach ($productControlQuantities as $prodId => $totalCountedQtyForProduct) {
+                $control = BILProductControl::firstOrNew(['product_id' => $prodId]);
+                // Initialize other qty columns if they don't exist to prevent null issues in DB if not nullable
+                foreach ([1,2,3,4] as $sfx) {
+                    if (is_null($control->{'qty_'.$sfx})) {
+                        $control->{'qty_'.$sfx} = 0;
+                    }
+                }
+                $control->{$qtyColumn} = $totalCountedQtyForProduct; // Set the new total for this store
+                $control->save();
+                // TODO: Audit BILProductControl update
+            }
+
+
+            // 9. Update BILPhysicalStockBalances (Snapshot)
+            // Delete old balances for this date, store, and products involved
+            BILPhysicalStockBalance::where('transdate', $transDate)
+                                   ->where('store_id', $storeId)
+                                   ->whereIn('product_id', $productIds)
+                                   ->delete();
+
+            // Insert new balances based on the final counted quantities (aggregated per product)
+            foreach ($productControlQuantities as $prodId => $totalCountedQtyForProduct) {
+                BILPhysicalStockBalance::create([
+                    'transdate' => $transDate,
+                    'store_id' => $storeId,
+                    'product_id' => $prodId,
+                    'quantity' => $totalCountedQtyForProduct,
+                ]);
+            }
+
+            DB::commit();
+            
+            // 10. Redirect or return success response
+            return redirect()->route('inventory3.physical-inventory.index')->with('success', 'Physicalinventory updated successfully.');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            // Log the exception $e->getMessage(), $e->getTraceAsString() etc.
+            return response()->json(['message' => 'Failed to commit physical inventory: ' . $e->getMessage()], 500);
+        }
+    }
+
+
+
           
     
    

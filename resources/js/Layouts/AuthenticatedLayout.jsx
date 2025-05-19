@@ -18,12 +18,18 @@ import {
     faBalanceScaleLeft, // or faFileContract if you choose that
     faFileInvoiceDollar,
     faExchangeAlt,      // or faCoins
-    faLandmark,         // or faTasks
+    faLandmark, 
+    faChartPie,        // or faTasks
 
-   
+    faArrowUp,          // or faSortAmountUp
     faArrowDown,        // or faSortAmountDown
     faTrashAlt,    
-    faWrench,    
+    faWrench,  
+    
+    faPaperPlane,
+    faThumbsUp,
+    faMoneyBillTransfer
+
 } from "@fortawesome/free-solid-svg-icons";
 import { faHistory as faSalesHistory } from '@fortawesome/free-solid-svg-icons'; // Sales History
 import { faMoneyCheckAlt as faPaymentsHistory } from '@fortawesome/free-solid-svg-icons'; // Payments History
@@ -97,15 +103,21 @@ const iconMap = {
     // 'coins': faCoins, // if chosen for cash flow
     landmark: faLandmark,
     // 'tasks': faTasks, // if chosen for bank reconciliation
+    chart_pie: faChartPie,
 
     //Fixed Assets
     fixed_assets: faBuilding, // You can change this to a more appropriate icon if needed
 
     list_alt: faListAlt,
     arrow_down: faArrowDown, // or 'sort-amount-down': faSortAmountDown,
+    arrow_up: faArrowUp, // or 'sort-amount-up': faSortAmountUp,
     trash_alt: faTrashAlt,       
     wrench: faWrench,
     shield_alt : faShieldAlt,
+
+    paper_plane: faPaperPlane,
+    thumbs_up: faThumbsUp,   
+    money_bill_transfer: faMoneyBillTransfer,
     
 };
 
