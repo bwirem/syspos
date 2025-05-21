@@ -152,11 +152,11 @@ Route::middleware('auth')->group(function () {
         Route::get('/', [PROTenderController::class, 'index'])->name('index');
         Route::get('/create', [PROTenderController::class, 'create'])->name('create');
         Route::post('/', [PROTenderController::class, 'store'])->name('store');
-        Route::post('award/{tender}', [PROTenderController::class, 'award'])->name('award');  
+        Route::put('award/{tender}', [PROTenderController::class, 'award'])->name('award');  
         Route::get('/{tender}/edit', [PROTenderController::class, 'edit'])->name('edit');
         Route::put('/{tender}', [PROTenderController::class, 'update'])->name('update');
         Route::put('quotation/{tender}', [PROTenderController::class, 'quotation'])->name('quotation');   
-        Route::get('/{tender}/return', [PROTenderController::class, 'return'])->name('return');            
+        Route::put('/{tender}/return', [PROTenderController::class, 'return'])->name('return');            
         Route::delete('/{tender}', [PROTenderController::class, 'destroy'])->name('destroy');
     });
 
@@ -167,8 +167,10 @@ Route::middleware('auth')->group(function () {
         Route::post('/', [PROPurchaseController::class, 'store'])->name('store');
         Route::get('/{purchase}/edit', [PROPurchaseController::class, 'edit'])->name('edit');
         Route::put('/{purchase}', [PROPurchaseController::class, 'update'])->name('update');
+        Route::put('approve/{purchase}', [PROPurchaseController::class, 'approve'])->name('approve');
         Route::put('dispatch/{purchase}', [PROPurchaseController::class, 'dispatch'])->name('dispatch');
         Route::delete('/{purchase}', [PROPurchaseController::class, 'destroy'])->name('destroy');
+        Route::get('/{purchase}/show', [PROPurchaseController::class, 'show'])->name('show');
     });
 
   

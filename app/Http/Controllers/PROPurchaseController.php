@@ -29,12 +29,16 @@ class PROPurchaseController extends Controller
      {
          $query = PROPurchase::with(['purchaseitems', 'supplier']); // Eager load purchase items and customer
      
-         // Filtering by customer name using relationship
+         // Filtering by customer name using relationship       
+
          if ($request->filled('search')) {
-             $query->whereHas('supplier', function ($q) use ($request) {
-                 $q->where('name', 'like', '%' . $request->search . '%');
-             });
-         }
+            $query->whereHas('supplier', function ($q) use ($request) {                 
+                $q->where('first_name', 'like', '%' . $request->search . '%')
+               ->orWhere('surname', 'like', '%' . $request->search . '%')
+               ->orWhere('other_names', 'like', '%' . $request->search . '%')
+               ->orWhere('company_name', 'like', '%' . $request->search . '%');
+            });
+        }
      
          // Filtering by stage (Ensure 'stage' exists in the PROPurchase model)
          if ($request->filled('stage')) {
@@ -70,7 +74,7 @@ class PROPurchaseController extends Controller
         
     public function store(Request $request)
     {
-        Log::info('Start processing purchase creation:', ['request_data' => $request->all()]);
+        //Log::info('Start processing purchase creation:', ['request_data' => $request->all()]);
 
         // 1. Validate input
         $validator = Validator::make($request->all(), [
@@ -149,18 +153,54 @@ class PROPurchaseController extends Controller
     /**
      * Show the form for editing the specified purchase.
      */
+  
+
+    
     public function edit(PROPurchase $purchase)
     {
-        // Eager load purchase items and their related items
-        $purchase->load(['supplier', 'facilityoption', 'purchaseitems.item']); 
-       
-        $page = $purchase->stage != "2" ? 'ProPurchase/Edit' : 'ProPurchase/Dispatch';
+        // Eager load necessary relationships
+        $purchase->load(['supplier', 'facilityoption', 'purchaseitems.item']);
 
-        return inertia($page, [
+        // Determine which Inertia page component to render based on the purchase stage
+        $stage = (int) $purchase->stage; // Cast to integer for reliable comparison
+        $pageName = ''; // Use a different variable name to avoid confusion, or remove the first $page assignment
+
+        switch ($stage) {
+            case 1: // Pending
+                $pageName = 'ProPurchase/Edit'; // Fully editable form
+                break;
+            case 2: // Approved
+                $pageName = 'ProPurchase/Dispatch'; // Dispatch specific page
+                break;
+            case 3: // Dispatched
+                $pageName = 'ProPurchase/Receive'; // Receive specific page
+                break;
+            case 4: // Received
+                // For "Received" stage, you might want a page that shows received details
+                // and potentially allows actions like "Mark as Paid" or "Close PO".
+                // If Edit.jsx handles this by becoming read-only and showing appropriate buttons, that's fine.
+                $pageName = 'ProPurchase/Edit'; // Or 'ProPurchase/ViewReceived' or 'ProPurchase/Close'
+                break;
+            case 5: // Paid / Completed / Closed etc.
+                // Typically a read-only view or a more restricted edit.
+                $pageName = 'ProPurchase/Edit'; // Or 'ProPurchase/ViewCompleted'
+                break;
+            default:
+                // Fallback for unknown or unexpected stages
+                \Log::warning("Purchase order {$purchase->id} has an unrecognized stage: {$stage}. Falling back to Edit view.");
+                $pageName = 'ProPurchase/Edit'; // Fallback to a general edit/view page
+                break;
+        }
+
+        // Render the determined Inertia page component with the purchase data
+        return inertia($pageName, [
             'purchase' => $purchase,
+            // 'auth' and 'flash' messages are typically shared globally via HandleInertiaRequests middleware
+            // 'errors' are also typically shared globally from session for validation errors on redirect back
         ]);
     }
-
+     
+        
 
     /**
      * Update the specified purchase in storage.
@@ -286,8 +326,128 @@ class PROPurchaseController extends Controller
     }
 
 
-    public function dispatch(Request $request, PROPurchase $purchase)
+    public function approve(Request $request, PROPurchase $purchase)
     {
+       
+        // 1. Validate input
+        $validator = Validator::make($request->all(), [
+            'supplier_id' => 'required|exists:siv_suppliers,id',
+            'facility_id' => 'required|exists:facilityoptions,id',
+            'total' => 'required|numeric|min:0',
+            'stage' => 'required|integer|min:1',
+            // 'purchaseitems' => 'required|array',
+            // 'purchaseitems.*.id' => 'nullable|exists:pro_purchaseitems,id',
+            // 'purchaseitems.*.item_id' => 'required|exists:siv_products,id',
+            // 'purchaseitems.*.quantity' => 'required|numeric|min:0',
+            // 'purchaseitems.*.price' => 'required|numeric|min:0',
+            // 'remarks' => 'nullable|string|max:255',
+            // 'file' => 'nullable|file|mimes:pdf,doc,docx|max:5120', // Adjust mimes and size as needed
+        ]);
+
+        if ($validator->fails()) {
+            Log::error('Validation errors:', $validator->errors()->toArray());
+            return response()->json(['errors' => $validator->errors()], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $validated = $validator->validated();
+    
+        try {
+            // // Begin database transaction
+             DB::transaction(function () use ($validated, $request, $purchase) {
+
+            //     // 2. Handle File Upload
+            //     $url = $purchase->url; // Keep the old url
+            //     $filename = $purchase->filename; // Keep the old filename
+
+            //     if ($request->hasFile('file')) {
+            //         // Delete the old file (if it exists)
+            //         if ($purchase->url) {
+            //             Storage::disk('public')->delete($purchase->url);
+            //         }
+
+            //         $file = $request->file('file');
+            //         $filename = time() . '_' . $file->getClientOriginalName();  // Generate unique filename
+            //         $url = $file->storeAs('purchases', $filename, 'public');  // Store in storage/app/public/purchases
+            //     }
+
+
+            //     // Update purchase details, url, and filename
+                $purchase->update([
+                    // 'supplier_id' => $validated['supplier_id'],
+                    // 'facilityoption_id' => $validated['facility_id'],
+                    'stage' => $validated['stage'],
+                    // 'total' => $validated['total'],
+                    // 'remarks' => $validated['remarks'] ?? null,
+                    // 'url' => $url, // save new url or the same
+                    // 'filename' => $filename,  // save the new filename or the same
+                    'user_id' => Auth::id(),
+                ]);
+
+            //     // Retrieve existing item IDs before the update
+            //     $oldItemIds = $purchase->purchaseitems()->pluck('id')->toArray();
+            //     $existingItemIds = [];
+            //     $newItems = [];
+
+            //     foreach ($validated['purchaseitems'] as $item) {
+            //         if (!empty($item['id'])) {
+            //             $existingItemIds[] = $item['id'];
+            //         } else {
+            //             $newItems[] = $item;
+            //         }
+            //     }
+
+            //     // Identify and delete removed items
+            //     $itemsToDelete = array_diff($oldItemIds, $existingItemIds);
+            //     $purchase->purchaseitems()->whereIn('id', $itemsToDelete)->delete();
+
+            //     // Add new items
+            //     foreach ($newItems as $item) {
+            //         $purchase->purchaseitems()->create([
+            //             'product_id' => $item['item_id'],
+            //             'quantity' => $item['quantity'],
+            //             'price' => $item['price'],
+            //         ]);
+            //     }
+
+            //     // Update existing items
+            //     foreach ($validated['purchaseitems'] as $item) {
+            //         if (!empty($item['id'])) {
+            //             $purchaseItem = PROPurchaseItem::find($item['id']);
+
+            //             if ($purchaseItem) {
+            //                 $purchaseItem->update([
+            //                     'product_id' => $item['item_id'],
+            //                     'quantity' => $item['quantity'],
+            //                     'price' => $item['price'],
+            //                 ]);
+            //             }
+            //         }
+            //     }
+
+            //     // Reload the relationship to ensure all items are fetched
+            //     $purchase->load('purchaseitems');
+
+            //      // Compute the total based on updated purchase items
+            //      $calculatedTotal = $purchase->purchaseitems->sum(fn($item) => $item->quantity * $item->price);
+
+            //      // Update purchase with the correct total
+            //      $purchase->update(['total' => $calculatedTotal]);
+
+            //      Log::info('Purchase updated successfully:', ['purchase_id' => $purchase->id]);
+
+             });
+    
+            return redirect()->route('procurements1.index')->with('success', 'Purchase updated successfully.');
+
+        } catch (\Exception $e) {
+            Log::error('Error updating purchase:', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            return response()->json(['message' => 'Failed to update purchase. Please try again.', 'error' => $e->getMessage()], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+
+    public function dispatch(Request $request, PROPurchase $purchase)
+    {   
         
         // 1. Validate input including recipient data
         $validator = Validator::make($request->all(), [
@@ -330,16 +490,16 @@ class PROPurchaseController extends Controller
 
                 // update stage
 
-                $purchase->recipient_name = $recipientName;
-                $purchase->recipient_contact = $recipientContact;
+                 $purchase->recipient_name = $recipientName;
+                 $purchase->recipient_contact = $recipientContact;
                 $purchase->dispatch_number = $dispatchNumber;
-                $purchase->purchase_order_path = $pdfPath;  // save path to the pdf
-                $purchase->stage = $validated['stage'];
+                // $purchase->purchase_order_path = $pdfPath;  // save path to the pdf
+                 $purchase->stage = $validated['stage'];
 
-                $purchase->save();
+                 $purchase->save();
 
 
-                Log::info('Purchase dispatched successfully:', ['purchase_id' => $purchase->id]);
+                //Log::info('Purchase dispatched successfully:', ['purchase_id' => $purchase->id]);
                 // You could trigger an event to send a notification here (e.g., email)                
             });    
 

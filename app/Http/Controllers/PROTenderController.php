@@ -138,14 +138,14 @@ class PROTenderController extends Controller
             $tender->tenderquotations->transform(function ($quotation) {
                 return [
                     'id'        => $quotation->id,
-                    'item_name' => $quotation->supplier ? 
+                    'supplier_name' => $quotation->supplier ? 
                         ($quotation->supplier->supplier_type === 'individual' 
                             ? "{$quotation->supplier->first_name} " . 
                               ($quotation->supplier->other_names ? "{$quotation->supplier->other_names} " : '') . 
                               "{$quotation->supplier->surname}" 
                             : $quotation->supplier->company_name) 
                         : '',
-                    'item_id'   => $quotation->supplier?->id ?? null,
+                    'supplier_id'   => $quotation->supplier?->id ?? null,
                     'url'       => $quotation->url,
                     'filename'  => $quotation->filename,
                     'file'      => null,
@@ -247,112 +247,164 @@ class PROTenderController extends Controller
 
     public function quotation(Request $request, PROTender $tender)
     {
-        // Validate request fields
+        // Validate request fields (Your existing validation seems mostly okay, but ensure filename/url allow null if appropriate)
         $validator = Validator::make($request->all(), [
-            'description' => 'required|string|max:255',
-            'facility_id' => 'required|exists:facilityoptions,id',
-            'stage' => 'required|integer|in:1,2,3,5',
+            'description' => 'sometimes|required|string|max:255', // 'sometimes' if not always sent or part of this specific update
+            'facility_id' => 'sometimes|required|exists:facilityoptions,id',
+            'stage' => 'sometimes|required|integer|in:1,2,3,5',
             'tenderquotations' => 'sometimes|array',
-            'tenderquotations.*.item_id' => 'required|exists:siv_suppliers,id',
-            'tenderquotations.*.item_name' => 'required|string',
-            'tenderquotations.*.filename' => 'nullable|string',
-            'tenderquotations.*.url' => 'nullable|string',
-            'tenderquotations.*.type' => 'nullable|string|max:50',
-            'tenderquotations.*.size' => 'nullable|integer|min:1',
+            'tenderquotations.*.id' => 'nullable|integer|exists:pro_tenderquotations,id', // ID of existing quotation
+            'tenderquotations.*.item_id' => 'required|exists:siv_suppliers,id', // This is supplier_id
+            'tenderquotations.*.item_name' => 'required|string', // This is supplier_name (for validation display mostly)
+            'tenderquotations.*.file' => 'nullable|file|mimes:pdf,doc,docx|max:5120', // 5MB
+            // The following are mostly for data coming from frontend if no new file / or for existing records
+            // If a new file is uploaded, these will be overridden by the file's properties.
+            'tenderquotations.*.filename' => 'nullable|string|max:255',
+            'tenderquotations.*.url' => 'nullable|string|max:255',
+            'tenderquotations.*.type' => 'nullable|string|max:100',
+            'tenderquotations.*.size' => 'nullable|integer',
             'tenderquotations.*.description' => 'nullable|string|max:500',
-            'tenderquotations.*.file' => 'nullable|file|mimes:pdf,doc,docx|max:5120', // Validate the file
+            'tenderquotations.*.remove_file' => 'nullable|in:true,false',
         ]);
-    
+
         if ($validator->fails()) {
-            return redirect()->back()->withErrors($validator);
+            // Important: Log the errors to see what exactly failed validation
+            \Log::error('Quotation Validation Failed:', $validator->errors()->toArray());
+            return redirect()->back()->withErrors($validator)->withInput();
         }
-    
+
         DB::transaction(function () use ($request, $tender) {
-            // Update tender details
-            $tender->update([
-                'description' => $request->description,
-                'facilityoption_id' => $request->facility_id,
-                'stage' => $request->stage,
-            ]);
-    
+            // Update tender details if they are part of this request's responsibility
+            if ($request->has('description') && $request->has('facility_id') && $request->has('stage')) {
+                $tender->update([
+                    'description' => $request->description,
+                    'facilityoption_id' => $request->facility_id, // Match your DB column name
+                    'stage' => $request->stage,
+                ]);
+            }
+
             $existingQuotationIds = $tender->tenderquotations()->pluck('id')->toArray();
-            $updatedQuotationIds = [];
-    
+            $processedQuotationIds = []; // Keep track of IDs processed in this request
+
             if ($request->has('tenderquotations')) {
                 foreach ($request->tenderquotations as $index => $quotationData) {
-    
-                    // Find or create quotation
-                    $quotation = PROTenderQuotation::updateOrCreate(
-                        ['tender_id' => $tender->id, 'supplier_id' => $quotationData['item_id']],
-                        [
-                            'filename' => $quotationData['filename'] ?? null,
-                            'url' => $quotationData['url'] ?? null,
-                            'type' => $quotationData['type'] ?? null,
-                            'size' => $quotationData['size'] ?? null,
-                            'description' => $quotationData['description'] ?? null,
-                        ]
-                    );
-    
-                    $updatedQuotationIds[] = $quotation->id;
-    
-                    // Handle file upload
+                    $fileDataForDb = []; // Initialize array for file-related DB data
+
+                    // Handle file upload FIRST if a file is present for this entry
                     if ($request->hasFile("tenderquotations.{$index}.file")) {
                         $file = $request->file("tenderquotations.{$index}.file");
-    
-                        // Generate a unique filename.  This is CRITICAL to prevent overwriting other files!
-                        $filename = uniqid() . '.' . $file->getClientOriginalExtension();
-    
-                        // Delete old file if exists
-                        if ($quotation->url && Storage::disk('public')->exists($quotation->url)) {
-                            Storage::disk('public')->delete($quotation->url);
-                        }
-    
-                        // Store file WITH the unique filename
-                        $path = $file->storeAs('tender_quotations', $filename, 'public'); //Store with unique name
-    
-                        $quotation->update([
-                            'filename' => $file->getClientOriginalName(), // Store the original file name
-                            'url' => $path, // Store the file path in the storage
-                            'type' => $file->getClientOriginalExtension(), // Store the file extension
-                            'size' => $file->getSize(), // Store the file size in bytes
-                        ]);
-                    }
-                }
-    
-                // Remove unselected quotations
-                $quotationsToDelete = array_diff($existingQuotationIds, $updatedQuotationIds);
-    
-                PROTenderQuotation::whereIn('id', $quotationsToDelete)->get()->each(function ($quotation) { // Use get() before each
-                    if ($quotation->url && Storage::disk('public')->exists($quotation->url)) {
-                        Storage::disk('public')->delete($quotation->url);
-                    }
-                    $quotation->delete();
-                });
+                        $uniqueStorageFilename = uniqid('quotation_') . '_' . time() . '.' . $file->getClientOriginalExtension();
+                        $path = $file->storeAs('tender_quotations/' . $tender->id, $uniqueStorageFilename, 'public');
 
-                
-            } else {
-                // If no quotations, delete all existing ones
-                $tender->tenderquotations()->get()->each(function ($quotation) { // Use get() before each
-                    if ($quotation->url && Storage::disk('public')->exists($quotation->url)) {
-                        Storage::disk('public')->delete($quotation->url);
+                        $fileDataForDb = [
+                            'filename' => $file->getClientOriginalName(), // User-friendly original name
+                            'url' => $path,                              // Actual storage path/URL
+                            'type' => $file->getClientMimeType(),       // MIME type
+                            'size' => $file->getSize(),                  // Size in bytes
+                            'description' => $quotationData['description'] ?? $file->getClientOriginalName(), // Use provided desc or filename
+                        ];
+                    } else {
+                        // No new file uploaded for this entry.
+                        // Use existing data from frontend if it's an update to non-file fields, or if it's a new entry without a file.
+                        // Crucially, these values from frontend should be '' or actual values, not null, if DB columns are NOT NULL.
+                        // If DB columns are NULLABLE, then `?? null` is fine.
+                        // Assuming DB columns are NOT NULL and frontend sends '' for empty:
+                        $fileDataForDb = [
+                            'filename' => $quotationData['filename'] ?? '',
+                            'url' => $quotationData['url'] ?? '', // This will be '' for a new entry without a file
+                            'type' => $quotationData['type'] ?? '',
+                            'size' => $quotationData['size'] ?? 0,
+                            'description' => $quotationData['description'] ?? ($quotationData['filename'] ?? ''),
+                        ];
                     }
-                    $quotation->delete();
-                });
+
+                    // Prepare data for updateOrCreate, excluding file data if new file was processed
+                    $attributesToFind = [
+                        'tender_id' => $tender->id,
+                        'supplier_id' => $quotationData['item_id']
+                    ];
+                    if (!empty($quotationData['id'])) { // If an existing quotation ID is provided
+                        $attributesToFind = ['id' => $quotationData['id']];
+                    }
+
+
+                    $valuesToSet = [
+                        'tender_id' => $tender->id, // Ensure tender_id is always set
+                        'supplier_id' => $quotationData['item_id'], // Ensure supplier_id is always set
+                        // Non-file related fields that might be updated or set initially
+                        // 'price' => $quotationData['price'] ?? 0,
+                        // 'notes' => $quotationData['notes'] ?? '',
+                    ];
+
+                    // Merge file data. If a new file was uploaded, $fileDataForDb contains fresh info.
+                    // If no new file, it contains data sent from frontend (possibly for existing file or empty).
+                    $valuesToSet = array_merge($valuesToSet, $fileDataForDb);
+
+
+                    // Before updateOrCreate, check if it's an existing record to handle file deletion
+                    $existingRecord = null;
+                    if(!empty($quotationData['id'])) {
+                        $existingRecord = PROTenderQuotation::find($quotationData['id']);
+                    } else {
+                        // Attempt to find by tender_id and supplier_id if no ID given (for true create part of updateOrCreate)
+                        $existingRecord = PROTenderQuotation::where('tender_id', $tender->id)
+                                                        ->where('supplier_id', $quotationData['item_id'])
+                                                        ->first();
+                    }
+
+                    // If a new file was uploaded for an existing record, delete the old physical file.
+                    if ($request->hasFile("tenderquotations.{$index}.file") && $existingRecord && $existingRecord->url) {
+                        if (Storage::disk('public')->exists($existingRecord->url)) {
+                            Storage::disk('public')->delete($existingRecord->url);
+                        }
+                    }
+                    // Handle explicit file removal for existing records
+                    elseif (filter_var($quotationData['remove_file'] ?? false, FILTER_VALIDATE_BOOLEAN) && $existingRecord && $existingRecord->url) {
+                        if (Storage::disk('public')->exists($existingRecord->url)) {
+                            Storage::disk('public')->delete($existingRecord->url);
+                        }
+                        // Set file attributes to null/empty for DB if file is removed
+                        $valuesToSet['filename'] = ''; // Or null if DB allows
+                        $valuesToSet['url'] = '';      // Or null if DB allows
+                        $valuesToSet['type'] = '';      // Or null if DB allows
+                        $valuesToSet['size'] = 0;       // Or null if DB allows
+                    }
+
+
+                    $quotation = PROTenderQuotation::updateOrCreate(
+                        $attributesToFind, // Use ID if present for finding, otherwise tender_id & supplier_id
+                        $valuesToSet       // Values to update or create with (now includes correct file info)
+                    );
+
+                    $processedQuotationIds[] = $quotation->id;
+                }
             }
+
+            // Remove quotations that were in DB but not in the current request's processed list
+            $quotationsToDelete = array_diff($existingQuotationIds, $processedQuotationIds);
+            if (!empty($quotationsToDelete)) {
+                $quotations = PROTenderQuotation::whereIn('id', $quotationsToDelete)->get();
+                foreach($quotations as $q) {
+                    if ($q->url && Storage::disk('public')->exists($q->url)) {
+                        Storage::disk('public')->delete($q->url);
+                    }
+                    $q->delete();
+                }
+            }
+
         });
-    
-        return redirect()->route('procurements0.index')->with('success', 'Tender updated successfully.');
-    }  
-    
+
+        return redirect()->route('procurements0.index')->with('success', 'Tender quotations updated successfully.');
+    }
   
     
     public function award(Request $request, PROTender $tender)
     {
-        Log::info('Start processing tender award:', ['tender' => $tender, 'request_data' => $request->all()]);
+        //Log::info('Start processing tender award:', ['tender' => $tender, 'request_data' => $request->all()]);
 
         // 1. Validate the request data
         $validator = Validator::make($request->all(), [
-            'supplier.item_id' => 'required|exists:siv_suppliers,id',
+            'awarded_supplier_id' => 'required|exists:siv_suppliers,id',
             'url' => 'nullable|string',
             'filename' => 'nullable|string',
             'remarks' => 'required|string|max:255',
@@ -364,7 +416,7 @@ class PROTenderController extends Controller
         }
 
         // 2. Extract data from the request
-        $supplierId = $request->input('supplier.item_id');
+        $supplierId = $request->input('awarded_supplier_id');
         $url = $request->input('url');
         $filename = $request->input('filename');
         $remarks = $request->input('remarks');
@@ -417,8 +469,7 @@ class PROTenderController extends Controller
             // $tender->awarded_filename = $filename;
             $tender->save();
 
-            Log::info('Tender awarded successfully:', ['tender_id' => $tender->id, 'supplier_id' => $supplierId]);
-            return response()->json(['message' => 'Tender awarded successfully'], Response::HTTP_OK);
+            return redirect()->route('procurements0.index')->with('success', 'Tender awarded successfully.');
 
         } catch (\Exception $e) {
             Log::error('Error awarding tender:', ['tender_id' => $tender->id, 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
