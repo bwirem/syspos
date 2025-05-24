@@ -24,7 +24,7 @@ class IVReceive extends Model
     ];
 
 
-    public function items()
+    public function receiveitems()
     {        
         return $this->hasMany(IVReceiveItem::class, 'receive_id', 'id')
                     ->with('item'); // Include the relationship to IV Products
@@ -34,9 +34,9 @@ class IVReceive extends Model
     public function fromstore()
     {
         return match ($this->fromstore_type) {
-            StoreType::Store => $this->belongsTo(SIVStore::class, 'fromstore_id'),
+            StoreType::Store => $this->belongsTo(SIV_Store::class, 'fromstore_id'),
             StoreType::Customer => $this->belongsTo(BLSCustomer::class, 'fromstore_id'),
-            StoreType::Supplier => $this->belongsTo(SIVSupplier::class, 'fromstore_id'),
+            StoreType::Supplier => $this->belongsTo(SPR_Supplie::class, 'fromstore_id'),
             default => null,
         };
     }
@@ -44,7 +44,7 @@ class IVReceive extends Model
 
     public function tostore()
     {
-        return $this->belongsTo(IVStore::class, 'tostore_id', 'id');
+        return $this->belongsTo(SIV_Store::class, 'tostore_id', 'id');
     }
     
     

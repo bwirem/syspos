@@ -13,7 +13,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
 
-class ExpPostController extends Controller
+class ExpApprovalController extends Controller
 {
     /**
      * Display a listing of posts.
@@ -33,12 +33,12 @@ class ExpPostController extends Controller
              $query->where('stage', $request->stage);
          }
 
-         $query->where('stage', '=', '1');
+         $query->where('stage', '>', '1');
      
          // Paginate and sort posts
          $posts = $query->orderBy('created_at', 'desc')->paginate(10);
      
-         return inertia('ExpPost/Index', [
+         return inertia('ExpApproval/Index', [
              'posts' => $posts,
              'filters' => $request->only(['search', 'stage']),
          ]);
@@ -51,7 +51,7 @@ class ExpPostController extends Controller
     public function create()
     {
         $facilityoption = FacilityOption::first();      
-        return inertia('ExpPost/Create',[
+        return inertia('ExpApproval/Create',[
             'facilityoption'=>$facilityoption,
         ]);
     }
@@ -119,7 +119,7 @@ class ExpPostController extends Controller
         // Eager load post items and their related items
         $post->load(['facilityoption', 'postitems.item']);        
 
-        return inertia('ExpPost/Edit', [
+        return inertia('ExpApproval/Edit', [
             'post' => $post,
         ]);
     }
@@ -131,6 +131,7 @@ class ExpPostController extends Controller
 
      public function update(Request $request, EXPPost $post)
      {
+        
          // Validate input
          $validated = $request->validate([             
              'description' => 'nullable|string|max:255',            

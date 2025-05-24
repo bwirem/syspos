@@ -16,6 +16,7 @@ use App\Http\Controllers\BLSPriceCategoryController;
 use App\Http\Controllers\BLSCustomerController;
 
 use App\Http\Controllers\ExpPostController;
+use App\Http\Controllers\ExpApprovalController;
 
 use App\Http\Controllers\SEXPItemGroupController;
 use App\Http\Controllers\SEXPItemController;
@@ -136,6 +137,10 @@ Route::middleware('auth')->group(function () {
     });
 
       
+    
+
+
+
     // expenses routes
     Route::prefix('expenses0')->name('expenses0.')->group(function () {
         Route::get('/', [ExpPostController::class, 'index'])->name('index');
@@ -145,6 +150,17 @@ Route::middleware('auth')->group(function () {
         Route::put('/{post}', [ExpPostController::class, 'update'])->name('update');
         Route::delete('/{post}', [ExpPostController::class, 'destroy'])->name('destroy');
     });
+    
+     // expenses routes
+     Route::prefix('expenses1')->name('expenses1.')->group(function () {
+        Route::get('/', [ExpApprovalController::class, 'index'])->name('index');
+        Route::get('/create', [ExpApprovalController::class, 'create'])->name('create');
+        Route::post('/', [ExpApprovalController::class, 'store'])->name('store');
+        Route::get('/{approval}/edit', [ExpApprovalController::class, 'edit'])->name('edit');
+        Route::put('/{approval}', [ExpApprovalController::class, 'update'])->name('update');
+        Route::delete('/{approval}', [ExpApprovalController::class, 'destroy'])->name('destroy');
+    });
+
 
        
     // Tender routes
@@ -203,9 +219,9 @@ Route::middleware('auth')->group(function () {
         Route::get('/', [IVReceiveController::class, 'index'])->name('index');
         Route::get('/create', [IVReceiveController::class, 'create'])->name('create');
         Route::post('/', [IVReceiveController::class, 'store'])->name('store');
-        Route::get('/{requistion}/edit', [IVReceiveController::class, 'edit'])->name('edit');
-        Route::put('/{requistion}', [IVReceiveController::class, 'update'])->name('update');
-        Route::delete('/{requistion}', [IVReceiveController::class, 'destroy'])->name('destroy');
+        Route::get('/{receive}/edit', [IVReceiveController::class, 'edit'])->name('edit');
+        Route::put('/{receive}', [IVReceiveController::class, 'update'])->name('update');
+        Route::delete('/{receive}', [IVReceiveController::class, 'destroy'])->name('destroy');
     });
 
 

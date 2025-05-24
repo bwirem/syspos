@@ -21,7 +21,7 @@ const postStageConfig = {
 export default function Index({ auth, posts, filters, flash }) { // Added flash for success/error messages
     const { data, setData, get, errors, processing, reset } = useForm({
         search: filters.search || "",
-        stage: filters.stage || "1",
+        stage: filters.stage || "",
     });
 
     const [modalState, setModalState] = useState({
@@ -34,7 +34,7 @@ export default function Index({ auth, posts, filters, flash }) { // Added flash 
     // Debounced search function
     const debouncedSearch = useCallback(
         debounce((searchValue, currentStage) => {
-            get(route("expenses0.index", { search: searchValue, stage: currentStage }), {
+            get(route("expenses1.index", { search: searchValue, stage: currentStage }), {
                 preserveState: true,
                 preserveScroll: true, // Keep scroll position on filter change
             });
@@ -89,7 +89,7 @@ export default function Index({ auth, posts, filters, flash }) { // Added flash 
 
     const handleModalConfirm = async () => {
         if (modalState.postToDeleteId) {
-            router.delete(route("expenses0.destroy", modalState.postToDeleteId), {
+            router.delete(route("expenses1.destroy", modalState.postToDeleteId), {
                 onSuccess: () => {
                     // Flash message will be handled by useEffect
                 },
@@ -192,7 +192,7 @@ export default function Index({ auth, posts, filters, flash }) { // Added flash 
                              {/* You might want to add the Create button here if it's still needed on the page */}
                              <div className="mt-4 flex justify-end">
                                 <Link
-                                    href={route("expenses0.create")}
+                                    href={route("expenses1.create")}
                                     className="inline-flex items-center px-4 py-2 bg-green-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-green-500 active:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition ease-in-out duration-150"
                                 >
                                     <FontAwesomeIcon icon={faPlus} className="mr-2" /> Create Expense
@@ -225,7 +225,7 @@ export default function Index({ auth, posts, filters, flash }) { // Added flash 
                                         <tr>
                                             <td colSpan="4" className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                                                 No expenses found. Try adjusting your filters or
-                                                <Link href={route("expenses0.create")} className="text-indigo-600 hover:underline ml-1">create a new one</Link>.
+                                                <Link href={route("expenses1.create")} className="text-indigo-600 hover:underline ml-1">create a new one</Link>.
                                             </td>
                                         </tr>
                                     )}
@@ -250,7 +250,7 @@ export default function Index({ auth, posts, filters, flash }) { // Added flash 
                                             <td className="px-6 py-4 text-center">
                                                 <div className="flex items-center justify-center space-x-2">
                                                     <Link
-                                                        href={route("expenses0.edit", post.id)}
+                                                        href={route("expenses1.edit", post.id)}
                                                         className="font-medium text-blue-600 dark:text-blue-500 hover:underline p-1"
                                                         title="Edit"
                                                     >

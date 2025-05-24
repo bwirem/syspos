@@ -23,7 +23,7 @@ class IVReceiveItem extends Model
 
     public function item()
     {
-        return $this->belongsTo(IVProduct::class, 'product_id', 'id');
+        return $this->belongsTo(SIV_Product::class, 'product_id', 'id');
     }
 
 }
