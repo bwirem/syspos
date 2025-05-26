@@ -8,7 +8,7 @@ import {
     faTimesCircle,
     faSpinner,
     faPlus,
-    faCheckCircle,
+    faCheckCircle, // This icon might no longer be used if Submit for Approval is gone
     faExclamationTriangle,
     faInfoCircle,
     faShoppingCart,
@@ -29,8 +29,10 @@ const debounce = (func, delay) => {
 
 const formatCurrency = (amount, currencyCode = 'TZS') => {
     const parsedAmount = parseFloat(amount);
-    if (isNaN(parsedAmount)) return `${currencyCode} 0.00`;
-    return parsedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (isNaN(parsedAmount)) return `${currencyCode} 0.00`; // Default to TZS 0.00 if amount is invalid
+    // Fallback to 'en-US' if 'undefined' locale doesn't work or to ensure consistency
+    const locale = typeof navigator !== 'undefined' ? navigator.language : 'en-US';
+    return parsedAmount.toLocaleString(locale, { style: 'currency', currency: currencyCode, minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
 
@@ -39,7 +41,7 @@ export default function Create({ auth, facilityoption, flash }) {
         description: '',
         facility_name: facilityoption?.name || '',
         facility_id: facilityoption?.id || null,
-        stage: "1",
+        stage: "1", // Defaults to draft
         total: 0,
         postitems: [],
     });
@@ -53,17 +55,16 @@ export default function Create({ auth, facilityoption, flash }) {
 
     const [modalState, setModalState] = useState({
         isOpen: false, message: '', isAlert: true, title: 'Alert',
-        itemToRemoveIndex: null, onConfirmAction: null, type: 'info', confirmButtonText: 'OK', // Added confirmButtonText
+        itemToRemoveIndex: null, onConfirmAction: null, type: 'info', confirmButtonText: 'OK',
     });
 
-    const [activeSubmitStage, setActiveSubmitStage] = useState(null);
+    const [activeSubmitStage, setActiveSubmitStage] = useState(null); // Still useful for "Save Draft" loading state
 
-    // Updated showAppModal to accept confirmButtonText
     const showAppModal = (title, message, type = 'info', isAlert = true, onConfirmCallback = null, confirmText = 'OK') => {
         setModalState({
             isOpen: true, title, message, isAlert, type, itemToRemoveIndex: null,
             onConfirmAction: onConfirmCallback || (() => setModalState(prev => ({ ...prev, isOpen: false }))),
-            confirmButtonText: isAlert ? 'OK' : confirmText, // Use 'OK' for alerts, custom for confirmations
+            confirmButtonText: isAlert ? 'OK' : confirmText,
         });
     };
 
@@ -88,7 +89,7 @@ export default function Create({ auth, facilityoption, flash }) {
             showAppModal('Fetch Error', `Failed to fetch ${errorMsgEntity}. Please try again later.`, 'error');
             setResults([]); setShowDropdown(false);
         } finally { setLoading(false); }
-    }, []); // showAppModal is stable, so this is fine
+    }, []);
 
     const fetchItems = useCallback((query) => fetchData('systemconfiguration1.items.search', query, setIsItemSearchLoading, setItemSearchResults, setShowItemDropdown, 'items', 'items'), [fetchData]);
     const debouncedItemSearch = useMemo(() => debounce(fetchItems, 350), [fetchItems]);
@@ -158,12 +159,12 @@ export default function Create({ auth, facilityoption, flash }) {
         showAppModal(
             'Confirm Removal',
             `Remove "${data.postitems[indexToRemove]?.item_name || 'this item'}" from the list?`,
-            'confirmation', false, // type, isAlert
-            () => { // onConfirmCallback
+            'confirmation', false,
+            () => {
                 setData('postitems', data.postitems.filter((_, idx) => idx !== indexToRemove));
                 setModalState(prev => ({ ...prev, isOpen: false }));
             },
-            'Yes, Remove' // confirmButtonText
+            'Yes, Remove'
         );
     };
 
@@ -213,15 +214,29 @@ export default function Create({ auth, facilityoption, flash }) {
 
     const actualSubmit = (targetStage) => {
         setActiveSubmitStage(targetStage);
+        // Ensure data.stage is set according to the submission type
         const dataToSubmit = { ...data, stage: targetStage };
 
+
         post(route('expenses0.store'), {
-            data: dataToSubmit,
+            // data: dataToSubmit, // Inertia's `post` method takes `data` as the first argument or within options.
+                                 // Since `data` in `useForm` already contains `stage`, we can let Inertia handle it.
+                                 // However, explicitly setting it in dataToSubmit is clearer.
+            data: dataToSubmit, // Keep this for clarity and to ensure the correct stage is sent
             preserveScroll: true,
             onSuccess: () => {
-                reset();
-                setData(prev => ({...prev, facility_name: facilityoption?.name || '', facility_id: facilityoption?.id || '' }));
-                const successMessage = targetStage === "1" ? "Expense saved as draft successfully!" : "Expense submitted for approval successfully!";
+                reset(); // Resets form to initial values
+                // After reset, re-apply facility if it exists, and ensure postitems is an empty array
+                setData(prev => ({
+                    ...prev, // Keep any other initial state from reset
+                    description: '', // Explicitly clear if reset doesn't handle it for some reason
+                    total: 0,
+                    postitems: [],
+                    stage: "1", // Reset stage to 1
+                    facility_name: facilityoption?.name || '',
+                    facility_id: facilityoption?.id || null,
+                }));
+                const successMessage = targetStage === "1" ? "Expense saved as draft successfully!" : "Expense submitted successfully!"; // Adjusted for stage "2"
                 showAppModal("Success!", successMessage, 'success');
             },
             onError: (pageErrors) => {
@@ -230,32 +245,22 @@ export default function Create({ auth, facilityoption, flash }) {
             },
             onFinish: () => {
                 setActiveSubmitStage(null);
-                // Close confirmation modal if it was open for this submission
                 setModalState(prev => ({ ...prev, isOpen: false }));
             }
         });
     };
 
+    // handleSubmit will now primarily handle saving as draft (stage "1")
+    // The logic for stage "2" (Submit for Approval) confirmation is removed as the button is gone.
+    // If you need to submit for approval through another means, this function might need adjustments.
     const handleSubmit = (targetStage) => {
         if (!validateForm()) return;
 
-        if (targetStage === "2") { // "Submit for Approval"
-           
-            setData('stage', '2'); // Ensure stage is set to "2" for submission
-
-            showAppModal(
-                'Confirm Submission',
-                'Are you sure you want to submit this expense for approval? This action cannot be easily undone.',
-                'confirmation', // type
-                false,          // isAlert
-                () => actualSubmit(targetStage), // onConfirmCallback
-                'Yes, Submit for Approval' // confirmButtonText
-            );
-        } else { // For "Save Draft" (targetStage === "1")
-            setData('stage', '1'); // Ensure stage is set to "1" for draft saving
-            actualSubmit(targetStage);
-        }
+        // Always set stage to "1" as we are only saving as draft from this UI now
+        setData('stage', '1');
+        actualSubmit("1"); // Directly submit as draft (stage 1)
     };
+
 
     const handleItemSearchInputChange = (e) => setItemSearchQuery(e.target.value);
     const clearItemSearch = () => {
@@ -417,7 +422,7 @@ export default function Create({ auth, facilityoption, flash }) {
                                  <div className="flex justify-end items-baseline mb-6">
                                     <span className="text-md font-medium text-gray-600 dark:text-gray-300 mr-2">Total Expense:</span>
                                     <span className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                                        TZS {formatCurrency(data.total)}
+                                        {formatCurrency(data.total, 'TZS')} {/* Explicitly pass TZS or derive from settings */}
                                     </span>
                                 </div>
 
@@ -426,22 +431,15 @@ export default function Create({ auth, facilityoption, flash }) {
                                         className="rounded-md bg-white dark:bg-gray-700 px-3.5 py-2.5 text-sm font-semibold text-gray-900 dark:text-gray-100 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600">
                                         <FontAwesomeIcon icon={faTimesCircle} className="mr-2 align-text-bottom" />Cancel
                                     </Link>
-                                    <button type="button" onClick={() => handleSubmit("1")} disabled={processing || activeSubmitStage === "2"} // Disable if submitting for approval
+                                    <button type="button" onClick={() => handleSubmit("1")} disabled={processing} // Only disable if generally processing
                                         className="rounded-md bg-slate-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-600 disabled:opacity-50 flex items-center justify-center">
-                                        {processing && activeSubmitStage === "1" ? (
+                                        {processing && activeSubmitStage === "1" ? ( // Check activeSubmitStage for specific loading
                                             <><FontAwesomeIcon icon={faSpinner} spin className="mr-2" />Saving Draft...</>
                                         ) : (
                                             <><FontAwesomeIcon icon={faSave} className="mr-2 align-text-bottom" />Save Draft</>
                                         )}
                                     </button>
-                                    <button type="button" onClick={() => handleSubmit("2")} disabled={processing || activeSubmitStage === "1"} // Disable if saving draft
-                                        className="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50 flex items-center justify-center">
-                                        {processing && activeSubmitStage === "2" ? (
-                                            <><FontAwesomeIcon icon={faSpinner} spin className="mr-2" />Submitting...</>
-                                        ) : (
-                                            <><FontAwesomeIcon icon={faCheckCircle} className="mr-2 align-text-bottom" />Submit for Approval</>
-                                        )}
-                                    </button>
+                                    {/* The "Submit for Approval" button has been removed */}
                                 </div>
                             </section>
                         </div>
@@ -452,13 +450,12 @@ export default function Create({ auth, facilityoption, flash }) {
             <Modal
                 isOpen={modalState.isOpen}
                 onClose={() => setModalState(prev => ({ ...prev, isOpen: false }))}
-                onConfirm={modalState.onConfirmAction} // Will execute the callback or close if null
+                onConfirm={modalState.onConfirmAction}
                 title={modalState.title}
                 message={modalState.message}
                 isAlert={modalState.isAlert}
                 type={modalState.type}
-                confirmButtonText={modalState.confirmButtonText} // Pass this to your Modal
-                // You might also want a cancelButtonText prop for confirmations
+                confirmButtonText={modalState.confirmButtonText}
                 // cancelButtonText={!modalState.isAlert ? 'Cancel' : undefined}
             />
         </AuthenticatedLayout>

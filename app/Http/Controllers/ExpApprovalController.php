@@ -26,101 +26,31 @@ class ExpApprovalController extends Controller
          // Filtering by customer name using relationship
          if ($request->filled('search')) {            
              $query->where('description', 'like', '%' . $request->search . '%');          
-         }
-     
-         // Filtering by stage (Ensure 'stage' exists in the EXPPost model)
-         if ($request->filled('stage')) {
-             $query->where('stage', $request->stage);
-         }
-
+         }    
+         
          $query->where('stage', '>', '1');
      
-         // Paginate and sort posts
-         $posts = $query->orderBy('created_at', 'desc')->paginate(10);
+         // Paginate and sort approvals
+         $approvals = $query->orderBy('created_at', 'desc')->paginate(10);
      
          return inertia('ExpApproval/Index', [
-             'posts' => $posts,
-             'filters' => $request->only(['search', 'stage']),
+             'approvals' => $approvals,
+             'filters' => $request->only(['search']),
          ]);
      }
      
 
     /**
-     * Show the form for creating a new post.
+     * Show the form for editing the specified approval.
      */
-    public function create()
-    {
-        $facilityoption = FacilityOption::first();      
-        return inertia('ExpApproval/Create',[
-            'facilityoption'=>$facilityoption,
-        ]);
-    }
-
-    /**
-     * Store a newly created post in storage.
-     */
-    
-     public function store(Request $request)
-     {
-         // Validate input
-         $validated = $request->validate([             
-              'description' => 'nullable|string|max:255', //validate store id          
-              'facility_id' => 'required|exists:facilityoptions,id', //validate store id       
-              'stage' => 'required|integer|min:1',
-              'postitems' => 'required|array',
-              'postitems.*.item_id' => 'required|exists:sexp_items,id',  
-              'postitems.*.amount' => 'required|numeric|min:0', 
-              'postitems.*.remarks' => 'nullable|string|max:255',            
-         ]);
-
-     
-         // Begin database transaction
-         DB::transaction(function () use ($validated) {
-            
-             $transdate = Carbon::now(); 
-             $post = EXPPost::create([
-                 'transdate' => $transdate,
-                 'description' => $validated['description'],
-                 'facilityoption_id' => $validated['facility_id'],
-                 'stage' => $validated['stage'], 
-                 'total' => 0,            
-                 'user_id' => Auth::id(),
-             ]);    
-     
-             // Create associated post items
-             foreach ($validated['postitems'] as $item) {
-                 $post->postitems()->create([
-                     'item_id' => $item['item_id'],
-                     'amount' => $item['amount'],
-                     'remarks' => $item['remarks'],                     
-                 ]);
-             }    
-             
-                // Reload the relationship to ensure all items are fetched
-                $post->load('postitems');
-
-                // Compute the total based on updated post items
-                $calculatedTotal = $post->postitems->sum(fn($item) => $item->quantity * $item->price);
-        
-                // Update post with the correct total
-                $post->update(['total' => $calculatedTotal]);
-           
-         });
-     
-         return redirect()->route('expenses0.index')->with('success', 'Post created successfully.');
-     }     
-
-    /**
-     * Show the form for editing the specified post.
-     */
-    public function edit(EXPPost $post)
+    public function edit(EXPPost $approval)
     {
 
-        // Eager load post items and their related items
-        $post->load(['facilityoption', 'postitems.item']);        
+        // Eager load approval items and their related items
+        $approval->load(['facilityoption', 'postitems.item']);        
 
-        return inertia('ExpApproval/Edit', [
-            'post' => $post,
+        return inertia('ExpApproval/Approval', [
+            'approval' => $approval,
         ]);
     }
 
@@ -204,18 +134,5 @@ class ExpApprovalController extends Controller
          return redirect()->route('expenses0.index')->with('success', 'Post updated successfully.');
      }
      
-     
-    
-    /**
-     * Remove the specified post from storage.
-     */
-    public function destroy(EXPPost $post)
-    {
-        // Delete the post and associated items
-        $post->postitems()->delete();
-        $post->delete();
-
-        return redirect()->route('expenses0.index')
-            ->with('success', 'Post deleted successfully.');
-    }
+  
 }

@@ -9,7 +9,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
-
+use Throwable;
+use Illuminate\Support\Facades\Inertia;
 use Illuminate\Support\Facades\Log;
 
 
@@ -26,13 +27,8 @@ class ExpPostController extends Controller
          // Filtering by customer name using relationship
          if ($request->filled('search')) {            
              $query->where('description', 'like', '%' . $request->search . '%');          
-         }
-     
-         // Filtering by stage (Ensure 'stage' exists in the EXPPost model)
-         if ($request->filled('stage')) {
-             $query->where('stage', $request->stage);
-         }
-
+         }    
+         
          $query->where('stage', '=', '1');
      
          // Paginate and sort posts
@@ -40,7 +36,7 @@ class ExpPostController extends Controller
      
          return inertia('ExpPost/Index', [
              'posts' => $posts,
-             'filters' => $request->only(['search', 'stage']),
+             'filters' => $request->only(['search']),
          ]);
      }
      
@@ -60,55 +56,78 @@ class ExpPostController extends Controller
      * Store a newly created post in storage.
      */
     
-     public function store(Request $request)
-     {
-         // Validate input
-         $validated = $request->validate([             
-              'description' => 'nullable|string|max:255', //validate store id          
-              'facility_id' => 'required|exists:facilityoptions,id', //validate store id       
-              'stage' => 'required|integer|min:1',
-              'postitems' => 'required|array',
-              'postitems.*.item_id' => 'required|exists:sexp_items,id',  
-              'postitems.*.amount' => 'required|numeric|min:0', 
-              'postitems.*.remarks' => 'nullable|string|max:255',            
-         ]);
+   
+    public function store(Request $request)
+    {
+        // Validate input
+        $validated = $request->validate([
+            'description' => 'nullable|string|max:255',
+            'facility_id' => 'required|exists:facilityoptions,id', // Validate against facilityoptions table
+            'stage'       => 'required|integer|min:1',
+            'postitems'   => 'required|array|min:1', // Ensure at least one item
+            'postitems.*.item_id' => 'required|exists:sexp_items,id', // Validate against sexp_items table
+            'postitems.*.amount'  => 'required|numeric|min:0.01', // Minimum amount, adjust if 0 is allowed
+            'postitems.*.remarks' => 'nullable|string|max:255',
+        ]);
 
-     
-         // Begin database transaction
-         DB::transaction(function () use ($validated) {
-            
-             $transdate = Carbon::now(); 
-             $post = EXPPost::create([
-                 'transdate' => $transdate,
-                 'description' => $validated['description'],
-                 'facilityoption_id' => $validated['facility_id'],
-                 'stage' => $validated['stage'], 
-                 'total' => 0,            
-                 'user_id' => Auth::id(),
-             ]);    
-     
-             // Create associated post items
-             foreach ($validated['postitems'] as $item) {
-                 $post->postitems()->create([
-                     'item_id' => $item['item_id'],
-                     'amount' => $item['amount'],
-                     'remarks' => $item['remarks'],                     
-                 ]);
-             }    
-             
-                // Reload the relationship to ensure all items are fetched
-                $post->load('postitems');
+        $post = null; // Initialize post variable outside the transaction scope
 
-                // Compute the total based on updated post items
-                $calculatedTotal = $post->postitems->sum(fn($item) => $item->quantity * $item->price);
-        
-                // Update post with the correct total
-                $post->update(['total' => $calculatedTotal]);
-           
-         });
-     
-         return redirect()->route('expenses0.index')->with('success', 'Post created successfully.');
-     }     
+        try {
+            // Begin database transaction
+            DB::transaction(function () use ($validated, &$post) { // Pass $post by reference
+                // 1. Calculate total from validated items
+                $calculatedTotal = 0;
+                foreach ($validated['postitems'] as $item) {
+                    $calculatedTotal += (float) $item['amount'];
+                }
+
+                // 2. Create the main EXPPost record
+                $post = EXPPost::create([
+                    'transdate'         => Carbon::now(),
+                    'description'       => $validated['description'],
+                    'facilityoption_id' => $validated['facility_id'], // Assuming DB column is facilityoption_id
+                    'stage'             => $validated['stage'],
+                    'total'             => $calculatedTotal, // Use pre-calculated total
+                    'user_id'           => Auth::id(),
+                ]);
+
+                // 3. Create associated post items
+                // Prepare items for createMany for efficiency if your relationship supports it
+                $itemsToCreate = [];
+                foreach ($validated['postitems'] as $itemData) {
+                    $itemsToCreate[] = [
+                        // 'exp_post_id' will be handled by the relationship if using createMany on it
+                        'item_id' => $itemData['item_id'],
+                        'amount'  => $itemData['amount'],
+                        'remarks' => $itemData['remarks'],
+                        // exp_post_id will be set automatically by createMany
+                    ];
+                }
+                $post->postitems()->createMany($itemsToCreate);
+
+                // No need to reload and update total again as it's calculated and set during creation.
+            });
+
+            // If the transaction was successful and $post is set
+            if ($post) {
+                return redirect()->route('expenses0.edit', $post->id)
+                                 ->with('success', 'Expense created successfully and saved as draft. You can now review or submit it.');
+            } else {
+                // This case should ideally not be reached if transaction fails, as an exception would be thrown.
+                // But as a fallback.
+                return back()->withInput()->with('error', 'Failed to create expense due to an unexpected issue.');
+            }
+
+        } catch (Throwable $e) { // Catch any throwable, including ValidationException, QueryException etc.
+            // Log the error for debugging
+            \Log::error('Expense creation failed: ' . $e->getMessage() . ' Stack: ' . $e->getTraceAsString());
+
+            // Redirect back with input and a generic error message
+            // You can customize the error message based on the exception type if needed
+            return back()->withInput()->with('error', 'Failed to create expense. Please check your input and try again. Details: ' . $e->getMessage());
+        }
+    }
+
 
     /**
      * Show the form for editing the specified post.

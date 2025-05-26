@@ -1,12 +1,12 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, useForm, Link, router as inertiaRouter } from '@inertiajs/react';
+import { Head, useForm, Link, router as inertiaRouter } from '@inertiajs/react'; // inertiaRouter might not be needed if not manually navigating
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimesCircle, faTrash, faSave, faCheck, faPlus, faSpinner } from '@fortawesome/free-solid-svg-icons';
+import { faTimesCircle, faTrash, faSave, faSpinner, faPlus } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
 import axios from 'axios';
 
-import Modal from '@/Components/CustomModal.jsx';
+import Modal from '@/Components/CustomModal.jsx'; // Ensure this path is correct
 
 // Utility function for debouncing
 const debounce = (func, delay) => {
@@ -19,8 +19,7 @@ const debounce = (func, delay) => {
 
 const defaultStores = [];
 
-export default function Create({ auth, fromstore: initialFromStore = defaultStores, tostore: initialToStore = defaultStores }) {
-    // Ensure fromstore and tostore are always arrays for mapping
+export default function Create({ auth, fromstore: initialFromStore = defaultStores, tostore: initialToStore = defaultStores, flash }) { // Added flash to props
     const fromstore = Array.isArray(initialFromStore) ? initialFromStore : defaultStores;
     const tostore = Array.isArray(initialToStore) ? initialToStore : defaultStores;
 
@@ -28,7 +27,7 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
         from_store_id: '',
         to_store_id: '',
         total: 0,
-        stage: 1, // 1 for Draft, 2 for Submitted
+        stage: 1, // Always defaults to 1 (Draft) on create
         remarks: '',
         receiveitems: [],
     });
@@ -44,17 +43,24 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
         isOpen: false,
         message: '',
         isAlert: true,
-        itemIndexToRemove: null, // Still can be used for display, but not for the action logic
+        itemIndexToRemove: null,
         onConfirmAction: null,
         title: 'Alert',
         confirmText: 'OK'
     });
 
-    const [submitConfirmationModal, setSubmitConfirmationModal] = useState({
-        isOpen: false,
-        isLoading: false,
-        isSuccess: false
-    });
+    // Flash message handling (though typically the redirected page handles this)
+    useEffect(() => {
+        if (flash?.success) {
+            // This might not be seen if redirect is immediate
+            showGeneralAlert('Success', flash.success);
+        }
+        if (flash?.error) {
+            // This would be for errors if not redirecting, or initial load errors
+            showGeneralAlert('Error', flash.error);
+        }
+    }, [flash]);
+
 
     const fetchItems = useCallback(async (query) => {
         if (!query.trim()) {
@@ -71,12 +77,11 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
             console.error('Error fetching products:', error);
             setItemSearchResults([]);
             setShowItemDropdown(false);
-            // Optionally, use showGeneralAlert here if you want to notify the user
-            // showGeneralAlert("Fetch Error", "Could not load items. Please try again.");
+            showGeneralAlert("Fetch Error", "Could not load items. Please try again.");
         } finally {
             setIsItemSearchLoading(false);
         }
-    }, []); // Removed showGeneralAlert from deps, as it's stable if defined correctly or outside
+    }, []); // showGeneralAlert is stable
 
     const debouncedItemSearch = useMemo(() => debounce(fetchItems, 350), [fetchItems]);
 
@@ -89,11 +94,8 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
             (sum, item) => sum + (parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0),
             0
         );
-        // setData will typically only trigger a re-render if the value actually changes.
-        // The explicit check `data.total !== calculatedTotal` is often redundant and
-        // including `data.total` in dependencies for this pattern can cause an extra effect run.
         setData('total', calculatedTotal);
-    }, [data.receiveitems, setData]); // `setData` is stable from useForm.
+    }, [data.receiveitems, setData]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -127,13 +129,9 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
     };
 
     const addReceiveItemFromSelection = (selectedItem) => {
-        console.log("Adding item from selection:", selectedItem);
-
         if (!selectedItem || !selectedItem.id) {
-            console.warn("Add item: Invalid selected item provided.");
             return;
         }
-
         const newItem = {
             _listId: `item-${Date.now()}-${Math.random().toString(16).slice(2)}`,
             item_name: selectedItem.name,
@@ -141,134 +139,85 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
             quantity: 1,
             price: parseFloat(selectedItem.price) || 0,
         };
-
         if (data.receiveitems.some(item => item.item_id === newItem.item_id)) {
-            setUiFeedbackModal({
-                isOpen: true,
-                message: `"${newItem.item_name}" is already in the list. You can adjust its quantity.`,
-                isAlert: true, title: 'Item Already Added', confirmText: 'OK',
-                onConfirmAction: () => setUiFeedbackModal(prev => ({ ...prev, isOpen: false, itemIndexToRemove: null, onConfirmAction: null })),
-                itemIndexToRemove: null // Ensure reset for general alerts
-            });
+            showGeneralAlert('Item Already Added', `"${newItem.item_name}" is already in the list. You can adjust its quantity.`);
             return;
         }
-
         setData(prevData => ({
             ...prevData,
             receiveitems: [...prevData.receiveitems, newItem]
         }));
-
         setItemSearchQuery('');
         setItemSearchResults([]);
         setShowItemDropdown(false);
         itemSearchInputRef.current?.focus();
     };
 
-    // MODIFIED: handleRemoveItemConfirmed now accepts indexToRemove
     const handleRemoveItemConfirmed = (indexToRemove) => {
-        console.log('[handleRemoveItemConfirmed] Called with index:', indexToRemove);
         if (indexToRemove !== null && typeof indexToRemove === 'number') {
-            console.log('[handleRemoveItemConfirmed] Valid index to remove:', indexToRemove);
             setData(prevData => {
-                console.log('[handleRemoveItemConfirmed] prevData.receiveitems (before filter):', JSON.parse(JSON.stringify(prevData.receiveitems)));
                 const updatedItems = prevData.receiveitems.filter((_, idx) => idx !== indexToRemove);
-                console.log('[handleRemoveItemConfirmed] updatedItems (after filter):', JSON.parse(JSON.stringify(updatedItems)));
                 return { ...prevData, receiveitems: updatedItems };
             });
-        } else {
-            console.warn('[handleRemoveItemConfirmed] indexToRemove was invalid. Value:', indexToRemove);
         }
-        setUiFeedbackModal(prev => ({ 
-            ...prev, 
-            isOpen: false, 
-            itemIndexToRemove: null, 
-            onConfirmAction: null, // Clear action
-            message: '',
-            isAlert: true,
-            title: 'Alert',
-            confirmText: 'OK'
+        setUiFeedbackModal(prev => ({
+            ...prev,
+            isOpen: false,
+            itemIndexToRemove: null,
+            onConfirmAction: null,
         }));
-        console.log('[handleRemoveItemConfirmed] uiFeedbackModal state after action and reset.');
     };
 
-    // MODIFIED: confirmRemoveReceiveItem now passes index via closure to onConfirmAction
     const confirmRemoveReceiveItem = (index) => {
-        console.log('[confirmRemoveReceiveItem] Index to confirm removal for:', index);
         setUiFeedbackModal({
             isOpen: true,
             message: `Are you sure you want to remove "${data.receiveitems[index]?.item_name || 'this item'}"?`,
-            isAlert: false, 
-            itemIndexToRemove: index, // Still can be kept for potential use in modal message
-            onConfirmAction: () => handleRemoveItemConfirmed(index), // Pass index here
-            title: 'Confirm Removal', 
+            isAlert: false,
+            itemIndexToRemove: index,
+            onConfirmAction: () => handleRemoveItemConfirmed(index),
+            title: 'Confirm Removal',
             confirmText: 'Yes, Remove'
         });
     };
 
-
-    const showGeneralAlert = (title, message) => {
+    const showGeneralAlert = (title, message, type = 'info') => { // Added type parameter
         setUiFeedbackModal({
             isOpen: true, title: title, message: message, isAlert: true, confirmText: 'OK',
-            onConfirmAction: () => setUiFeedbackModal(prev => ({ ...prev, isOpen: false, itemIndexToRemove: null, onConfirmAction: null })),
-            itemIndexToRemove: null // Ensure reset for general alerts
+            type: type, // Pass type to modal
+            onConfirmAction: () => setUiFeedbackModal(prev => ({ ...prev, isOpen: false })),
+            itemIndexToRemove: null
         });
     };
 
     const handleSaveDraft = (e) => {
         e.preventDefault();
         clearErrors();
-        setData('stage', 1);
+        
+        // Set stage to 1 directly in form data for submission
+        setData('stage', 1); 
 
-        if (!data.from_store_id) { showGeneralAlert("Validation Error", "Please select 'From Store'."); return; }
-        if (!data.to_store_id) { showGeneralAlert("Validation Error", "Please select 'To Store'."); return; }
-        if (data.receiveitems.length === 0) { showGeneralAlert("Validation Error", "Please add at least one item."); return; }
+        // Perform validation after setting stage, so data object is up-to-date for post
+        // (though stage isn't typically validated by frontend here for save draft)
+        if (!data.from_store_id) { showGeneralAlert("Validation Error", "Please select 'From Store'.", 'error'); return; }
+        if (!data.to_store_id) { showGeneralAlert("Validation Error", "Please select 'To Store'.", 'error'); return; }
+        if (data.receiveitems.length === 0) { showGeneralAlert("Validation Error", "Please add at least one item.", 'error'); return; }
 
+        // The `post` method from `useForm` will use the current `data` state,
+        // which now includes `stage: 1` because of `setData('stage', 1)` above.
         post(route('inventory2.store'), {
             preserveScroll: true,
             onSuccess: () => {
-                showGeneralAlert("Success", "Receive saved as draft successfully!");
+                // If the backend redirects (e.g., to the edit page),
+                // this Create.jsx component will be unmounted.
+                // The flash message set by the backend (`with('success', ...)`)
+                // will be received by the new page (e.g., Edit.jsx).
+                // No need to call reset() or showGeneralAlert() here for success
+                // if a redirect is happening.
             },
             onError: (pageErrors) => {
                 console.error("Save draft errors:", pageErrors);
-                showGeneralAlert("Save Error", pageErrors.message || 'Failed to save draft. Please check for errors above.');
-            },
-        });
-    };
-
-    const openSubmitConfirmationModal = () => {
-        clearErrors();
-        if (!data.from_store_id) { showGeneralAlert("Validation Error", "Please select 'From Store'."); return; }
-        if (!data.to_store_id) { showGeneralAlert("Validation Error", "Please select 'To Store'."); return; }
-        if (data.receiveitems.length === 0) { showGeneralAlert("Validation Error", "Please add at least one item before submitting."); return; }
-
-        const hasInvalidItems = data.receiveitems.some(item => !(item.quantity > 0) || !(item.price >= 0) || !item.item_id);
-        if (hasInvalidItems) {
-            showGeneralAlert("Validation Error", "Some items have invalid quantities, prices, or were not selected from search. Please correct them.");
-            return;
-        }
-
-        setData('stage', 2);
-        setData('remarks', ''); // Clear remarks when opening submit modal
-        setSubmitConfirmationModal({ isOpen: true, isLoading: false, isSuccess: false });
-    };
-
-    const handleSubmitWithRemarks = () => {
-        if (!data.remarks.trim()) {
-            setData(prev => ({ ...prev, errors: { ...prev.errors, remarks: 'Remarks are required for submission.' } }));
-            return;
-        }
-        clearErrors('remarks');
-
-        setSubmitConfirmationModal(prev => ({ ...prev, isLoading: true }));
-        post(route('inventory2.store'), {
-            preserveScroll: true,
-            onSuccess: () => {
-                setSubmitConfirmationModal({ isOpen: true, isLoading: false, isSuccess: true });
-                reset();
-            },
-            onError: (pageErrors) => {
-                setSubmitConfirmationModal(prev => ({ ...prev, isLoading: false, isSuccess: false }));
-                console.error("Submission errors:", pageErrors);
+                const errorMsg = pageErrors.message || Object.values(pageErrors).flat().join(' ') || 'Failed to save draft.';
+                showGeneralAlert("Save Error", errorMsg, 'error');
             },
         });
     };
@@ -277,6 +226,13 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
         const parsedAmount = parseFloat(amount);
         if (isNaN(parsedAmount)) return '0.00 ' + currencyCode;
         return parsedAmount.toLocaleString(undefined, { style: 'currency', currency: currencyCode, minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+
+    const handleClearItemSearch = () => {
+        setItemSearchQuery('');
+        setItemSearchResults([]);
+        setShowItemDropdown(false);
+        itemSearchInputRef.current?.focus();
     };
 
     return (
@@ -288,7 +244,7 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
             <div className="py-12">
                 <div className="mx-auto max-w-5xl sm:px-6 lg:px-8">
                     <div className="bg-white p-6 shadow-sm sm:rounded-lg">
-                        <div className="space-y-6">
+                        <form onSubmit={handleSaveDraft} className="space-y-6"> {/* Added form tag and onSubmit */}
                             {/* Store Selection */}
                             <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
                                 <div>
@@ -333,6 +289,26 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
                                 </div>
                             </div>
 
+                             {/* Remarks for Draft */}
+                             <div>
+                                <label htmlFor="remarks" className="block text-sm font-medium leading-6 text-gray-900">
+                                    Remarks (Optional)
+                                </label>
+                                <div className="mt-2">
+                                    <textarea
+                                        id="remarks"
+                                        name="remarks"
+                                        rows="3"
+                                        value={data.remarks}
+                                        onChange={(e) => setData('remarks', e.target.value)}
+                                        className={`block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 ${errors.remarks ? "ring-red-500" : ""}`}
+                                        placeholder="Enter any notes for this draft..."
+                                    />
+                                    {errors.remarks && <p className="mt-1 text-sm text-red-600">{errors.remarks}</p>}
+                                </div>
+                            </div>
+
+
                             {/* Item Search & Add */}
                             <div className="border-t border-gray-200 pt-6">
                                 <label htmlFor="item-search" className="block text-sm font-medium leading-6 text-gray-900">
@@ -360,7 +336,7 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
                                             {itemSearchQuery && !isItemSearchLoading && (
                                                 <button
                                                     type="button"
-                                                    onClick={() => { setItemSearchQuery(''); setItemSearchResults([]); setShowItemDropdown(false); itemSearchInputRef.current?.focus(); }}
+                                                    onClick={handleClearItemSearch}
                                                     className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                                                     title="Clear search"
                                                 >
@@ -368,6 +344,11 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
                                                 </button>
                                             )}
                                         </div>
+                                        {/* Optionally, add a button for adding items if no search is needed, though search is more common */}
+                                        {/* <button type="button" className="relative -ml-px inline-flex items-center gap-x-1.5 rounded-r-md px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                                            <FontAwesomeIcon icon={faPlus} className="-ml-0.5 h-5 w-5 text-gray-400" aria-hidden="true" />
+                                            Add
+                                        </button> */}
                                     </div>
                                     {showItemDropdown && itemSearchQuery.trim() && (
                                         <ul className="absolute top-full left-0 z-20 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
@@ -461,7 +442,7 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
                             )}
                             {errors.receiveitems && typeof errors.receiveitems === 'string' && <p className="mt-1 text-sm text-red-600">{errors.receiveitems}</p>}
 
-                            {/* Actions: Save Draft, Submit, Cancel */}
+                            {/* Actions: Save Draft, Cancel */}
                             <div className="mt-8 flex items-center justify-end gap-x-4 border-t border-gray-200 pt-6">
                                 <Link
                                     href={route('inventory2.index')}
@@ -470,107 +451,39 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
                                     <FontAwesomeIcon icon={faTimesCircle} className="mr-2" />
                                     Cancel
                                 </Link>
-                                <button
-                                    type="button"
-                                    onClick={handleSaveDraft}
-                                    disabled={processing && data.stage === 1}
+                                <button // Changed to type="submit" to work with form onSubmit
+                                    type="submit"
+                                    disabled={processing}
                                     className="rounded-md bg-slate-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-600 disabled:opacity-50"
                                 >
                                     <FontAwesomeIcon icon={faSave} className="mr-2" />
-                                    {processing && data.stage === 1 ? 'Saving...' : 'Save Draft'}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={openSubmitConfirmationModal}
-                                    disabled={(processing && data.stage === 2) || data.receiveitems.length === 0}
-                                    className="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50"
-                                >
-                                    <FontAwesomeIcon icon={faCheck} className="mr-2"/>
-                                    Submit Receive
+                                    {processing ? 'Saving...' : 'Save Draft'}
                                 </button>
                             </div>
-                        </div>
+                        </form> {/* Added closing form tag */}
                     </div>
                 </div>
             </div>
 
-            {/* General UI Feedback Modal (for item removal confirmation & alerts) */}
+            {/* General UI Feedback Modal */}
             <Modal
                 isOpen={uiFeedbackModal.isOpen}
                 onClose={() => {
-                    console.log('[Modal onClose] Closing UI feedback modal.');
                     setUiFeedbackModal(prev => ({ ...prev, isOpen: false, itemIndexToRemove: null, onConfirmAction: null }));
                 }}
                 onConfirm={() => {
-                    console.log('[Modal onConfirm] Confirming action for UI feedback modal.');
                     if (uiFeedbackModal.onConfirmAction) {
-                        uiFeedbackModal.onConfirmAction(); // This will execute `() => handleRemoveItemConfirmed(index)`
+                        uiFeedbackModal.onConfirmAction();
                     } else {
-                        console.warn('[Modal onConfirm] onConfirmAction was null. Closing modal.');
                         setUiFeedbackModal(prev => ({ ...prev, isOpen: false, itemIndexToRemove: null, onConfirmAction: null }));
                     }
                 }}
                 title={uiFeedbackModal.title}
                 message={uiFeedbackModal.message}
                 isAlert={uiFeedbackModal.isAlert}
+                type={uiFeedbackModal.type} // Ensure type is passed to Modal
                 confirmButtonText={uiFeedbackModal.confirmText}
             />
-
-            {/* Modal for Final Submission with Remarks */}
-            <Modal
-                isOpen={submitConfirmationModal.isOpen}
-                onClose={() => {
-                    if (submitConfirmationModal.isSuccess) {
-                        setSubmitConfirmationModal({ isOpen: false, isLoading: false, isSuccess: false });
-                        inertiaRouter.visit(route('inventory2.index'));
-                    } else {
-                        setSubmitConfirmationModal({ isOpen: false, isLoading: false, isSuccess: false });
-                        if (data.stage === 2 && !submitConfirmationModal.isLoading) {
-                             setData(prevData => ({ ...prevData, stage: 1 }));
-                        }
-                    }
-                }}
-                onConfirm={submitConfirmationModal.isSuccess ? () => {
-                    setSubmitConfirmationModal({ isOpen: false, isLoading: false, isSuccess: false });
-                    inertiaRouter.visit(route('inventory2.index'));
-                } : handleSubmitWithRemarks}
-                title={submitConfirmationModal.isSuccess ? "Submission Successful" : "Submit Receive with Remarks"}
-                confirmButtonText={
-                    submitConfirmationModal.isSuccess ? "Close" :
-                    submitConfirmationModal.isLoading ? "Submitting..." : "Confirm Submit"
-                }
-                confirmButtonDisabled={submitConfirmationModal.isLoading || (processing && data.stage === 2 && !submitConfirmationModal.isSuccess)}
-                isProcessing={submitConfirmationModal.isLoading || (processing && data.stage === 2)}
-            >
-                {submitConfirmationModal.isSuccess ? (
-                    <div className="text-center py-4">
-                        <FontAwesomeIcon icon={faCheck} className="text-green-500 fa-3x mb-3"/>
-                        <p className="text-lg">Receive submitted successfully!</p>
-                        <p className="text-sm text-gray-600">You will be redirected, or click "Close".</p>
-                    </div>
-                ) : (
-                    <div className="space-y-3">
-                        <p className="text-sm text-gray-600">
-                            You are about to submit this receive. Please add any necessary remarks below.
-                        </p>
-                        <div>
-                            <label htmlFor="submission_remarks" className="block text-sm font-medium text-gray-700">
-                                Remarks <span className="text-red-500">*</span>
-                            </label>
-                            <textarea
-                                id="submission_remarks"
-                                rows="3"
-                                className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-600 focus:border-indigo-600 sm:text-sm ${errors.remarks ? 'border-red-500 ring-red-500' : ''}`}
-                                value={data.remarks}
-                                onChange={(e) => setData('remarks', e.target.value)}
-                                disabled={submitConfirmationModal.isLoading || (processing && data.stage === 2)}
-                            />
-                            {errors.remarks && <p className="mt-1 text-sm text-red-600">{errors.remarks}</p>}
-                        </div>
-                        {errors.message && data.stage === 2 && <p className="mt-2 text-sm text-red-600">{errors.message}</p>}
-                    </div>
-                )}
-            </Modal>
         </AuthenticatedLayout>
     );
 }

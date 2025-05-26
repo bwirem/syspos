@@ -137,10 +137,6 @@ Route::middleware('auth')->group(function () {
     });
 
       
-    
-
-
-
     // expenses routes
     Route::prefix('expenses0')->name('expenses0.')->group(function () {
         Route::get('/', [ExpPostController::class, 'index'])->name('index');

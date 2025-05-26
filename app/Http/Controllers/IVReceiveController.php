@@ -25,6 +25,7 @@ use Carbon\Carbon;
 use Exception;
 use Throwable;
 
+
 class IVReceiveController extends Controller
 {
     // Constants for transaction types.  MUCH better than hardcoding strings.
@@ -70,11 +71,16 @@ class IVReceiveController extends Controller
          }
      
          // Separate filter for tostore (by ID)
-         if ($request->filled('tostore')) {
+        if ($request->filled('tostore')) {
              $query->where('tostore_id', $request->tostore);
-         }
+        }
+        
      
-         $query->where('stage', '=', 1);
+        if ($request->filled('stage')) {
+            $query->where('stage', $request->stage);
+        }
+
+        $query->whereBetween('stage', [1, 2]);
      
          $receives = $query->orderBy('created_at', 'desc')->paginate(10);
      
@@ -117,57 +123,73 @@ class IVReceiveController extends Controller
     /**
      * Store a newly created receive in storage.
      */
-    
-     public function store(Request $request)
-     {
-         // Validate input
-         $validated = $request->validate([             
-              'to_store_id' => 'required|exists:siv_stores,id', //validate customer id             
-              'from_store_id' => 'required|exists:siv_stores,id', //validate store id       
-              'stage' => 'required|integer|min:1', 
-              'receiveitems' => 'required|array',
-              'receiveitems.*.item_id' => 'required|exists:siv_products,id',  
-              'receiveitems.*.quantity' => 'required|numeric|min:0',
-              'receiveitems.*.price' => 'required|numeric|min:0', 
-         ]);
+         
+   
+    public function store(Request $request)
+    {
+        // 1. Validate input
+        $validated = $request->validate([
+            'to_store_id'   => 'required|exists:siv_stores,id',
+            'from_store_id' => 'required|exists:siv_stores,id',
+            'stage'         => 'required|integer|in:1', // Expecting stage 1 (Draft) from Create form
+            'remarks'       => 'nullable|string|max:1000', // Added validation for remarks
+            'receiveitems'  => 'required|array|min:1',    // Must have at least one item
+            'receiveitems.*.item_id' => 'required|exists:siv_products,id', // Ensure item_id maps to siv_products
+            'receiveitems.*.quantity'=> 'required|numeric|min:0.01', // Or min:1 for whole units
+            'receiveitems.*.price'   => 'required|numeric|min:0',    // Price can be 0, but usually > 0
+        ]);
 
-     
-         // Begin database transaction
-         DB::transaction(function () use ($validated) {
-             // Create the receive without a total initially
+        $receive = null; // Initialize $receive outside transaction scope
 
-             $transdate = Carbon::now(); 
-             $receive = IVReceive::create([
-                 'transdate' => $transdate,
-                 'tostore_id' => $validated['to_store_id'],
-                 'fromstore_type' => StoreType::Store->value, // Assuming this is a store
-                 'fromstore_id' => $validated['from_store_id'],                 
-                 'stage' => $validated['stage'],
-                 'total' => 0, // Set an initial total (will update later)
-                 'user_id' => Auth::id(),
-             ]);    
-     
-             // Create associated receive items
-             foreach ($validated['receiveitems'] as $item) {
-                 $receive->receiveitems()->create([
-                     'product_id' => $item['item_id'],
-                     'quantity' => $item['quantity'],
-                     'price' => $item['price'],
-                 ]);
-             }
-     
-             // Reload the relationship to ensure all items are fetched
-             $receive->load('receiveitems');
-     
-             // Compute the total based on updated receive items
-             $calculatedTotal = $receive->receiveitems->sum(fn($item) => $item->quantity * $item->price);
-     
-             // Update receive with the correct total
-             $receive->update(['total' => $calculatedTotal]);
-         });
-     
-         return redirect()->route('inventory2.index')->with('success', 'Receive created successfully.');
-     }     
+        try {
+            // 2. Begin database transaction
+            DB::transaction(function () use ($validated, &$receive) { // Pass $receive by reference
+                // a. Calculate total from validated items *before* creating the main record
+                $calculatedTotal = 0;
+                foreach ($validated['receiveitems'] as $item) {
+                    $calculatedTotal += (float) $item['quantity'] * (float) $item['price'];
+                }
+
+                // b. Create the main IVReceive record
+                $receive = IVReceive::create([
+                    'transdate'      => Carbon::now(),
+                    'tostore_id'     => $validated['to_store_id'],
+                    'fromstore_type' => StoreType::Store->value, // Ensure StoreType::Store is defined
+                    'fromstore_id'   => $validated['from_store_id'],
+                    'stage'          => $validated['stage'], // This will be 1 (Draft)
+                    'total'          => $calculatedTotal,   // Use pre-calculated total
+                    'remarks'        => $validated['remarks'] ?? null, // Store remarks
+                    'user_id'        => Auth::id(),
+                ]);
+
+                // c. Create associated receive items (efficiently)
+                $itemsToCreate = [];
+                foreach ($validated['receiveitems'] as $itemData) {
+                    $itemsToCreate[] = [
+                        'product_id' => $itemData['item_id'], // Ensure this matches DB column name
+                        'quantity'   => $itemData['quantity'],
+                        'price'      => $itemData['price'],
+                        // 'iv_receive_id' will be set automatically by createMany if relationship is defined
+                    ];
+                }
+                $receive->receiveitems()->createMany($itemsToCreate); // Assumes `receiveitems` relationship exists
+            });
+
+            // 3. If transaction was successful and $receive is populated
+            if ($receive) {
+                return redirect()->route('inventory2.edit', $receive->id)
+                                 ->with('success', 'Receive created successfully and saved as draft. You can now review or submit it.');
+            } else {
+                // This fallback is less likely with the improved structure but kept for safety.
+                return back()->withInput()->with('error', 'Failed to create receive due to an unexpected issue after transaction.');
+            }
+
+        } catch (Throwable $e) { // Catch any exception/error
+            // 4. Log the error and redirect back with input and error message
+            \Log::error('Receive creation failed: ' . $e->getMessage() . ' Stack: ' . $e->getTraceAsString());
+            return back()->withInput()->with('error', 'Failed to create receive. Please check your input and try again. Details: ' . $e->getMessage());
+        }
+    }
 
    
     /**

@@ -1,27 +1,16 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { Head, Link, useForm, router } from "@inertiajs/react";
-import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
+import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout"; // Adjust path if needed
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faSearch, faPlus, faEdit, faTrash, faSpinner, faTimesCircle } from "@fortawesome/free-solid-svg-icons";
 import "@fortawesome/fontawesome-svg-core/styles.css";
-import { debounce } from 'lodash'; // For debouncing search
+import { debounce } from 'lodash';
 
-import Modal from '../../Components/CustomModal.jsx';
-// import { toast } from 'react-toastify'; // Example: if you were to use react-toastify
-// import 'react-toastify/dist/ReactToastify.css';
+import Modal from '../../Components/CustomModal.jsx'; // Adjust path if needed
 
-// Map post stage numbers to labels and styles
-const postStageConfig = {
-    1: { label: 'Draft', className: 'bg-gray-200 text-gray-700 hover:bg-gray-300' },
-    2: { label: 'Approved', className: 'bg-blue-200 text-blue-700 hover:bg-blue-300' },
-    // 6: { label: 'Cancelled', className: 'bg-red-200 text-red-700 hover:bg-red-300' },
-    "": { label: 'All', className: 'bg-indigo-200 text-indigo-700 hover:bg-indigo-300' }, // For the "All" filter
-};
-
-export default function Index({ auth, posts, filters, flash }) { // Added flash for success/error messages
+export default function Index({ auth, posts, filters, flash }) {
     const { data, setData, get, errors, processing, reset } = useForm({
         search: filters.search || "",
-        stage: filters.stage || "1",
     });
 
     const [modalState, setModalState] = useState({
@@ -29,48 +18,39 @@ export default function Index({ auth, posts, filters, flash }) { // Added flash 
         message: '',
         isAlert: false,
         postToDeleteId: null,
+        type: 'info',
     });
 
-    // Debounced search function
     const debouncedSearch = useCallback(
-        debounce((searchValue, currentStage) => {
-            get(route("expenses0.index", { search: searchValue, stage: currentStage }), {
+        debounce((searchValue) => {
+            get(route("expenses0.index", { search: searchValue }), {
                 preserveState: true,
-                preserveScroll: true, // Keep scroll position on filter change
+                preserveScroll: true,
             });
-        }, 300), // 300ms delay
-        [] // Empty dependency array: memoize the debounced function itself
+        }, 300),
+        [get]
     );
 
     useEffect(() => {
-        // Call debounced search when search or stage changes
-        debouncedSearch(data.search, data.stage);
-        // Cleanup function to cancel any pending debounced calls if component unmounts
+        debouncedSearch(data.search);
         return () => debouncedSearch.cancel();
-    }, [data.search, data.stage, debouncedSearch]);
+    }, [data.search, debouncedSearch]);
 
-    // Handle flash messages from session
     useEffect(() => {
         if (flash?.success) {
-            showAlert(flash.success, 'success'); // Or use toast.success(flash.success);
+            showAlert(flash.success, 'success');
         }
         if (flash?.error) {
-            showAlert(flash.error, 'error'); // Or use toast.error(flash.error);
+            showAlert(flash.error, 'error');
         }
     }, [flash]);
-
 
     const handleSearchChange = (e) => {
         setData("search", e.target.value);
     };
 
-    const handleStageChange = (stage) => {
-        setData("stage", stage);
-    };
-
     const clearFilters = () => {
-        reset('search', 'stage'); // Reset search and stage to initial or empty
-        setData('stage', '1'); // Or set to a default stage
+        reset('search');
     };
 
     const handleDelete = (id) => {
@@ -79,32 +59,35 @@ export default function Index({ auth, posts, filters, flash }) { // Added flash 
             message: "Are you sure you want to delete this expense? This action cannot be undone.",
             isAlert: false,
             postToDeleteId: id,
-            type: 'confirmation', // Added type for styling modal
+            type: 'confirmation',
         });
     };
 
     const handleModalClose = () => {
-        setModalState({ isOpen: false, message: '', isAlert: false, postToDeleteId: null });
+        setModalState({ isOpen: false, message: '', isAlert: false, postToDeleteId: null, type: 'info' });
     };
 
     const handleModalConfirm = async () => {
         if (modalState.postToDeleteId) {
             router.delete(route("expenses0.destroy", modalState.postToDeleteId), {
                 onSuccess: () => {
-                    // Flash message will be handled by useEffect
+                    // Flash message handled by useEffect
                 },
-                onError: (errors) => {
-                    console.error("Failed to delete post:", errors);
-                    showAlert("There was an error deleting the expense. Please try again.", 'error');
+                onError: (errorResponse) => {
+                    console.error("Failed to delete post:", errorResponse);
+                    const errorMessage = errorResponse?.message || (errorResponse?.error || "There was an error deleting the expense. Please try again.");
+                    showAlert(errorMessage, 'error');
                 },
                 onFinish: () => {
-                    setModalState({ isOpen: false, message: '', isAlert: false, postToDeleteId: null });
+                    if (!modalState.isAlert) {
+                        setModalState({ isOpen: false, message: '', isAlert: false, postToDeleteId: null, type: 'info' });
+                    }
                 }
             });
         }
     };
 
-    const showAlert = (message, type = 'info') => { // type can be 'info', 'success', 'error', 'warning'
+    const showAlert = (message, type = 'info') => {
         setModalState({
             isOpen: true,
             message: message,
@@ -116,9 +99,8 @@ export default function Index({ auth, posts, filters, flash }) { // Added flash 
 
     return (
         <AuthenticatedLayout
-            user={auth.user} // Pass user prop
+            user={auth.user}
             header={
-                // The "Create Expense" Link has been removed from here
                 <h2 className="text-xl font-semibold leading-tight text-gray-800 dark:text-gray-200">
                     Expense List
                 </h2>
@@ -129,77 +111,61 @@ export default function Index({ auth, posts, filters, flash }) { // Added flash 
             <div className="py-8">
                 <div className="max-w-7xl mx-auto sm:px-6 lg:px-8">
                     <div className="bg-white dark:bg-gray-800 shadow-sm sm:rounded-lg p-6">
-                        {/* Filter Section */}
+
+                        {/* Filter Section & Create Button */}
                         <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-md">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                                <div className="md:col-span-1">
+                            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+                                {/* Search Input and Clear Button Container */}
+                                <div className="flex-grow"> {/* Takes available space */}
                                     <label htmlFor="search" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        Search by Supplier
+                                        Search by Description
                                     </label>
-                                    <div className="relative">
-                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                            <FontAwesomeIcon icon={faSearch} className="text-gray-400" />
-                                        </div>
-                                        <input
-                                            type="text"
-                                            id="search"
-                                            name="search"
-                                            placeholder="Enter supplier name..."
-                                            value={data.search}
-                                            onChange={handleSearchChange}
-                                            className={`block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-900 dark:text-gray-300 ${errors.search ? "border-red-500" : ""}`}
-                                        />
-                                        {processing && data.search && ( // Show spinner only if search has text
-                                            <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
-                                                <FontAwesomeIcon icon={faSpinner} className="animate-spin text-gray-400" />
+                                    <div className="flex items-center gap-2">
+                                        <div className="relative flex-grow"> {/* Input takes available space within this inner flex */}
+                                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                                <FontAwesomeIcon icon={faSearch} className="text-gray-400" />
                                             </div>
+                                            <input
+                                                type="text"
+                                                id="search"
+                                                name="search"
+                                                placeholder="Enter description..."
+                                                value={data.search}
+                                                onChange={handleSearchChange}
+                                                className={`block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-900 dark:text-gray-300 ${errors.search ? "border-red-500" : ""}`}
+                                            />
+                                            {processing && data.search && (
+                                                <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                                                    <FontAwesomeIcon icon={faSpinner} className="animate-spin text-gray-400" />
+                                                </div>
+                                            )}
+                                        </div>
+                                        {data.search && (
+                                            <button
+                                                onClick={clearFilters}
+                                                type="button"
+                                                className="px-3 py-2 text-xs text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 flex items-center justify-center border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-100 dark:hover:bg-gray-600 h-[38px] flex-shrink-0"
+                                                title="Clear Search"
+                                            >
+                                                <FontAwesomeIcon icon={faTimesCircle} className="mr-1 md:mr-0" />
+                                                <span className="hidden md:inline ml-1">Clear</span>
+                                            </button>
                                         )}
                                     </div>
                                     {errors.search && <p className="mt-1 text-xs text-red-500">{errors.search}</p>}
                                 </div>
 
-                                <div className="md:col-span-2">
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        Filter by Stage
-                                    </label>
-                                    <div className="flex flex-wrap gap-2 items-center">
-                                        {Object.entries(postStageConfig).map(([key, { label, className }]) => (
-                                            <button
-                                                key={key}
-                                                type="button"
-                                                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                                                    data.stage === key
-                                                        ? 'bg-indigo-600 text-white ring-2 ring-indigo-500 ring-offset-1 dark:ring-offset-gray-700'
-                                                        : `${className} dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500`
-                                                }`}
-                                                onClick={() => handleStageChange(key)}
-                                            >
-                                                {label}
-                                            </button>
-                                        ))}
-                                        {(data.search || data.stage !== "1") && ( // Show clear only if filters are active
-                                            <button
-                                                onClick={clearFilters}
-                                                className="text-xs text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 flex items-center"
-                                            >
-                                                <FontAwesomeIcon icon={faTimesCircle} className="mr-1" />
-                                                Clear Filters
-                                            </button>
-                                        )}
-                                    </div>
+                                {/* Create Expense Button */}
+                                <div className="flex-shrink-0 mt-4 md:mt-0">
+                                    <Link
+                                        href={route("expenses0.create")}
+                                        className="w-full md:w-auto inline-flex items-center justify-center px-4 py-2 bg-green-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-green-500 active:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition ease-in-out duration-150 h-[38px]"
+                                    >
+                                        <FontAwesomeIcon icon={faPlus} className="mr-2" /> Create Expense
+                                    </Link>
                                 </div>
                             </div>
-                             {/* You might want to add the Create button here if it's still needed on the page */}
-                             <div className="mt-4 flex justify-end">
-                                <Link
-                                    href={route("expenses0.create")}
-                                    className="inline-flex items-center px-4 py-2 bg-green-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-green-500 active:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition ease-in-out duration-150"
-                                >
-                                    <FontAwesomeIcon icon={faPlus} className="mr-2" /> Create Expense
-                                </Link>
-                            </div>
                         </div>
-
 
                         {/* Posts Table */}
                         <div className="overflow-x-auto relative shadow-md sm:rounded-lg border border-gray-200 dark:border-gray-700">
@@ -208,14 +174,13 @@ export default function Index({ auth, posts, filters, flash }) { // Added flash 
                                     <tr>
                                         <th scope="col" className="px-6 py-3">Description</th>
                                         <th scope="col" className="px-6 py-3 text-right">Total</th>
-                                        <th scope="col" className="px-6 py-3 text-center">Stage</th>
                                         <th scope="col" className="px-6 py-3 text-center">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {processing && posts.data.length === 0 && ( // Show full table loader only if it's initial load/full filter change
+                                    {processing && (posts.data.length === 0 || data.search) && (
                                         <tr>
-                                            <td colSpan="4" className="text-center py-10">
+                                            <td colSpan="3" className="text-center py-10">
                                                 <FontAwesomeIcon icon={faSpinner} className="animate-spin text-2xl text-gray-400" />
                                                 <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Loading expenses...</p>
                                             </td>
@@ -223,9 +188,9 @@ export default function Index({ auth, posts, filters, flash }) { // Added flash 
                                     )}
                                     {!processing && posts.data.length === 0 && (
                                         <tr>
-                                            <td colSpan="4" className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
-                                                No expenses found. Try adjusting your filters or
-                                                <Link href={route("expenses0.create")} className="text-indigo-600 hover:underline ml-1">create a new one</Link>.
+                                            <td colSpan="3" className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                                                No expenses found. Try adjusting your search or 
+                                                <Link href={route("expenses0.create")} className="text-indigo-600 hover:underline">create a new one</Link>.
                                             </td>
                                         </tr>
                                     )}
@@ -241,13 +206,6 @@ export default function Index({ auth, posts, filters, flash }) { // Added flash 
                                                 })}
                                             </td>
                                             <td className="px-6 py-4 text-center">
-                                                <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${
-                                                    postStageConfig[post.stage]?.className || postStageConfig[1].className // Default to draft if stage unknown
-                                                }`}>
-                                                    {postStageConfig[post.stage]?.label || 'Unknown'}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 text-center">
                                                 <div className="flex items-center justify-center space-x-2">
                                                     <Link
                                                         href={route("expenses0.edit", post.id)}
@@ -260,6 +218,7 @@ export default function Index({ auth, posts, filters, flash }) { // Added flash 
                                                         onClick={() => handleDelete(post.id)}
                                                         className="font-medium text-red-600 dark:text-red-500 hover:underline p-1"
                                                         title="Delete"
+                                                        type="button"
                                                     >
                                                         <FontAwesomeIcon icon={faTrash} />
                                                     </button>
@@ -270,11 +229,12 @@ export default function Index({ auth, posts, filters, flash }) { // Added flash 
                                 </tbody>
                             </table>
                         </div>
-                        {/* Pagination (Assuming Inertia handles this via props.links) */}
+
+                        {/* Pagination */}
                         {posts.links && posts.links.length > 3 && (
                              <nav className="mt-6 flex items-center justify-between" aria-label="Pagination">
                                 <div className="text-sm text-gray-700 dark:text-gray-400">
-                                    Showing <span className="font-medium">{posts.from}</span> to <span className="font-medium">{posts.to}</span> of <span className="font-medium">{posts.total}</span> results
+                                    Showing <span className="font-medium">{posts.from || 0}</span> to <span className="font-medium">{posts.to || 0}</span> of <span className="font-medium">{posts.total || 0}</span> results
                                 </div>
                                 <div className="flex justify-end">
                                     {posts.links.map((link, index) => (
@@ -292,7 +252,8 @@ export default function Index({ auth, posts, filters, flash }) { // Added flash 
                                                 ${!link.url ? 'cursor-not-allowed opacity-50' : ''}
                                             `}
                                             dangerouslySetInnerHTML={{ __html: link.label }}
-                                            as={!link.url ? 'span' : 'a'} // Render as span if no URL
+                                            as={!link.url ? 'span' : 'button'}
+                                            disabled={!link.url}
                                         />
                                     ))}
                                 </div>
@@ -305,11 +266,11 @@ export default function Index({ auth, posts, filters, flash }) { // Added flash 
             <Modal
                 isOpen={modalState.isOpen}
                 onClose={handleModalClose}
-                onConfirm={modalState.isAlert ? handleModalClose : handleModalConfirm} // Only confirm action for non-alerts
-                title={modalState.isAlert ? (modalState.type === 'success' ? 'Success' : modalState.type === 'error' ? 'Error' : 'Alert') : "Confirm Deletion"}
+                onConfirm={modalState.isAlert ? handleModalClose : handleModalConfirm}
+                title={modalState.isAlert ? (modalState.type === 'success' ? 'Success' : modalState.type === 'error' ? 'Error' : 'Notice') : "Confirm Deletion"}
                 message={modalState.message}
                 isAlert={modalState.isAlert}
-                type={modalState.type} // Pass type for conditional styling in Modal
+                type={modalState.type}
             />
         </AuthenticatedLayout>
     );
