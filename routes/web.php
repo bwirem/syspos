@@ -55,6 +55,7 @@ use App\Http\Controllers\UserPermissionController;
 
 
 use App\Http\Controllers\Reports\SalesBillingController;
+use App\Http\Controllers\Reports\SalesReportsController;
 
 
 use Illuminate\Foundation\Application;
@@ -262,10 +263,20 @@ Route::middleware('auth')->group(function () {
 
         // Main index route
         Route::get('/', function () {
-            return Inertia::render('Reports/SalesBilling/Index');
+            return Inertia::render('Reports/Sales/Index');
         })->name('index'); // Added a proper route name for the index.
-
     }); 
+   
+    Route::prefix('reports')->name('reports.')->group(function () {
+        Route::get('/sales/daily', [SalesReportsController::class, 'daily'])->name('sales.daily');
+        Route::get('/sales/summary', [SalesReportsController::class, 'summary'])->name('sales.summary');        
+        Route::get('/sales/cashiersession', [SalesReportsController::class, 'cashierSession'])->name('sales.cashiersession');
+        Route::get('/sales/by-item', [SalesReportsController::class, 'salesByItem'])->name('sales.by_item');// ... other routes ...
+        Route::get('/payments/methods', [SalesReportsController::class, 'paymentMethods'])->name('payments.methods');        
+        Route::get('/customer/history', [SalesReportsController::class, 'customerHistory'])->name('customer.history');
+        Route::get('/eod/summary', [SalesReportsController::class, 'eodSummary'])->name('eod.summary');
+        Route::get('/custom/builder', [SalesReportsController::class, 'customBuilder'])->name('custom.builder');
+    });
 
 
     // Routes for Sales and Bill (Version 3)
