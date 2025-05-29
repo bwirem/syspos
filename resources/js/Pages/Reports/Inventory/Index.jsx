@@ -1,41 +1,28 @@
-
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, Link, usePage } from '@inertiajs/react';
+import { Head, Link } from '@inertiajs/react'; // usePage removed as ziggy not used directly here
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
-    faBoxes,            // General Inventory / Stock
-    faWarehouse,        // Stock Locations / Warehouses
-    faExchangeAlt,      // Stock Transfers / Movements
-    faEdit,             // Stock Adjustments (or faSlidersH)
-    faClipboardList,    // Stock Taking / Cycle Count
-    faListOl,           // Item Master / Product Catalog
-    faExclamationTriangle, // Low Stock / Alerts
-    faChartLine,        // Inventory Analysis / Valuation
-    faHistory,          // Movement History
-    faCalendarTimes,    // Expiring Items (or faHourglassEnd)
-    faPlusSquare,       // Add New Item
+    faBoxes,
+    faWarehouse,
+    faExchangeAlt,
+    faEdit,
+    faClipboardList,
+    faListOl,
+    faExclamationTriangle,
+    faChartLine,
+    faHistory,
+    faCalendarTimes,
+    faPlusSquare,
     faArrowRight,
     faFilter,
-    faTag,              // For item categories/tags
-    faBalanceScale,     // For valuation/reconciliation
+    faTag,
+    faBalanceScale,
 } from '@fortawesome/free-solid-svg-icons';
+import '@fortawesome/fontawesome-svg-core/styles.css'; // Ensure this is imported
 
-// Reusable Card Component (ActionOrReportCard from previous examples)
-function ActionOrReportCard({ title, value, description, icon, iconBgColor, linkHref, linkRoute, linkText }) {
-    const { ziggy } = usePage().props;
-
-    let href = linkHref || '#';
-    if (linkRoute && typeof route === 'function' && ziggy?.routes?.[linkRoute]) {
-        try { href = route(linkRoute, undefined, undefined, ziggy); }
-        catch (e) {
-            console.warn(`Route '${linkRoute}' not found for Card.`);
-            href = linkHref || '#';
-        }
-    } else if (linkRoute) {
-        console.warn(`Route function or Ziggy not available, or route '${linkRoute}' missing. Falling back to direct link prop.`);
-        href = linkHref || '#';
-    }
-
+// ActionOrReportCard component (modified as shown above)
+function ActionOrReportCard({ title, value, description, icon, iconBgColor, linkHref, linkText }) {
+    const href = linkHref || '#';
     const textColorClass = iconBgColor ? iconBgColor.replace('bg-', 'text-') : 'text-indigo-600';
 
     return (
@@ -73,15 +60,34 @@ export default function InventoryDashboard({
     totalStockValue,
     lowStockItemCount,
     itemCategoriesCount,
-    stockLocationsCount
+    stockLocationsCount,
+    // You could pass an object of URLs from your controller
+    // inventoryUrls = {}
 }) {
-    // Props from controller:
-    // return Inertia::render('Inventory/Index', [
-    // 'totalStockValue' => Stock::sum(DB::raw('quantity * cost_price')),
-    // 'lowStockItemCount' => Stock::whereColumn('quantity', '<=', 'reorder_level')->count(),
-    // 'itemCategoriesCount' => ItemCategory::count(),
-    // 'stockLocationsCount' => StockLocation::count(),
-    // ]);
+
+    // Define URLs directly or get them from props (inventoryUrls)
+    // Using direct paths here for simplicity.
+    // In a real app, consider passing these from the controller using Laravel's route() helper.
+    const urls = {
+        reportsInventoryValuation: '/reports/inventory/valuation',
+        inventoryItemsLowStock: '/inventory/items/low-stock', // Example, adjust to your actual route
+        inventoryItemsIndex: '/inventory/items',             // Example
+        inventoryLocationsIndex: '/inventory/locations',       // Example
+        inventoryStockLevels: '/inventory/stock/levels',       // Example
+        inventoryAdjustmentsCreate: '/inventory/adjustments/create',// Example
+        inventoryTransfersCreate: '/inventory/transfers/create', // Example
+        inventoryStockTakeCreate: '/inventory/stock-take/create', // Example
+        inventoryCategoriesIndex: '/inventory/categories',     // Example
+        inventoryItemsCreate: '/inventory/items/create',       // Example
+        reportsInventoryStockOnHand: '/reports/inventory/stock-on-hand',
+        reportsInventoryMovementHistory: '/reports/inventory/movement-history',
+        reportsInventoryAgeing: '/reports/inventory/ageing',
+        reportsInventoryReorder: '/reports/inventory/reorder',
+        reportsInventoryExpiringItems: '/reports/inventory/expiring-items',
+        reportsInventorySlowMoving: '/reports/inventory/slow-moving',
+        reportsInventoryCustom: '/reports/inventory/custom',
+    };
+
 
     return (
         <AuthenticatedLayout
@@ -102,14 +108,14 @@ export default function InventoryDashboard({
                         <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-4 uppercase tracking-wider">
                             Quick Actions & Overview
                         </h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8"> 
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
                             <ActionOrReportCard
                                 title="Total Stock Value"
-                                value={totalStockValue !== undefined ? `TZS ${totalStockValue}` : 'N/A'} // Format as currency
+                                value={totalStockValue !== undefined ? `TZS ${parseFloat(totalStockValue).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}` : 'N/A'}
                                 description="Current estimated value of all inventory."
                                 icon={faBalanceScale}
                                 iconBgColor="bg-green-600"
-                                linkRoute="reports.inventory.valuation" // Link to valuation report
+                                linkHref={urls.reportsInventoryValuation}
                                 linkText="View Valuation"
                             />
                             <ActionOrReportCard
@@ -118,16 +124,15 @@ export default function InventoryDashboard({
                                 description="Items at or below reorder level."
                                 icon={faExclamationTriangle}
                                 iconBgColor="bg-red-500"
-                                linkRoute="inventory.items.low_stock"
+                                linkHref={urls.inventoryItemsLowStock}
                                 linkText="View Alerts"
                             />
                             <ActionOrReportCard
                                 title="Item Master"
-                                // value={itemMasterCount !== undefined ? itemMasterCount : 'N/A'} // if you have total items count
                                 description="Manage products, SKUs, and item details."
                                 icon={faListOl}
                                 iconBgColor="bg-blue-600"
-                                linkRoute="inventory.items.index"
+                                linkHref={urls.inventoryItemsIndex}
                                 linkText="Manage Items"
                             />
                             <ActionOrReportCard
@@ -136,7 +141,7 @@ export default function InventoryDashboard({
                                 description="Manage warehouses and storage bins."
                                 icon={faWarehouse}
                                 iconBgColor="bg-purple-600"
-                                linkRoute="inventory.locations.index"
+                                linkHref={urls.inventoryLocationsIndex}
                                 linkText="Manage Locations"
                             />
                         </div>
@@ -153,7 +158,7 @@ export default function InventoryDashboard({
                                 description="Check current quantities for all items."
                                 icon={faBoxes}
                                 iconBgColor="bg-sky-500"
-                                linkRoute="inventory.stock.levels"
+                                linkHref={urls.inventoryStockLevels}
                                 linkText="Check Stock"
                             />
                             <ActionOrReportCard
@@ -161,7 +166,7 @@ export default function InventoryDashboard({
                                 description="Correct discrepancies (e.g., damages, loss)."
                                 icon={faEdit}
                                 iconBgColor="bg-orange-500"
-                                linkRoute="inventory.adjustments.create"
+                                linkHref={urls.inventoryAdjustmentsCreate}
                                 linkText="Adjust Stock"
                             />
                             <ActionOrReportCard
@@ -169,7 +174,7 @@ export default function InventoryDashboard({
                                 description="Move items between different locations."
                                 icon={faExchangeAlt}
                                 iconBgColor="bg-teal-500"
-                                linkRoute="inventory.transfers.create"
+                                linkHref={urls.inventoryTransfersCreate}
                                 linkText="Transfer Stock"
                             />
                             <ActionOrReportCard
@@ -177,7 +182,7 @@ export default function InventoryDashboard({
                                 description="Perform physical inventory counts."
                                 icon={faClipboardList}
                                 iconBgColor="bg-indigo-500"
-                                linkRoute="inventory.stock_take.create"
+                                linkHref={urls.inventoryStockTakeCreate}
                                 linkText="Start Count"
                             />
                              <ActionOrReportCard
@@ -186,7 +191,7 @@ export default function InventoryDashboard({
                                 description="Organize items into categories."
                                 icon={faTag}
                                 iconBgColor="bg-rose-500"
-                                linkRoute="inventory.categories.index"
+                                linkHref={urls.inventoryCategoriesIndex}
                                 linkText="Manage Categories"
                             />
                             <ActionOrReportCard
@@ -194,7 +199,7 @@ export default function InventoryDashboard({
                                 description="Add a new product or SKU to the inventory."
                                 icon={faPlusSquare}
                                 iconBgColor="bg-lime-500"
-                                linkRoute="inventory.items.create"
+                                linkHref={urls.inventoryItemsCreate}
                                 linkText="Add Item"
                             />
                         </div>
@@ -211,15 +216,15 @@ export default function InventoryDashboard({
                                 description="Detailed list of current inventory levels by item/location."
                                 icon={faBoxes}
                                 iconBgColor="bg-cyan-600"
-                                linkRoute="reports.inventory.stock_on_hand"
+                                linkHref={urls.reportsInventoryStockOnHand}
                                 linkText="View SOH"
                             />
                             <ActionOrReportCard
                                 title="Inventory Valuation"
                                 description="Calculate the total value of current stock (e.g., FIFO, Weighted Avg)."
                                 icon={faBalanceScale}
-                                iconBgColor="bg-green-600" // Same as overview for consistency
-                                linkRoute="reports.inventory.valuation"
+                                iconBgColor="bg-green-600"
+                                linkHref={urls.reportsInventoryValuation}
                                 linkText="View Valuation"
                             />
                             <ActionOrReportCard
@@ -227,23 +232,23 @@ export default function InventoryDashboard({
                                 description="Audit trail of all inventory transactions."
                                 icon={faHistory}
                                 iconBgColor="bg-amber-600"
-                                linkRoute="reports.inventory.movement_history"
+                                linkHref={urls.reportsInventoryMovementHistory}
                                 linkText="Track Movements"
                             />
                             <ActionOrReportCard
                                 title="Inventory Ageing Report"
                                 description="Analyze how long stock has been held."
-                                icon={faChartLine} // or faHourglassHalf
+                                icon={faChartLine}
                                 iconBgColor="bg-pink-600"
-                                linkRoute="reports.inventory.ageing"
+                                linkHref={urls.reportsInventoryAgeing}
                                 linkText="Analyze Ageing"
                             />
                             <ActionOrReportCard
                                 title="Reorder Level Report"
                                 description="Identify items needing replenishment."
-                                icon={faExclamationTriangle} // Same as overview
+                                icon={faExclamationTriangle}
                                 iconBgColor="bg-red-600"
-                                linkRoute="reports.inventory.reorder"
+                                linkHref={urls.reportsInventoryReorder}
                                 linkText="View Reorder List"
                             />
                             <ActionOrReportCard
@@ -251,15 +256,15 @@ export default function InventoryDashboard({
                                 description="Track items nearing their expiry dates (if applicable)."
                                 icon={faCalendarTimes}
                                 iconBgColor="bg-yellow-600"
-                                linkRoute="reports.inventory.expiring_items"
+                                linkHref={urls.reportsInventoryExpiringItems}
                                 linkText="Track Expiry"
                             />
                             <ActionOrReportCard
                                 title="Slow Moving Stock"
                                 description="Identify items with low sales or movement."
-                                icon={faWarehouse} // Could also be faThumbsDown
+                                icon={faWarehouse}
                                 iconBgColor="bg-slate-500"
-                                linkRoute="reports.inventory.slow_moving"
+                                linkHref={urls.reportsInventorySlowMoving}
                                 linkText="Identify Slow Stock"
                             />
                             <ActionOrReportCard
@@ -267,7 +272,7 @@ export default function InventoryDashboard({
                                 description="Build reports with specific inventory data filters."
                                 icon={faFilter}
                                 iconBgColor="bg-gray-600"
-                                linkRoute="reports.inventory.custom"
+                                linkHref={urls.reportsInventoryCustom}
                                 linkText="Build Report"
                             />
                         </div>

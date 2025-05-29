@@ -1,0 +1,170 @@
+import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import { Head, Link, useForm } from '@inertiajs/react';
+import React from 'react';
+import Pagination from '@/Components/Pagination'; // Assuming you have this
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faFilter, faRedo, faTruck, faStar, faSpinner, faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
+
+const formatCurrency = (amount, currencyCode = 'TZS') => {
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount) || amount === null || amount === undefined) return `${currencyCode} 0.00`;
+    return parsedAmount.toLocaleString(undefined, { style: 'currency', currency: currencyCode, minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+// Helper for Tailwind classes
+const thDefaultClass = "px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider";
+const tdDefaultClass = "px-4 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-200";
+const btnIndigoClass = "inline-flex items-center justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50";
+const btnGrayClass = "inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500 dark:border-gray-500";
+
+
+export default function SupplierPerformanceReport({ auth, suppliersPerformance, suppliers, filters = {}, flash }) {
+    const { data, setData, get, processing, errors, reset } = useForm({
+        start_date: filters.start_date || new Date(new Date().setMonth(new Date().getMonth() - 3)).toISOString().slice(0, 10), // Default to last 3 months
+        end_date: filters.end_date || new Date().toISOString().slice(0, 10), // Default to today
+        supplier_id: filters.supplier_id || '',
+    });
+
+    const handleInputChange = (e) => {
+        setData(e.target.name, e.target.value);
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        get(route('reports.procurement.supplier_performance'), { // Ensure this route name is correct
+            preserveState: true,
+            preserveScroll: true,
+        });
+    };
+
+    const resetFilters = () => {
+        reset();
+    };
+
+    const getSupplierName = (supplier) => {
+        if (!supplier) return 'N/A';
+        return supplier.company_name || `${supplier.first_name || ''} ${supplier.surname || ''}`.trim() || 'Unknown Supplier';
+    };
+
+    return (
+        <AuthenticatedLayout
+            user={auth.user}
+            header={<h2 className="text-xl font-semibold leading-tight text-gray-800 dark:text-gray-200">Supplier Performance Report</h2>}
+        >
+            <Head title="Supplier Performance" />
+
+            <div className="py-12">
+                <div className="mx-auto max-w-7xl sm:px-6 lg:px-8">
+                    <div className="bg-white dark:bg-gray-800 shadow-sm sm:rounded-lg p-6">
+                        <form onSubmit={handleSubmit} className="mb-8 space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4 items-end">
+                                <div>
+                                    <label htmlFor="start_date" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Start Date</label>
+                                    <input type="date" name="start_date" id="start_date" value={data.start_date} onChange={handleInputChange} className="mt-1 block w-full form-input rounded-md shadow-sm dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600" />
+                                    {errors.start_date && <p className="text-xs text-red-500 mt-1">{errors.start_date}</p>}
+                                </div>
+                                <div>
+                                    <label htmlFor="end_date" className="block text-sm font-medium text-gray-700 dark:text-gray-300">End Date</label>
+                                    <input type="date" name="end_date" id="end_date" value={data.end_date} onChange={handleInputChange} className="mt-1 block w-full form-input rounded-md shadow-sm dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600" />
+                                    {errors.end_date && <p className="text-xs text-red-500 mt-1">{errors.end_date}</p>}
+                                </div>
+                                <div>
+                                    <label htmlFor="supplier_id" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Supplier</label>
+                                    <select name="supplier_id" id="supplier_id" value={data.supplier_id} onChange={handleInputChange} className="mt-1 block w-full form-select rounded-md shadow-sm dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600">
+                                        <option value="">All Suppliers</option>
+                                        {(suppliers || []).map(s => <option key={s.id} value={s.id}>{getSupplierName(s)}</option>)}
+                                    </select>
+                                </div>
+                                <div className="flex items-end space-x-2 pt-5 md:pt-0">
+                                    <button type="submit" disabled={processing} className={`w-full md:w-auto ${btnIndigoClass}`}>
+                                        <FontAwesomeIcon icon={faFilter} className="mr-2 h-4 w-4" />
+                                        {processing ? 'Filtering...' : 'Apply Filters'}
+                                    </button>
+                                     <button type="button" onClick={resetFilters} className={`w-full md:w-auto ${btnGrayClass}`}>
+                                        <FontAwesomeIcon icon={faRedo} className="mr-2 h-4 w-4" /> Reset
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+
+                        {flash?.success && (
+                            <div className="mb-4 p-3 text-sm text-green-700 bg-green-100 rounded-lg dark:bg-green-200 dark:text-green-800" role="alert">
+                                {flash.success}
+                            </div>
+                        )}
+                        {flash?.error && (
+                            <div className="mb-4 p-3 text-sm text-red-700 bg-red-100 rounded-lg dark:bg-red-200 dark:text-red-800" role="alert">
+                                {flash.error}
+                            </div>
+                        )}
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                            Performance based on approved/completed Purchase Orders within the selected period.
+                        </p>
+
+                        {processing && (
+                             <div className="text-center py-10 text-gray-500 dark:text-gray-400">
+                                <FontAwesomeIcon icon={faSpinner} spin size="2x" />
+                                <p className="mt-2">Loading Supplier Performance Data...</p>
+                            </div>
+                        )}
+
+                        {!processing && suppliersPerformance && suppliersPerformance.data && suppliersPerformance.data.length > 0 ? (
+                            <>
+                                <div className="overflow-x-auto rounded-lg border dark:border-gray-700">
+                                    <table className="min-w-full divide-y dark:divide-gray-600">
+                                        <thead className="bg-gray-50 dark:bg-gray-700/50">
+                                            <tr>
+                                                <th className={thDefaultClass}>Supplier Name</th>
+                                                <th className={`${thDefaultClass} text-right`}>POs Count</th>
+                                                <th className={`${thDefaultClass} text-right`}>Total PO Value</th>
+                                                {/* Add more performance metrics here as they become available */}
+                                                {/* e.g., Avg. Delivery Time, Rejection Rate % */}
+                                            </tr>
+                                        </thead>
+                                        <tbody className="bg-white dark:bg-gray-800 divide-y dark:divide-gray-700">
+                                            {suppliersPerformance.data.map((supplier) => (
+                                                <tr key={supplier.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                                                    <td className={tdDefaultClass}>{getSupplierName(supplier)}</td>
+                                                    <td className={`${tdDefaultClass} text-right`}>{supplier.purchaseorders_count}</td>
+                                                    <td className={`${tdDefaultClass} text-right`}>{formatCurrency(supplier.purchaseorders_sum_total)}</td>
+                                                    {/* Display other metrics */}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div className="mt-6">
+                                    <Pagination links={suppliersPerformance.links} />
+                                </div>
+                            </>
+                        ) : (
+                            !processing && <p className="text-center text-gray-500 dark:text-gray-400 mt-8 py-10">No supplier performance data found for the selected criteria.</p>
+                        )}
+
+                        {Object.keys(errors).length > 0 && (
+                            <div className="mt-6 p-4 bg-red-100 border border-red-300 rounded-md dark:bg-red-900/30 dark:border-red-700">
+                                <div className="flex">
+                                    <div className="flex-shrink-0">
+                                        <FontAwesomeIcon icon={faExclamationTriangle} className="h-5 w-5 text-red-400 dark:text-red-300" aria-hidden="true" />
+                                    </div>
+                                    <div className="ml-3">
+                                        <h3 className="text-sm font-medium text-red-800 dark:text-red-200">
+                                            Please correct the following errors:
+                                        </h3>
+                                        <div className="mt-2 text-sm text-red-700 dark:text-red-300">
+                                            <ul role="list" className="list-disc pl-5 space-y-1">
+                                                {Object.entries(errors).map(([field, message]) => (
+                                                    <li key={field}>{message}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </AuthenticatedLayout>
+    );
+}

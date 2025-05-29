@@ -40,5 +40,11 @@ class SPR_Supplier extends Model
     {
         return SupplierType::from($this->supplier_type)->label();
     }
+
+    // In App\Models\SPR_Supplier.php
+    public function purchaseorders()
+    {
+        return $this->hasMany(\App\Models\PROPurchase::class, 'supplier_id');
+    }
    
 }

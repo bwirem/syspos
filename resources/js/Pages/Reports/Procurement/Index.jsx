@@ -1,40 +1,26 @@
-
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, Link, usePage } from '@inertiajs/react';
+import { Head, Link } from '@inertiajs/react'; // usePage removed
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
-    faShoppingCart,     // General Procurement / Purchase Orders
-    faTruck,            // Suppliers / Deliveries
-    faBoxes,            // Receiving Goods / Inventory
-    faFileInvoiceDollar,// Supplier Invoices / Payments
-    faPlusSquare,       // Create New PO
-    faTasks,            // Pending Actions / Approvals
-    faChartPie,         // Spending Analysis
-    faHistory,          // History Reports
-    faListAlt,          // Item Lists / Catalogs
-    faFileContract,     // Contracts / Formal POs
-    faSearchDollar,     // Spend Analysis
+    faShoppingCart,
+    faTruck,
+    faBoxes,
+    faFileInvoiceDollar,
+    faPlusSquare,
+    faTasks,
+    // faChartPie, // Not used in active cards, but available
+    faHistory,
+    faListAlt,
+    faFileContract,
+    faSearchDollar,
     faArrowRight,
     faFilter,
 } from '@fortawesome/free-solid-svg-icons';
+import '@fortawesome/fontawesome-svg-core/styles.css'; // Ensure this is imported
 
-// Reusable Card Component (can be used for actions and reports)
-// Same ActionOrReportCard component from the previous example
-function ActionOrReportCard({ title, value, description, icon, iconBgColor, linkHref, linkRoute, linkText }) {
-    const { ziggy } = usePage().props;
-
-    let href = linkHref || '#';
-    if (linkRoute && typeof route === 'function' && ziggy?.routes?.[linkRoute]) {
-        try { href = route(linkRoute, undefined, undefined, ziggy); }
-        catch (e) {
-            console.warn(`Route '${linkRoute}' not found for Card.`);
-            href = linkHref || '#';
-        }
-    } else if (linkRoute) {
-        console.warn(`Route function or Ziggy not available, or route '${linkRoute}' missing. Falling back to direct link prop.`);
-        href = linkHref || '#';
-    }
-
+// ActionOrReportCard component (modified as shown above)
+function ActionOrReportCard({ title, value, description, icon, iconBgColor, linkHref, linkText }) {
+    const href = linkHref || '#';
     const textColorClass = iconBgColor ? iconBgColor.replace('bg-', 'text-') : 'text-indigo-600';
 
     return (
@@ -71,14 +57,32 @@ export default function ProcurementDashboard({
     auth,
     pendingPOCount,
     activeSuppliersCount,
-    goodsReceiptPendingCount
+    goodsReceiptPendingCount,
+    // procurementUrls = {} // Optional: To pass URLs as props from controller
 }) {
-    // Props should come from your controller
-    // e.g., return Inertia::render('Procurement/Index', [
-    // 'pendingPOCount' => PurchaseOrder::where('status', 'pending')->count(),
-    // 'activeSuppliersCount' => Supplier::where('is_active', true)->count(),
-    // 'goodsReceiptPendingCount' => GoodsReceiptNote::where('status', 'pending_receipt')->count(),
-    // ]);
+
+    // Define URLs directly or get them from props (procurementUrls)
+    // Using direct paths here for simplicity.
+    // You MUST replace these with your actual Laravel route paths.
+    const urls = {
+        // Quick Actions (if uncommented)
+        // procurementPurchaseOrdersCreate: '/procurement/purchase-orders/create',
+        // procurementPurchaseOrdersPending: '/procurement/purchase-orders/pending',
+        // procurementSuppliersIndex: '/procurement/suppliers',
+        // procurementGoodsReceiptCreate: '/procurement/goods-receipt/create',
+        // procurementGoodsReceiptPending: '/procurement/goods-receipt/pending',
+        // procurementInvoicesIndex: '/procurement/invoices',
+
+        // Reports
+        reportsProcurementPoHistory: '/reports/procurement/po-history',
+        reportsProcurementSupplierPerformance: '/reports/procurement/supplier-performance',
+        reportsProcurementItemHistory: '/reports/procurement/item-history',
+        reportsProcurementSpendAnalysis: '/reports/procurement/spend-analysis',
+        reportsProcurementGrnSummary: '/reports/procurement/grn-summary',
+        reportsProcurementInvoicePayment: '/reports/procurement/invoice-payment',
+        reportsProcurementCycleTime: '/reports/procurement/cycle-time',
+        reportsProcurementCustom: '/reports/procurement/custom',
+    };
 
     return (
         <AuthenticatedLayout
@@ -94,8 +98,9 @@ export default function ProcurementDashboard({
             <div className="py-8 md:py-12">
                 <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 
-                    {/* Section 1: Core Actions / Overview */}
-                    {/* <section className="mb-10">
+                    {/* Section 1: Core Actions / Overview - Keep this commented if not used */}
+                    {/*
+                    <section className="mb-10">
                         <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-4 uppercase tracking-wider">
                             Quick Actions & Overview
                         </h3>
@@ -105,7 +110,7 @@ export default function ProcurementDashboard({
                                 description="Create and send a new PO to a supplier."
                                 icon={faPlusSquare}
                                 iconBgColor="bg-blue-600"
-                                linkRoute="procurement.purchase_orders.create"
+                                linkHref={urls.procurementPurchaseOrdersCreate}
                                 linkText="Create PO"
                             />
                             <ActionOrReportCard
@@ -114,7 +119,7 @@ export default function ProcurementDashboard({
                                 description="Purchase orders awaiting approval or delivery."
                                 icon={faShoppingCart}
                                 iconBgColor="bg-orange-500"
-                                linkRoute="procurement.purchase_orders.pending"
+                                linkHref={urls.procurementPurchaseOrdersPending}
                                 linkText="View Pending"
                             />
                             <ActionOrReportCard
@@ -123,15 +128,15 @@ export default function ProcurementDashboard({
                                 description="View, add, or update supplier information."
                                 icon={faTruck}
                                 iconBgColor="bg-purple-600"
-                                linkRoute="procurement.suppliers.index"
+                                linkHref={urls.procurementSuppliersIndex}
                                 linkText="View Suppliers"
                             />
                              <ActionOrReportCard
                                 title="Receive Goods"
                                 description="Record incoming goods against purchase orders."
-                                icon={faBoxes} // or faDolly / faBoxOpen
+                                icon={faBoxes}
                                 iconBgColor="bg-teal-500"
-                                linkRoute="procurement.goods_receipt.create"
+                                linkHref={urls.procurementGoodsReceiptCreate}
                                 linkText="Record GRN"
                             />
                             <ActionOrReportCard
@@ -140,7 +145,7 @@ export default function ProcurementDashboard({
                                 description="POs awaiting goods receipt."
                                 icon={faTasks}
                                 iconBgColor="bg-yellow-500"
-                                linkRoute="procurement.goods_receipt.pending"
+                                linkHref={urls.procurementGoodsReceiptPending}
                                 linkText="View Pending GRNs"
                             />
                             <ActionOrReportCard
@@ -148,11 +153,12 @@ export default function ProcurementDashboard({
                                 description="Match invoices to POs/GRNs and record payments."
                                 icon={faFileInvoiceDollar}
                                 iconBgColor="bg-rose-500"
-                                linkRoute="procurement.invoices.index"
+                                linkHref={urls.procurementInvoicesIndex}
                                 linkText="Manage Invoices"
                             />
                         </div>
-                    </section> */}
+                    </section>
+                    */}
 
                     {/* Section 2: Reports Center */}
                     <section>
@@ -165,15 +171,15 @@ export default function ProcurementDashboard({
                                 description="Track all POs by status, supplier, or date range."
                                 icon={faHistory}
                                 iconBgColor="bg-sky-600"
-                                linkRoute="reports.procurement.po_history"
+                                linkHref={urls.reportsProcurementPoHistory}
                                 linkText="View PO History"
                             />
                             <ActionOrReportCard
                                 title="Supplier Performance"
                                 description="Analyze delivery times, quality, and pricing by supplier."
-                                icon={faTruck} // Could also be faStar or faChartLine
+                                icon={faTruck}
                                 iconBgColor="bg-green-600"
-                                linkRoute="reports.procurement.supplier_performance"
+                                linkHref={urls.reportsProcurementSupplierPerformance}
                                 linkText="Analyze Suppliers"
                             />
                             <ActionOrReportCard
@@ -181,15 +187,15 @@ export default function ProcurementDashboard({
                                 description="View purchase history and costs for specific items."
                                 icon={faListAlt}
                                 iconBgColor="bg-indigo-600"
-                                linkRoute="reports.procurement.item_history"
+                                linkHref={urls.reportsProcurementItemHistory}
                                 linkText="Track Item Purchases"
                             />
                             <ActionOrReportCard
                                 title="Spend Analysis"
                                 description="Breakdown of procurement spending by category, supplier, etc."
-                                icon={faSearchDollar} // or faChartPie
+                                icon={faSearchDollar}
                                 iconBgColor="bg-amber-600"
-                                linkRoute="reports.procurement.spend_analysis"
+                                linkHref={urls.reportsProcurementSpendAnalysis}
                                 linkText="View Spend Report"
                             />
                             <ActionOrReportCard
@@ -197,7 +203,7 @@ export default function ProcurementDashboard({
                                 description="Summary of all goods received within a period."
                                 icon={faFileContract}
                                 iconBgColor="bg-cyan-600"
-                                linkRoute="reports.procurement.grn_summary"
+                                linkHref={urls.reportsProcurementGrnSummary}
                                 linkText="View GRN Report"
                             />
                              <ActionOrReportCard
@@ -205,15 +211,15 @@ export default function ProcurementDashboard({
                                 description="Track supplier invoices and their payment statuses."
                                 icon={faFileInvoiceDollar}
                                 iconBgColor="bg-pink-600"
-                                linkRoute="reports.procurement.invoice_payment"
+                                linkHref={urls.reportsProcurementInvoicePayment}
                                 linkText="Track Invoices"
                             />
                             <ActionOrReportCard
                                 title="Procurement Cycle Time"
                                 description="Analyze time taken from PO creation to goods receipt."
-                                icon={faTasks} // or faHourglassHalf
+                                icon={faTasks}
                                 iconBgColor="bg-fuchsia-600"
-                                linkRoute="reports.procurement.cycle_time"
+                                linkHref={urls.reportsProcurementCycleTime}
                                 linkText="Analyze Cycle Time"
                             />
                             <ActionOrReportCard
@@ -221,7 +227,7 @@ export default function ProcurementDashboard({
                                 description="Build reports with specific procurement data filters."
                                 icon={faFilter}
                                 iconBgColor="bg-gray-600"
-                                linkRoute="reports.procurement.custom"
+                                linkHref={urls.reportsProcurementCustom}
                                 linkText="Build Report"
                             />
                         </div>
