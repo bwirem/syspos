@@ -4,7 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Models\PROPurchase;
 use App\Models\PROPurchaseItem;
+
+use App\Models\SIV_Supplier;
+use App\Models\IVReceive;
+use App\Models\IVReceiveItem;
+use App\Enums\StoreType; // Assuming you have a StoreType enums
+
 use App\Models\FacilityOption;
+use App\Models\SIV_Store;    // Assuming you have a Store Model
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -15,9 +22,14 @@ use Illuminate\Support\Facades\Storage;  // Import Storage facade
 use Illuminate\Support\Facades\Validator;
 use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException; // For custom validation exceptions
+use App\Models\SIV_Product; // Assuming you have a Product model
+
 
 // Add necessary imports for PDF generation
 use Barryvdh\DomPDF\Facade\Pdf;  // If using barryvdh/laravel-dompdf  
+
 
 class PROPurchaseController extends Controller
 {
@@ -45,7 +57,7 @@ class PROPurchaseController extends Controller
              $query->where('stage', $request->stage);
          }
 
-         $query->where('stage', '<=', '4');
+         $query->where('stage', '<', '4');
      
          // Paginate and sort purchases
          $purchases = $query->orderBy('created_at', 'desc')->paginate(10);
@@ -195,6 +207,7 @@ class PROPurchaseController extends Controller
         // Render the determined Inertia page component with the purchase data
         return inertia($pageName, [
             'purchase' => $purchase,
+            'stores' => SIV_Store::all(),
             // 'auth' and 'flash' messages are typically shared globally via HandleInertiaRequests middleware
             // 'errors' are also typically shared globally from session for validation errors on redirect back
         ]);
@@ -510,6 +523,232 @@ class PROPurchaseController extends Controller
             return response()->json(['message' => 'Failed to dispatch purchase. Please try again.', 'error' => $e->getMessage()], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
+     
+  
+    public function receive(Request $request, PROPurchase $purchase)
+    {
+       
+        // Pre-condition: Ensure the purchase order is in 'Dispatched' (stage 3)
+        if ($purchase->stage != 3) {
+            // Assuming you have an accessor like 'stage_name' or 'stage_label' on PROPurchase model
+            $currentStageName = method_exists($purchase, 'getStageLabelAttribute') ? $purchase->stage_label : 'Stage ' . $purchase->stage;
+            return back()->with('error', 'Purchase Order cannot be received. It is not in "Dispatched" stage. Current stage: ' . $currentStageName)
+                         ->withInput();
+        }
+
+        $validator = Validator::make($request->all(), [
+            'receiving_store_id' => ['required', Rule::exists(SIV_Store::class, 'id')],
+            'grn_number'         => [
+                'nullable',
+                'string',
+                'max:100',
+                // Ensure GRN is unique on PROPurchase if set there, and on IVReceive if set there
+                //Rule::unique('pro_purchase', 'grn_number')->ignore($purchase->id),
+                //Rule::unique('iv_receives', 'grn_reference') // Ensure this column name matches your iv_receives table
+            ],
+            'receive_remarks'    => 'nullable|string|max:1000',
+            'stage'              => 'required|integer|in:4', // Expecting to set stage to 4 (Received)
+
+            'items_received'          => 'required|array|min:1', // At least one item must be processed
+            'items_received.*.purchase_item_id' => [
+                'required',
+                Rule::exists(PROPurchaseItem::class, 'id')->where('purchase_id', $purchase->id)
+            ],
+            'items_received.*.item_id' => ['required', Rule::exists(SIV_Product::class, 'id')],
+            'items_received.*.quantity_received' => 'required|numeric|min:0.001', // Must receive a positive quantity if item is included
+            'items_received.*.remarks' => 'nullable|string|max:255', // Per-item remarks
+        ], [
+            'items_received.min' => 'At least one item must be marked for receiving with a quantity greater than zero.',
+            'grn_number.unique' => 'The GRN number has already been used.',
+            'items_received.*.quantity_received.min' => 'The quantity to receive for ":attribute" must be greater than 0.',
+            // You can add more custom messages here if needed
+        ]);
+
+        // Custom validation logic (after initial rules pass)
+        $validator->after(function ($validator) use ($request) {
+            if ($validator->failed()) { // Don't run if basic validation already failed
+                return;
+            }
+            if ($request->has('items_received')) {
+                foreach ($request->input('items_received') as $index => $receivedItemData) {
+                    // Ensure keys exist before accessing, though 'required' rule should handle this
+                    if (!isset($receivedItemData['purchase_item_id']) || !isset($receivedItemData['quantity_received'])) {
+                        continue;
+                    }
+
+                    $purchaseItem = PROPurchaseItem::find($receivedItemData['purchase_item_id']);
+                    $itemName = $purchaseItem ? ($purchaseItem->item_name ?? ($purchaseItem->item->name ?? "Item #{$receivedItemData['item_id']}")) : "Unknown Item";
+
+
+                    if ($purchaseItem) {
+                        $quantityToReceive = (float) $receivedItemData['quantity_received'];
+                        // quantity_ordered on PROPurchaseItem is 'quantity'
+                        $maxReceivable = (float) $purchaseItem->quantity - (float) $purchaseItem->quantity_received_total;
+
+                        if ($quantityToReceive < 0) { // Though min:0.001 should catch this
+                            $validator->errors()->add(
+                                "items_received.{$index}.quantity_received",
+                                "Quantity for \"{$itemName}\" cannot be negative."
+                            );
+                        } elseif ($quantityToReceive > $maxReceivable) {
+                            $validator->errors()->add(
+                                "items_received.{$index}.quantity_received",
+                                "Quantity for \"{$itemName}\" ({$quantityToReceive}) exceeds remaining receivable ({$maxReceivable})."
+                            );
+                        }
+                    } else {
+                        // This should be caught by Rule::exists, but as a fallback:
+                        $validator->errors()->add(
+                           "items_received.{$index}.purchase_item_id",
+                           "Invalid purchase item ID."
+                       );
+                    }
+                }
+            }
+        });
+
+        if ($validator->fails()) {
+            return back()->withErrors($validator)->withInput();
+        }
+
+        $validatedData = $validator->validated();
+
+        try {
+            DB::transaction(function () use ($purchase, $validatedData, $request) {
+                $grnTotalValue = 0;
+                $itemsForGrnCreation = [];
+                $anyItemReceived = false;
+
+                foreach ($validatedData['items_received'] as $receivedItemData) {
+                    $purchaseItem = PROPurchaseItem::find($receivedItemData['purchase_item_id']);
+                    // This check is mostly for safety, validator `after` hook should handle it.
+                    if (!$purchaseItem) {
+                         throw ValidationException::withMessages(["items_received.{$loop->index}.purchase_item_id" => "Invalid purchase item encountered during processing."]);
+                    }
+
+                    $quantityReceived = (float) $receivedItemData['quantity_received'];
+
+                    if ($quantityReceived > 0) {
+                        $anyItemReceived = true;
+
+                        // 1. Update Purchase Order Item's received quantity
+                        $purchaseItem->quantity_received_total = ($purchaseItem->quantity_received_total ?? 0) + $quantityReceived;
+                        $purchaseItem->save();
+
+                        // 2. Prepare item for Goods Received Note (IVReceiveItem)
+                        $itemsForGrnCreation[] = new IVReceiveItem([ // Use new IVReceiveItem for fillable assignment
+                            'product_id' => $purchaseItem->product_id, // or $receivedItemData['item_id']
+                            'quantity'   => $quantityReceived,
+                            'price'      => $purchaseItem->price, // Price from the original purchase item
+                            'remarks'    => $receivedItemData['remarks'] ?? null,
+                        ]);
+                        $grnTotalValue += $quantityReceived * (float) $purchaseItem->price;
+                    }
+                }
+
+                if (!$anyItemReceived) {
+                    // This should be caught by 'items_received.min:1' and 'quantity_received.min:0.001'
+                    // if frontend correctly filters out zero-quantity items.
+                    throw ValidationException::withMessages(['items_received' => 'No items were submitted with a quantity greater than zero to receive.']);
+                }
+
+                // 3. Create the main IVReceive record (Goods Received Note)
+                $ivReceive = IVReceive::create([
+                    'transdate'       => Carbon::now(),
+                    'tostore_id'      => $validatedData['receiving_store_id'],
+                    'fromstore_type'  => StoreType::Supplier->value, // Assumes StoreType enum
+                    'fromstore_id'    => $purchase->supplier_id,
+                    'stage'           => 1, // Example: 1 for 'Posted' or 'Completed' GRN. Adjust as per IVReceive lifecycle.
+                    'total'           => $grnTotalValue,
+                    'remarks'         => $validatedData['receive_remarks'] ?? null,
+                    'grn_reference'   => $validatedData['grn_number'] ?? null, // Field for GRN on IVReceive table
+                    'purchase_id' => $purchase->id, // Link GRN to PO
+                    'user_id'         => Auth::id(),
+                    'facility_id'     => $purchase->facility_id ?? $purchase->facilityoption_id, // Use facility from PO
+                ]);
+
+                // 4. Save associated IVReceiveItem records
+                if (!empty($itemsForGrnCreation)) {
+                    $ivReceive->receiveitems()->saveMany($itemsForGrnCreation); // Assumes `receiveitems` relationship on IVReceive model
+                }
+
+                // 5. Update the Purchase Order status and details
+                $purchase->stage = $validatedData['stage']; // Set to 4 (Received)
+                //$purchase->receive_remarks = $validatedData['receive_remarks'] ?? $purchase->receive_remarks; // Keep old if new is null
+                //$purchase->grn_number = $validatedData['grn_number'] ?? $purchase->grn_number; // Save GRN on PO
+                
+                // Optionally store the last receiving store on the PO itself
+                //$purchase->receiving_store_id = $validatedData['receiving_store_id'];
+
+                // Check if all items in the PO are now fully received
+                $allItemsFullyReceived = true;
+                // Refresh purchase items from DB to get latest quantity_received_total
+                foreach ($purchase->purchaseitems()->get() as $poItem) {
+                    if (($poItem->quantity_received_total ?? 0) < $poItem->quantity) {
+                        $allItemsFullyReceived = false;
+                        break;
+                    }
+                }
+
+                if ($allItemsFullyReceived) {
+                    // If you have a specific "Fully Received" stage distinct from "Received" (e.g. stage 4 is partially received, stage 5 is fully)
+                    // $purchase->stage = YOUR_FULLY_RECEIVED_STAGE_NUMBER;
+                    // For now, stage 4 covers both partial and full receipt from this action's perspective.
+                }
+                // If any stock/inventory updates need to happen based on IVReceive, trigger them here.
+                // e.g., $ivReceive->postToInventory();
+
+                $purchase->save();
+            });
+
+            $poNumber = $purchase->purchase_order_number ?? "ID {$purchase->id}";
+            return redirect()->route('procurements1.index')->with('success', "Goods received successfully for Purchase Order {$poNumber}.");
+
+        } catch (ValidationException $e) {
+            // Validation errors thrown manually from within the transaction or by the validator after hook
+            return back()->withErrors($e->errors())->withInput();
+        } catch (\Exception $e) {
+            Log::error('Error receiving purchase order:', [
+                'purchase_id' => $purchase->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return back()->with('error', 'Failed to record goods receipt due to a system error. Please try again. Details: ' . $e->getMessage())->withInput();
+        }
+    }
+
+
+/**
+ * Ensure your models have the necessary fillable properties, relationships, and accessors.
+ *
+ * Model: PROPurchase
+ * - fillable: ['stage', 'receive_remarks', 'grn_number', 'receiving_store_id', ...]
+ * - relationships: purchaseitems(), supplier(), facilityoption(), receivingStore() (optional)
+ * - accessors: getStageLabelAttribute() (optional, for display)
+ *
+ * Model: PROPurchaseItem
+ * - fillable: ['quantity_received_total', ...]
+ * - relationships: item() (to SIV_Product), proPurchase()
+ * - accessors: getItemNameAttribute() (or similar for clearer error messages)
+ *
+ * Model: IVReceive
+ * - fillable: ['transdate', 'tostore_id', 'fromstore_type', 'fromstore_id', 'stage', 'total', 'remarks', 'grn_reference', 'purchase_id', 'user_id', 'facility_id', ...]
+ * - relationships: receiveitems() (to IVReceiveItem), toStore(), fromSupplier() (if polymorphic or specific), purchaseOrder()
+ *
+ * Model: IVReceiveItem
+ * - fillable: ['iv_receive_id', 'product_id', 'quantity', 'price', 'remarks', ...]
+ * - relationships: product(), ivReceive()
+ *
+ * Enum: App\Enums\StoreType (Example)
+ * namespace App\Enums;
+ * enum StoreType: int
+ * {
+ *     case Supplier = 1;
+ *     case Store = 2;
+ *     // ... other types
+ * }
+ */
+
 
     // Helper function to generate a unique dispatch number
     private function generateDispatchNumber()

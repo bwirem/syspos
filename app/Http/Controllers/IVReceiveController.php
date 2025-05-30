@@ -12,6 +12,7 @@ use App\Models\SIV_Product; // Assuming you have this Product model
 use App\Models\SIV_Store;    // Assuming you have a Store Model
 
 use App\Models\BLSCustomer; // Assuming you have a Customer model
+use App\Models\SPR_Supplier; // Assuming you have a Supplier model
 use App\Enums\StoreType; // Assuming you have an Enum for StoreType
 use App\Models\IVReceiveItem;
 
@@ -58,7 +59,7 @@ class IVReceiveController extends Controller
                      $sub->where('fromstore_type', StoreType::Customer->value)
                          ->whereIn('fromstore_id', function ($query) use ($request) {
                              $query->select('id')
-                                   ->from((new BLSCustomer())->getTable())
+                                   ->from((new SPR_Supplier())->getTable())
                                    ->where(function ($q) use ($request) {
                                        $q->where('first_name', 'like', '%' . $request->search . '%')
                                          ->orWhere('surname', 'like', '%' . $request->search . '%')
@@ -90,8 +91,8 @@ class IVReceiveController extends Controller
                  case StoreType::Store->value:
                      $receive->setRelation('fromstore', SIV_Store::find($receive->fromstore_id));
                      break;
-                 case StoreType::Customer->value:
-                     $receive->setRelation('fromstore', BLSCustomer::find($receive->fromstore_id));
+                 case StoreType::Supplier->value:
+                     $receive->setRelation('fromstore', SPR_Supplier::find($receive->fromstore_id));
                      break;
                  default:
                      $receive->setRelation('fromstore', null);

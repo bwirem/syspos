@@ -14,7 +14,7 @@ class PROPurchaseItem extends Model
      */
     protected $table = 'pro_purchaseitems';
 
-    protected $fillable = ['purchase_id', 'product_id', 'quantity','price'];
+    protected $fillable = ['purchase_id', 'product_id', 'quantity','quantity_received_total','price'];
 
     public function purchase()
     {

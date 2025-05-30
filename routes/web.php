@@ -187,6 +187,7 @@ Route::middleware('auth')->group(function () {
         Route::put('/{purchase}', [PROPurchaseController::class, 'update'])->name('update');
         Route::put('approve/{purchase}', [PROPurchaseController::class, 'approve'])->name('approve');
         Route::put('dispatch/{purchase}', [PROPurchaseController::class, 'dispatch'])->name('dispatch');
+        Route::put('receive/{purchase}', [PROPurchaseController::class, 'receive'])->name('receive');
         Route::delete('/{purchase}', [PROPurchaseController::class, 'destroy'])->name('destroy');
         Route::get('/{purchase}/show', [PROPurchaseController::class, 'show'])->name('show');
     });

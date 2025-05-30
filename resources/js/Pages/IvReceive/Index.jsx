@@ -155,6 +155,18 @@ export default function Index({ auth, receives = { data: [] }, filters = {}, tos
     };
 
 
+    const getFromStoreName = (receive) => {
+        if (!receive.fromstore) return "N/A";
+        const fromstore = receive.fromstore;
+        if (fromstore.supplier_type) {
+            return fromstore.supplier_type === 'individual'
+                ? `${fromstore.first_name || ''} ${fromstore.other_names || ''} ${fromstore.surname || ''}`.trim()
+                : fromstore.company_name || 'N/A';
+        }
+        return fromstore.name || 'N/A';
+    };
+
+
     const formatCurrency = (amount, currencyCodeParam = 'TZS') => {
         const parsedAmount = parseFloat(amount);
         if (isNaN(parsedAmount)) return 'N/A';
@@ -292,7 +304,7 @@ export default function Index({ auth, receives = { data: [] }, filters = {}, tos
                                                     const stageInfo = receiveStageConfig[receive.stage?.toString()] || { label: `Stage ${receive.stage}`, color: defaultStageColor, actionLabel: 'View', actionIcon: faEye };
                                                     return (
                                                         <tr key={receive.id} className="hover:bg-gray-50">
-                                                            <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-gray-700 sm:pl-3">{receive.fromstore?.name || "N/A"}</td>
+                                                            <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-gray-700 sm:pl-3">{getFromStoreName(receive)}</td>
                                                             <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-700">{receive.tostore?.name || "N/A"}</td>
                                                             <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-gray-700">{formatCurrency(receive.total, receive.currency_code)}</td>
                                                             <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
