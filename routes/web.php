@@ -31,6 +31,8 @@ use App\Http\Controllers\IVIssueController;
 use App\Http\Controllers\IVReceiveController;
 use App\Http\Controllers\IVReconciliationController;
 
+use App\Http\Controllers\Accounting\PaymentController;
+
 use App\Http\Controllers\SIV_StoreController;
 use App\Http\Controllers\SIV_ProductCategoryController;
 use App\Http\Controllers\SIV_ProductController;
@@ -259,6 +261,13 @@ Route::middleware('auth')->group(function () {
 
         
     });
+
+
+    Route::prefix('accounting0')->name('accounting0.')->group(function () {
+        Route::get('/', [PaymentController::class, 'index'])->name('index');
+        Route::post('/', [PaymentController::class, 'store'])->name('store');
+    });
+
 
     
     
