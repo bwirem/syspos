@@ -69,7 +69,7 @@ export default function EditNormalAdjustment({ auth, normaladjustment, stores: i
         if (!query.trim() || !isEditable) { setItemSearchResults([]); setShowItemDropdown(false); return; }
         setIsItemSearchLoading(true);
         try {
-            const response = await axios.get(route('systemconfiguration2.products.search'), { params: { query } });
+            const response = await axios.get(route('systemconfiguration2.products.search'), { params: { query, store_id: data.store_id } });
             setItemSearchResults(response.data.products?.slice(0, 10) || []);
             setShowItemDropdown(true);
         } catch (error) { console.error('Error fetching products:', error); showAppModal('Fetch Error', 'Failed to fetch products.'); setItemSearchResults([]); setShowItemDropdown(false); }

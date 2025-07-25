@@ -59,8 +59,25 @@ export default function CreateNormalAdjustment({ auth, stores: initialStores = d
     const fetchData = useCallback(async (endpoint, query, setLoading, setResults, setShowDropdown, entityName) => {
         if (!query.trim()) { setResults([]); setShowDropdown(false); return; }
         setLoading(true);
+
+        // --- Start of Changes ---
+
+        // 1. Build the params object for the request.
+        const params = { query };
+
+        // 2. Conditionally add store_id to params only if it has a value.
+        //    This makes the request cleaner and avoids sending 'store_id: null'.
+        if (data.store_id) {
+            params.store_id = data.store_id;
+        }
+
         try {
-            const response = await axios.get(route(endpoint), { params: { query } });
+
+          
+
+
+            const response = await axios.get(route(endpoint), { params } );
+            
             setResults(response.data[entityName]?.slice(0, 10) || []);
             setShowDropdown(true);
         } catch (error) {
@@ -68,7 +85,7 @@ export default function CreateNormalAdjustment({ auth, stores: initialStores = d
             showAppModal('Fetch Error', `Failed to fetch ${entityName}.`);
             setResults([]); setShowDropdown(false);
         } finally { setLoading(false); }
-    }, []); // showAppModal is stable
+    },  [data.store_id]); // showAppModal is stable
 
     const fetchItems = useCallback((query) => fetchData('systemconfiguration2.products.search', query, setIsItemSearchLoading, setItemSearchResults, setShowItemDropdown, 'products'), [fetchData]);
     const debouncedItemSearch = useMemo(() => debounce(fetchItems, 350), [fetchItems]);

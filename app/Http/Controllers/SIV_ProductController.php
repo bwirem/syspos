@@ -197,43 +197,36 @@ class SIV_ProductController extends Controller
 
 
 
-
     public function search(Request $request)
     {
         // Validate the request
         $query = $request->input('query');
         $storeId = $request->input('store_id', null);
 
-        $productsQuery = SIV_Product::where('name', 'like', '%' . $query . '%')
-            ->select('siv_products.id', 'siv_products.name', 'siv_products.costprice as price'); // Alias siv_products columns
+        // Start the query, selecting specific fields.
+        // Explicitly state the table name in 'where' to avoid ambiguity after joining.
+        $productsQuery = SIV_Product::where('siv_products.name', 'like', '%' . $query . '%')
+            ->select('siv_products.id', 'siv_products.name', 'siv_products.costprice as price');
 
-        if ($storeId) {
-            // **Important Security Note:** Directly concatenating user input into column names is risky.
-            // Ensure $storeId is validated to be an integer and within an expected range.
-            // For example, if store IDs are always single digits or small numbers.
-            if (is_numeric($storeId) && (int)$storeId > 0) { // Basic validation
-                $qtyColumn = 'iv_productcontrol.qty_' . (int)$storeId; // Construct column name
+        if ($storeId && is_numeric($storeId) && (int)$storeId > 0) {
+            // If a valid storeId is provided, construct the dynamic column name
+            $qtyColumn = 'iv_productcontrol.qty_' . (int)$storeId;
 
-                // Check if this dynamic column actually exists to prevent SQL errors
-                // This check is conceptual; actual implementation depends on DB & schema access.
-                // For simplicity, we'll assume it exists if $storeId is valid.
-                // A more robust solution involves a schema check or a different DB structure.
-
-                $productsQuery->join('iv_productcontrol', 'iv_productcontrol.product_id', '=', 'siv_products.id')
-                            ->addSelect($qtyColumn . ' as stock_quantity');
-            } else {
-                // If storeId is invalid or not provided for quantity, select null or 0 as stock_quantity
-                // Or simply don't join / don't select stock_quantity if it's truly optional
-                $productsQuery->addSelect(DB::raw('NULLIF(0,0) as stock_quantity')); // Or DB::raw('0 as stock_quantity')
-            }
+            // Use leftJoin to ensure all products are returned, even if they're not in iv_productcontrol.
+            // Use addSelect to append the stock_quantity column to the query.
+            // COALESCE will return the stock quantity if a record exists, otherwise it will return 0.
+            $productsQuery->leftJoin('iv_productcontrol', 'iv_productcontrol.product_id', '=', 'siv_products.id')
+                        ->addSelect(\DB::raw("COALESCE($qtyColumn, 0) as stock_quantity"));
         } else {
-            // If no store_id, stock_quantity might be null or not applicable
-            $productsQuery->addSelect(DB::raw('NULLIF(0,0) as stock_quantity')); // Or DB::raw('0 as stock_quantity')
+            // If no store_id is provided or it's invalid, add a default value of 0 for stock_quantity.
+            // This ensures the API response has a consistent structure.
+            $productsQuery->addSelect(\DB::raw('0 as stock_quantity'));
         }
 
-        $products = $productsQuery->take(10)->get(); // Limit results       
+        $products = $productsQuery->take(10)->get();
 
         return response()->json(['products' => $products]);
     }
+    
 }
 
