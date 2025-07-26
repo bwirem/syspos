@@ -109,9 +109,12 @@ class IVReconciliationController extends Controller
               'normaladjustmentitems.*.price' => 'required|numeric|min:0', 
          ]);
 
+
+        $normaladjustment = null; // Initialize $receive outside transaction scope
+
      
          // Begin database transaction
-         DB::transaction(function () use ($validated) {
+         DB::transaction(function () use ($validated, &$normaladjustment) {
              // Create the normaladjustment without a total initially
 
              $transdate = Carbon::now(); 
@@ -155,7 +158,13 @@ class IVReconciliationController extends Controller
             
          });
      
-         return redirect()->route('inventory3.normal-adjustment.index')->with('success', 'NormalAdjustment created successfully.');
+        // Redirect to the edit page or index page based on the success of the creation;
+         
+        if ($normaladjustment) {
+            return redirect()->route('inventory3.normal-adjustment.edit', ['normaladjustment' => $normaladjustment->id]);
+        } else {
+            return redirect()->route('inventory3.normal-adjustment.index')->with('error', 'Failed to create Normal Adjustment.');
+        }   
      } 
 
     
@@ -493,13 +502,14 @@ class IVReconciliationController extends Controller
               'physicalinventoryitems' => 'required|array',
               'physicalinventoryitems.*.item_id' => 'required|exists:siv_products,id',  
               'physicalinventoryitems.*.countedqty' => 'required|numeric|min:0',
-              'physicalinventoryitems.*.expectedqty' => 'required|numeric|min:0',
+              'physicalinventoryitems.*.expectedqty' => 'required|numeric',
               'physicalinventoryitems.*.price' => 'required|numeric|min:0', 
          ]);
 
-     
+        $physicalinventory = null; // Initialize $receive outside transaction scope
+
          // Begin database transaction
-         DB::transaction(function () use ($validated) {
+         DB::transaction(function () use ($validated, &$physicalinventory) {
              // Create the physicalinventory without a total initially
 
              $transdate = Carbon::now(); 
@@ -532,7 +542,13 @@ class IVReconciliationController extends Controller
             //  $physicalinventory->update(['total' => $calculatedTotal]);
          });
      
-         return redirect()->route('inventory3.physical-inventory.index')->with('success', 'Physicalinventory created successfully.');
+        // Redirect to the edit page or index page based on the success of the creation;
+        if ($physicalinventory) {
+            return redirect()->route('inventory3.physical-inventory.edit', ['physicalinventory' => $physicalinventory->id]);
+        } else {
+            return redirect()->route('inventory3.physical-inventory.index')->with('error', 'Failed to create Physical Inventory.');
+        }
+
      }  
 
     /**
@@ -566,7 +582,7 @@ class IVReconciliationController extends Controller
              'physicalinventoryitems.*.id' => 'nullable|exists:iv_physicalinventoryitems,id',
              'physicalinventoryitems.*.item_id' => 'required|exists:siv_products,id',
              'physicalinventoryitems.*.countedqty' => 'required|numeric|min:0',
-             'physicalinventoryitems.*.expectedqty' => 'required|numeric|min:0',
+             'physicalinventoryitems.*.expectedqty' => 'required|numeric',
              'physicalinventoryitems.*.price' => 'required|numeric|min:0',
          ]);
      
@@ -655,7 +671,7 @@ class IVReconciliationController extends Controller
             'physicalinventoryitems.*.butchno' => 'nullable|string|max:50',
             'physicalinventoryitems.*.expirydate' => 'nullable|date_format:Y-m-d',
             'physicalinventoryitems.*.countedqty' => 'required|numeric|min:0',
-            'physicalinventoryitems.*.expectedqty' => 'required|numeric|min:0', // This might come from IVPhysicalInventoryItem
+            'physicalinventoryitems.*.expectedqty' => 'required|numeric', // This might come from IVPhysicalInventoryItem
             'physicalinventoryitems.*.price' => 'required|numeric|min:0', // Cost price at time of count
         ]);
 

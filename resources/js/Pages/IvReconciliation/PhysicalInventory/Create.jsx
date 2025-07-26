@@ -392,10 +392,10 @@ export default function CreatePhysicalInventory({ auth, stores: initialStores = 
                                     className="rounded-md bg-slate-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-500 disabled:opacity-50 flex items-center justify-center">
                                     {processing && data.stage === 1 ? (<><FontAwesomeIcon icon={faSpinner} spin className="mr-2" />Saving Draft...</>) : (<><FontAwesomeIcon icon={faSave} className="mr-2" />Save Draft</>)}
                                 </button>
-                                <button type="button" onClick={openCommitConfirmationModal} disabled={processing}
+                                {/* <button type="button" onClick={openCommitConfirmationModal} disabled={processing}
                                     className="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50 flex items-center justify-center">
                                     <FontAwesomeIcon icon={faCheck} className="mr-2"/>Commit Count
-                                </button>
+                                </button> */}
                             </div>
                         </form>
                     </div>

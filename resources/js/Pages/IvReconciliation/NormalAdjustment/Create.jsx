@@ -463,10 +463,10 @@ export default function CreateNormalAdjustment({ auth, stores: initialStores = d
                                         <><FontAwesomeIcon icon={faSave} className="mr-2" />Save Draft</>
                                     )}
                                 </button>
-                                <button type="button" onClick={openCommitConfirmationModal} disabled={processing && data.stage === 2}
+                                {/* <button type="button" onClick={openCommitConfirmationModal} disabled={processing && data.stage === 2}
                                     className="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50 flex items-center justify-center">
                                     <FontAwesomeIcon icon={faCheck} className="mr-2"/>Commit Adjustment
-                                </button>
+                                </button> */}
                             </div>
                         </form>
                     </div>
