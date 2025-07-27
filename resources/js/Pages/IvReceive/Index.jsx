@@ -5,6 +5,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
     faSearch,
     faEdit,
+    faPlus,
     faTrash,
     // faFilter, // Keep if you use it for an icon
     faTimesCircle, // For clearing filters
@@ -245,14 +246,14 @@ export default function Index({ auth, receives = { data: [] }, filters = {}, tos
                                 </div>
                                 {/* Create Button - Removed as per implicit instruction (like approval list) */}
                                 {/* If needed, add it back here, aligned to the right */}
-                                {/* <div className="md:col-span-1 lg:col-span-1 flex justify-start md:justify-end items-end">
+                                <div className="md:col-span-1 lg:col-span-1 flex justify-start md:justify-end items-end">
                                     <Link
                                         href={route("inventory2.create")}
                                         className="inline-flex items-center justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
                                     >
                                         <FontAwesomeIcon icon={faPlus} className="mr-2 h-4 w-4" /> Direct Receive
                                     </Link>
-                                </div> */}
+                                </div>
                             </div>
 
                             {/* Stage Filter Buttons */}

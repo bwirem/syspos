@@ -11,7 +11,7 @@ use App\Models\BILProductTransactions;
 use App\Models\SIV_Product; // Assuming you have this Product model
 use App\Models\SIV_Store;    // Assuming you have a Store Model
 
-use App\Models\BLSCustomer; // Assuming you have a Customer model
+
 use App\Models\SPR_Supplier; // Assuming you have a Supplier model
 use App\Enums\StoreType; // Assuming you have an Enum for StoreType
 use App\Models\IVReceiveItem;
@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Validation\Rules\Enum;
 use Carbon\Carbon;
 use Exception;
 use Throwable;
@@ -41,7 +42,7 @@ class IVReceiveController extends Controller
      {
          $query = IVReceive::with(['receiveitems', 'tostore']);
      
-         // General search (only for fromstore and customer/store names)
+         // General search (only for fromstore and supplier/store names)
          if ($request->filled('search')) {
              $query->where(function ($q) use ($request) {
                  // Add condition for SIV_Store fromstore
@@ -54,9 +55,9 @@ class IVReceiveController extends Controller
                          });
                  });
      
-                 // Add condition for BLSCustomer fromstore
+                 // Add condition for BLSSupplier fromstore
                  $q->orWhere(function ($sub) use ($request) {
-                     $sub->where('fromstore_type', StoreType::Customer->value)
+                     $sub->where('fromstore_type', StoreType::Supplier->value)
                          ->whereIn('fromstore_id', function ($query) use ($request) {
                              $query->select('id')
                                    ->from((new SPR_Supplier())->getTable())
@@ -116,7 +117,7 @@ class IVReceiveController extends Controller
     public function create()
     {
         return inertia('IvReceive/Create', [
-            'fromstore' => SIV_Store::all(), // Pass the correct data to the view
+            'fromstore' => SPR_Supplier::all(), // Pass the correct data to the view
             'tostore' => SIV_Store::all(), // Pass the correct data to the view
         ]);
     }
@@ -128,17 +129,38 @@ class IVReceiveController extends Controller
    
     public function store(Request $request)
     {
+
+
         // 1. Validate input
-        $validated = $request->validate([
-            'to_store_id'   => 'required|exists:siv_stores,id',
-            'from_store_id' => 'required|exists:siv_stores,id',
+
+        $request->validate([
+            'fromstore_type' => ['required', new Enum(StoreType::class)], // Ensure fromstore_type is valid
+        ]);
+            
+        $rules = [
+            'fromstore_type' => ['required', new Enum(StoreType::class)],      
+            'to_store_id'   => 'required|exists:siv_stores,id',          
             'stage'         => 'required|integer|in:1', // Expecting stage 1 (Draft) from Create form
             'remarks'       => 'nullable|string|max:1000', // Added validation for remarks
             'receiveitems'  => 'required|array|min:1',    // Must have at least one item
             'receiveitems.*.item_id' => 'required|exists:siv_products,id', // Ensure item_id maps to siv_products
             'receiveitems.*.quantity'=> 'required|numeric|min:0.01', // Or min:1 for whole units
             'receiveitems.*.price'   => 'required|numeric|min:0',    // Price can be 0, but usually > 0
-        ]);
+        ];
+
+
+        // Conditionally apply validation depending on fromstore_type
+        switch ($request->fromstore_type) {
+            case StoreType::Store->value:
+                $rules['from_store_id'] = 'required|exists:siv_stores,id';
+                $StoreToStore = true;
+                break;
+            case StoreType::Supplier->value:
+                $rules['from_store_id'] = 'required|exists:siv_suppliers,id';
+                break;
+        }
+        
+        $validated = $request->validate($rules);
 
         $receive = null; // Initialize $receive outside transaction scope
 
@@ -155,7 +177,7 @@ class IVReceiveController extends Controller
                 $receive = IVReceive::create([
                     'transdate'      => Carbon::now(),
                     'tostore_id'     => $validated['to_store_id'],
-                    'fromstore_type' => StoreType::Store->value, // Ensure StoreType::Store is defined
+                    'fromstore_type' => StoreType::Supplier->value, // Ensure StoreType::Store is defined
                     'fromstore_id'   => $validated['from_store_id'],
                     'stage'          => $validated['stage'], // This will be 1 (Draft)
                     'total'          => $calculatedTotal,   // Use pre-calculated total
@@ -199,18 +221,23 @@ class IVReceiveController extends Controller
     public function edit(IVReceive $receive)
     {
         $receive->load(['tostore', 'receiveitems.item']);
+        $fromstoreData = [];
 
         //log::info('Receive data: ', $receive->toArray());
        
         switch ($receive->fromstore_type->value) {
             case StoreType::Store->value:
                 $store = SIV_Store::find($receive->fromstore_id);
-                $receive->setRelation('fromstore', $store);                
+                $receive->setRelation('fromstore', $store);    
+                $fromstoreData = SIV_Store::all();
+                break;
+            
                 break;
 
-            case StoreType::Customer->value:
-                $customer = BLSCustomer::find($receive->fromstore_id);                
-                $receive->setRelation('fromstore', $customer);                   
+            case StoreType:: Supplier->value:
+                $supplier =  SPR_Supplier::find($receive->fromstore_id);                
+                $receive->setRelation('fromstore', $supplier);    
+                $fromstoreData = SPR_Supplier::all();               
                 break;          
 
             default:
@@ -220,7 +247,7 @@ class IVReceiveController extends Controller
              
         return inertia('IvReceive/Edit', [
             'receive' => $receive,
-            'fromstore' => SIV_Store::all(), // Pass the correct data to the view
+            'fromstore' => $fromstoreData, // Pass the correct data to the view
             'tostore' => SIV_Store::all(), // Pass the correct data to the view
         ]);
     }
@@ -230,9 +257,13 @@ class IVReceiveController extends Controller
      */
     public function update(Request $request, IVReceive $receive)
     {
-        $validated = $request->validate([
-            'to_store_id' => 'required|exists:siv_stores,id',
-            'from_store_id' => 'required|exists:siv_stores,id',
+        $request->validate([
+            'fromstore_type' => ['required', new Enum(StoreType::class)], // Ensure fromstore_type is valid
+        ]);
+
+        $rules = [
+            'fromstore_type' => ['required', new Enum(StoreType::class)],    
+            'to_store_id' => 'required|exists:siv_stores,id',           
             'total' => 'required|numeric|min:0',
             'stage' => 'required|integer|min:1',
             'receiveitems' => 'required|array',
@@ -241,18 +272,38 @@ class IVReceiveController extends Controller
             'receiveitems.*.quantity' => 'required|numeric|min:0',
             'receiveitems.*.price' => 'required|numeric|min:0',
             
-        ]);
+        ];
+
+         // Conditionally apply validation depending on fromstore_type
+        switch ($request->fromstore_type) {
+            case StoreType::Store->value:
+                $rules['from_store_id'] = 'required|exists:siv_stores,id';
+                $StoreToStore = true;
+                break;
+            case StoreType::Supplier->value:
+                $rules['from_store_id'] = 'required|exists:siv_suppliers,id';
+                break;
+        }
+        
+        $validated = $request->validate($rules);
         
         DB::beginTransaction();
 
         try {
 
-            $this->processeReceive($validated, $receive);           
-           // $this->performReception($validated); // Pass $validated directly
-            
+            $this->processeReceive($validated, $receive);  
+            if($receive->stage == 3) {
+                $this->performReception($validated); // Pass $validated directly
+            }     
 
             DB::commit();
-            return redirect()->route('inventory2.index')->with('success', 'Receive updated successfully.');
+
+            //if($receive->stage == 3){
+                return redirect()->route('inventory2.index')->with('success', 'Receive updated successfully.');
+            // }else{
+            //       return redirect()->route('inventory2.edit', $receive->id)
+            //                        ->with('success', 'Receive created successfully and saved as draft. You can now review or submit it.');
+            // }
 
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
@@ -307,9 +358,10 @@ class IVReceiveController extends Controller
 
         // Calculate total and update receive
         $calculatedTotal = $receive->receiveitems()->sum(DB::raw('quantity * price'));  // More robust calculation
-        $receive->update([
-            'tostore_id' => $validated['to_store_id'],
+        $receive->update([           
+            'fromstore_type' => $validated['fromstore_type'],
             'fromstore_id' => $validated['from_store_id'],
+            'tostore_id' => $validated['to_store_id'],
             'stage' => $validated['stage'],
             'total' => $calculatedTotal,
             'user_id' => Auth::id(),
@@ -318,24 +370,36 @@ class IVReceiveController extends Controller
 
     private function performReception($validated): void
     {
-        $fromstore_id = $validated['from_store_id'];
+        $fromstore_type = $validated['fromstore_type']; 
+        $fromstore_id = $validated['from_store_id'];        
         $tostore_id = $validated['to_store_id'];
         $expiryDate = $validated['expiry_date'] ?? null;
         $transDate = Carbon::now();
         $deliveryNo = $validated['delivery_no'] ?? '';
 
-        $fromStore = SIV_Store::find($fromstore_id);
-        $fromStoreName = $fromStore ? $fromStore->name : 'Unknown Store';
-
+        $fromStore = null;
+        $fromStoreName = 'Unknown';
         
-        $received = IVReceive::create([
-            'transdate' => $transDate,
-            'fromstore_id' => $fromstore_id,
-            'tostore_id' => $tostore_id,
-            'stage' => 3,
-            'user_id' => Auth::id(),
-        ]);
+        if($fromstore_type == StoreType::Store->value ){
+           
+            $fromStore = SIV_Store::find($fromstore_id);
+            $fromStoreName = $fromStore ? $fromStore->name : 'Unknown Store';
 
+        }else{
+          
+            $fromStore = SPR_Supplier::find($fromstore_id);
+         
+            if ($fromStore) {
+                if ($fromStore->supplier_type === 'individual') {
+                    $fromStoreName = trim("{$fromStore->first_name} " . ($fromStore->other_names ? $fromStore->other_names . ' ' : '') . "{$fromStore->surname}");
+                } elseif ($fromStore->supplier_type === 'company') {
+                    $fromStoreName = $fromStore->company_name;
+                } 
+            } else {
+                $fromStoreName = 'Unknown Supplier';
+            }
+        }
+           
         foreach ($validated['receiveitems'] as $item) {
 
             if($expiryDate != null){
@@ -345,9 +409,7 @@ class IVReceiveController extends Controller
                     ->where('product_id', $item['item_id'])
                     ->where('expirydate', $expiryDate)
                     ->first();
-
-        
-            
+                    
 
                 if ($productExpiry) {
                     $productExpiry->increment('quantity', $item['quantity']);
@@ -384,15 +446,8 @@ class IVReceiveController extends Controller
                 'transdescription' => 'Received from Store: ' . $fromStoreName,
                 'qtyin_' . $tostore_id => $item['quantity'],
                 'user_id' => Auth::id(),
-            ]);
-
+            ]);           
             
-            // Received Items
-            $received->items()->create([
-                'product_id' => $item['item_id'],
-                'quantity' => $item['quantity'],
-                'price' => $item['price'],
-            ]); 
         }
 
      

@@ -24,8 +24,9 @@ export default function Edit({ auth, receive, fromstore: initialFromStore, tosto
     const tostore = Array.isArray(initialToStore) ? initialToStore : defaultStores;
 
     const { data, setData, put, errors, processing, reset, clearErrors } = useForm({
+        fromstore_type: receive.fromstore_type || 1,
         from_store_id: receive.fromstore_id || '',
-        to_store_id: receive.tostore_id || '',
+        to_store_id: receive.tostore_id || '',        
         total: parseFloat(receive.total) || 0,
         stage: receive.stage || 1,
         remarks: receive.remarks || '',
@@ -57,6 +58,12 @@ export default function Edit({ auth, receive, fromstore: initialFromStore, tosto
     });
 
     const [submitConfirmationModal, setSubmitConfirmationModal] = useState({
+        isOpen: false,
+        isLoading: false,
+        isSuccess: false
+    });
+
+    const [commitConfirmationModal, setCommitConfirmationModal] = useState({
         isOpen: false,
         isLoading: false,
         isSuccess: false
@@ -290,6 +297,44 @@ export default function Edit({ auth, receive, fromstore: initialFromStore, tosto
         });
     };
 
+    const openCommitConfirmationModal = () => {
+        clearErrors();
+        if (!data.from_store_id) { showGeneralAlert("Validation Error", "Please select 'From Store'."); return; }
+        if (!data.to_store_id) { showGeneralAlert("Validation Error", "Please select 'To Store'."); return; }
+        if (data.receiveitems.length === 0) { showGeneralAlert("Validation Error", "Please add at least one item before committing."); return; }
+
+        const hasInvalidItems = data.receiveitems.some(item => !(item.quantity > 0) || !(item.price >= 0) || !item.item_id);
+        if (hasInvalidItems) {
+            showGeneralAlert("Validation Error", "Some items have invalid details. Please correct them before committing.");
+            return;
+        }
+        
+        setData('stage', 3); // Set stage for commit
+        setCommitConfirmationModal({ isOpen: true, isLoading: false, isSuccess: false });
+    };
+
+    const handleCommitReceipt = () => {
+        if (!data.remarks.trim()) {
+            setData(prev => ({ ...prev, errors: { ...prev.errors, remarks: 'Remarks are required for commitment.' } }));
+            return;
+        }
+        clearErrors('remarks');
+        setCommitConfirmationModal(prev => ({ ...prev, isLoading: true }));
+
+        put(route('inventory2.update', receive.id), {
+            preserveScroll: true,
+            onSuccess: () => {
+                setCommitConfirmationModal({ isOpen: true, isLoading: false, isSuccess: true });
+                reset();
+            },
+            onError: (pageErrors) => {
+                setCommitConfirmationModal(prev => ({ ...prev, isLoading: false, isSuccess: false }));
+                console.error("Commit errors:", pageErrors);
+            },
+        });
+    };
+
+
     const formatCurrency = (amount, currencyCode = 'TZS') => {
         const parsedAmount = parseFloat(amount);
         if (isNaN(parsedAmount)) return '0.00 ' + currencyCode;
@@ -303,6 +348,16 @@ export default function Edit({ auth, receive, fromstore: initialFromStore, tosto
         itemSearchInputRef.current?.focus();
     };
 
+
+    const getFromStoreName = (fromstore) => {
+        if (!fromstore) return "N/A";       
+        if (fromstore.supplier_type) {
+            return fromstore.supplier_type === 'individual'
+                ? `${fromstore.first_name || ''} ${fromstore.other_names || ''} ${fromstore.surname || ''}`.trim()
+                : fromstore.company_name || 'N/A';
+        }
+        return fromstore.name || 'N/A';
+    };
 
     return (
         <AuthenticatedLayout
@@ -331,7 +386,7 @@ export default function Edit({ auth, receive, fromstore: initialFromStore, tosto
                                         >
                                             <option value="">Select From Store...</option>
                                             {fromstore.map(store => (
-                                                <option key={store.id} value={store.id}>{store.name}</option>
+                                                <option key={store.id} value={store.id}>{getFromStoreName(store)}</option>
                                             ))}
                                         </select>
                                         {errors.from_store_id && <p className="mt-1 text-sm text-red-600">{errors.from_store_id}</p>}
@@ -521,6 +576,18 @@ export default function Edit({ auth, receive, fromstore: initialFromStore, tosto
                                         Submit Receipt
                                     </button>
                                 )}
+
+                               {data.stage === 2 && (
+                                    <button
+                                        type="button"
+                                        onClick={openCommitConfirmationModal}
+                                        disabled={processing || data.receiveitems.length === 0}
+                                        className="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50"
+                                    >
+                                        <FontAwesomeIcon icon={faCheck} className="mr-2"/>
+                                        Commit Receipt
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -604,6 +671,63 @@ export default function Edit({ auth, receive, fromstore: initialFromStore, tosto
                     </div>
                 )}
             </Modal>
+
+              {/* Commit Confirmation Modal */}
+            <Modal
+                isOpen={commitConfirmationModal.isOpen}
+                onClose={() => {
+                    if (commitConfirmationModal.isSuccess) {
+                        setCommitConfirmationModal({ isOpen: false, isLoading: false, isSuccess: false });
+                        inertiaRouter.visit(route('inventory2.index'));
+                    } else {
+                        setCommitConfirmationModal({ isOpen: false, isLoading: false, isSuccess: false });
+                        if (data.stage === 3 && !commitConfirmationModal.isLoading) {
+                            setData(prevData => ({ ...prevData, stage: 2 })); // Revert to previous stage
+                        }
+                    }
+                }}
+                onConfirm={commitConfirmationModal.isSuccess ? () => {
+                    setCommitConfirmationModal({ isOpen: false, isLoading: false, isSuccess: false });
+                    inertiaRouter.visit(route('inventory2.index'));
+                } : handleCommitReceipt}
+                title={commitConfirmationModal.isSuccess ? "Commit Successful" : "Confirm and Commit Receipt"}
+                confirmButtonText={
+                    commitConfirmationModal.isSuccess ? "Close" :
+                    commitConfirmationModal.isLoading ? "Committing..." : "Confirm Commit"
+                }
+                confirmButtonDisabled={commitConfirmationModal.isLoading || (processing && data.stage === 3)}
+                isProcessing={commitConfirmationModal.isLoading || (processing && data.stage === 3)}
+            >
+                {commitConfirmationModal.isSuccess ? (
+                    <div className="text-center py-4">
+                        <FontAwesomeIcon icon={faCheck} className="text-green-500 fa-3x mb-3"/>
+                        <p className="text-lg">Receipt committed successfully!</p>
+                        <p className="text-sm text-gray-600">Inventory has been updated. You will be redirected.</p>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        <p className="text-sm text-gray-600">
+                            You are about to commit this receipt. This action is final and will update inventory levels. Please confirm any final remarks.
+                        </p>
+                        <div>
+                            <label htmlFor="commit_remarks" className="block text-sm font-medium text-gray-700">
+                                Remarks <span className="text-red-500">*</span>
+                            </label>
+                            <textarea
+                                id="commit_remarks"
+                                rows="3"
+                                className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-600 focus:border-indigo-600 sm:text-sm ${errors.remarks ? 'border-red-500 ring-red-500' : ''}`}
+                                value={data.remarks}
+                                onChange={(e) => setData('remarks', e.target.value)}
+                                disabled={commitConfirmationModal.isLoading || (processing && data.stage === 3)}
+                            />
+                            {errors.remarks && <p className="mt-1 text-sm text-red-600">{errors.remarks}</p>}
+                        </div>
+                        {errors.message && data.stage === 3 && <p className="mt-2 text-sm text-red-600">{errors.message}</p>}
+                    </div>
+                )}
+            </Modal>
+
         </AuthenticatedLayout>
     );
 }

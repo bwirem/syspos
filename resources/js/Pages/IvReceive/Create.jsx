@@ -24,8 +24,9 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
     const tostore = Array.isArray(initialToStore) ? initialToStore : defaultStores;
 
     const { data, setData, post, errors, processing, reset, clearErrors } = useForm({
+        fromstore_type: 3,
         from_store_id: '',
-        to_store_id: '',
+        to_store_id: '',        
         total: 0,
         stage: 1, // Always defaults to 1 (Draft) on create
         remarks: '',
@@ -235,6 +236,16 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
         itemSearchInputRef.current?.focus();
     };
 
+    const getFromStoreName = (fromstore) => {
+        if (!fromstore) return "N/A";       
+        if (fromstore.supplier_type) {
+            return fromstore.supplier_type === 'individual'
+                ? `${fromstore.first_name || ''} ${fromstore.other_names || ''} ${fromstore.surname || ''}`.trim()
+                : fromstore.company_name || 'N/A';
+        }
+        return fromstore.name || 'N/A';
+    };
+
     return (
         <AuthenticatedLayout
             user={auth.user}
@@ -261,7 +272,7 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
                                         >
                                             <option value="">Select From Store...</option>
                                             {fromstore.map(store => (
-                                                <option key={store.id} value={store.id}>{store.name}</option>
+                                                <option key={store.id} value={store.id}>{getFromStoreName(store)}</option>
                                             ))}
                                         </select>
                                         {errors.from_store_id && <p className="mt-1 text-sm text-red-600">{errors.from_store_id}</p>}
