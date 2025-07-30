@@ -437,7 +437,7 @@ class IVIssueController extends Controller
 
             
             // Received Items
-            $received->items()->create([
+            $received->receiveitems()->create([
                 'product_id' => $item['item_id'],
                 'quantity' => $item['quantity'],
                 'price' => $item['price'],
