@@ -81,9 +81,12 @@ class PROTenderController extends Controller
             'tenderitems.*.quantity' => 'required|numeric|min:0',              
         ]);
 
+
+        $tender = null; // Initialize tender variable
+
     
         // Begin database transaction
-        DB::transaction(function () use ($validated) {
+        DB::transaction(function () use ($validated, & $tender) {
         
             $transdate = Carbon::now(); 
             $tender = PROTender::create([
@@ -103,8 +106,14 @@ class PROTenderController extends Controller
             }     
         
         });
-    
-        return redirect()->route('procurements0.index')->with('success', 'Tender created successfully.');
+
+        if ($tender) {
+            return redirect()->route('procurements0.edit', $tender->id)
+                ->with('success', 'Tender created successfully. You can now add items.');
+        }else {
+             return back()->withInput()->with('error', 'Failed to create tender due to an unexpected issue after transaction.');
+        }       
+       
     }    
 
     /**
@@ -241,8 +250,18 @@ class PROTenderController extends Controller
             ]);
             
         }
+
+        if($tender->stage == "1" ){
+            return redirect()->route('procurements0.index')
+                ->with('success', 'Tender updated successfully. You can now add items.');
+           
+        }else{
+           
+            return redirect()->route('procurements0.edit', $tender->id)
+            ->with('success', 'Tender updated successfully. You can now add quotations.');    
+        }
     
-        return redirect()->route('procurements0.index')->with('success', 'Tender updated successfully.');
+        
     }
 
     public function quotation(Request $request, PROTender $tender)
@@ -394,7 +413,18 @@ class PROTenderController extends Controller
 
         });
 
-        return redirect()->route('procurements0.index')->with('success', 'Tender quotations updated successfully.');
+
+        if($tender->stage == "2" ){
+            return redirect()->route('procurements0.index')
+                             ->with('success', 'Tender quotations updated successfully.');
+           
+        }else{
+           
+            return redirect()->route('procurements0.edit', $tender->id)
+                            ->with('success', 'Tender quotations updated successfully. You can now add evaluations.');    
+        }
+
+       
     }
   
     
