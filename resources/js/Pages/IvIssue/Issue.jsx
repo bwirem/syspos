@@ -177,22 +177,7 @@ export default function IssueGoods({ auth, requistion }) {
                                         {errors.delivery_no && <p className="mt-1 text-sm text-red-600">{errors.delivery_no}</p>}
                                     </div>
                                 </div>
-                                <div>
-                                    <label htmlFor="expiry_date" className="block text-sm font-medium leading-6 text-gray-900">
-                                        Global Expiry Date (if applicable)
-                                    </label>
-                                    <div className="mt-2">
-                                        <input
-                                            type="date"
-                                            name="expiry_date"
-                                            id="expiry_date"
-                                            value={data.expiry_date || ''}
-                                            onChange={(e) => setData('expiry_date', e.target.value || null)}
-                                            className={`block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 ${errors.expiry_date ? "ring-red-500" : ""}`}
-                                        />
-                                        {errors.expiry_date && <p className="mt-1 text-sm text-red-600">{errors.expiry_date}</p>}
-                                    </div>
-                                </div>
+                              
                                  <div>
                                     <label htmlFor="double_entry" className="flex items-center text-sm font-medium leading-6 text-gray-900">
                                         Enable Double Entry Accounting
