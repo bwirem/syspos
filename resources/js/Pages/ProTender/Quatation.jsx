@@ -287,7 +287,11 @@ export default function Quotation({ auth, tender, flash, errors: pageErrors }) {
         buildQuotationFormData(formData);
         router.post(route('procurements0.quotation', tender.id), formData, { // Changed route to .submit
             preserveScroll: true,
-            onSuccess: () => { setSubmitToEvaluationModal(prev => ({ ...prev, loading: false, success: true })); setTimeout(() => { closeSubmitToEvaluationModal(); router.visit(route('procurements0.index')); }, 2000); },
+            onSuccess: () => { setSubmitToEvaluationModal(prev => ({ ...prev, loading: false, success: true }));
+             setTimeout(() => { 
+                closeSubmitToEvaluationModal(); 
+                //router.visit(route('procurements0.index')); 
+            }, 2000); },
             onError: (serverValidationErrors) => { console.error("Submit to Evaluation error:", serverValidationErrors); setSubmitToEvaluationModal(prev => ({ ...prev, loading: false, remarksError: serverValidationErrors.remarks || '' })); showAlert(serverValidationErrors.message || "Failed to submit. Check errors.", "Submission Error", "error"); }
         });
     };

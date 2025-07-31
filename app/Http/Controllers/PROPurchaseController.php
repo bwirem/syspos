@@ -153,8 +153,13 @@ class PROPurchaseController extends Controller
                 $purchase->update(['total' => $calculatedTotal]);
             });
 
-            Log::info('Purchase created successfully:', ['purchase_id' => $purchase->id]);
-            return redirect()->route('procurements1.index')->with('success', 'Purchase created successfully.');
+
+            if ($purchase) {
+                return redirect()->route('procurements1.edit', $purchase->id)
+                    ->with('success', 'Purchase created successfully. You can now add items.');
+            }else {
+                return back()->withInput()->with('error', 'Failed to create purchase due to an unexpected issue after transaction.');
+            }
 
         } catch (\Exception $e) {
             Log::error('Error creating purchase:', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
@@ -325,10 +330,8 @@ class PROPurchaseController extends Controller
 
                  // Update purchase with the correct total
                  $purchase->update(['total' => $calculatedTotal]);
-
-                 Log::info('Purchase updated successfully:', ['purchase_id' => $purchase->id]);
-
-            });
+              
+            });            
     
             return redirect()->route('procurements1.index')->with('success', 'Purchase updated successfully.');
 
@@ -449,8 +452,13 @@ class PROPurchaseController extends Controller
             //      Log::info('Purchase updated successfully:', ['purchase_id' => $purchase->id]);
 
              });
+
+            
+            return redirect()->route('procurements1.edit', $purchase->id)
+                ->with('success', 'Purchase approved successfully. You can now dispatch it.');    
+              
     
-            return redirect()->route('procurements1.index')->with('success', 'Purchase updated successfully.');
+          
 
         } catch (\Exception $e) {
             Log::error('Error updating purchase:', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
@@ -515,8 +523,9 @@ class PROPurchaseController extends Controller
                 //Log::info('Purchase dispatched successfully:', ['purchase_id' => $purchase->id]);
                 // You could trigger an event to send a notification here (e.g., email)                
             });    
+  
 
-            return redirect()->route('procurements1.index')->with('success', 'Purchase dispatched successfully.');
+            return redirect()->route('procurements1.edit', $purchase->id)->with('success', 'Purchase dispatched successfully.');
 
         } catch (\Exception $e) {
             Log::error('Error dispatching purchase:', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);

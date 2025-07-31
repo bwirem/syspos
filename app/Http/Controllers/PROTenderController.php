@@ -421,7 +421,7 @@ class PROTenderController extends Controller
         }else{
            
             return redirect()->route('procurements0.edit', $tender->id)
-                            ->with('success', 'Tender quotations updated successfully. You can now add evaluations.');    
+                           ->with('success', 'Tender quotations updated successfully. You can now add evaluations.');    
         }
 
        
