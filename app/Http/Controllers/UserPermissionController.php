@@ -282,7 +282,7 @@ class UserPermissionController extends Controller
                 ['key' => 'material0', 'text' => 'Request Materials', 'icon' => 'autorenew'],
             ],
             'expenses' => [
-                ['key' => 'expenses0', 'text' => 'Expense Submission', 'icon' => 'paper_plane'],
+                ['key' => 'expenses0', 'text' => 'Expense Claim', 'icon' => 'paper_plane'],
                 ['key' => 'expenses1', 'text' => 'Expense Approval', 'icon' => 'thumbs_up'],                            
                 ['key' => 'expenses2', 'text' => 'Expense History', 'icon' => 'history'],               
             ],

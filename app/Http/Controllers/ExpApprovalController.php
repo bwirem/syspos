@@ -28,7 +28,7 @@ class ExpApprovalController extends Controller
              $query->where('description', 'like', '%' . $request->search . '%');          
          }    
          
-         $query->where('stage', '>', '1');
+         $query->where('stage', '=', '2');
      
          // Paginate and sort approvals
          $approvals = $query->orderBy('created_at', 'desc')->paginate(10);
@@ -57,82 +57,105 @@ class ExpApprovalController extends Controller
 
     /**
      * Update the specified post in storage.
-     */
+     */  
 
-     public function update(Request $request, EXPPost $post)
-     {
-        
-         // Validate input
-         $validated = $request->validate([             
-             'description' => 'nullable|string|max:255',            
-             'facility_id' => 'required|exists:facilityoptions,id',            
-             'stage' => 'required|integer|min:1',
-             'postitems' => 'required|array',
-             'postitems.*.id' => 'nullable|exists:exp_expensepostitems,id',
-             'postitems.*.item_id' => 'required|exists:sexp_items,id',
-             'postitems.*.amount' => 'required|numeric|min:0',  
-             'postitems.*.remarks' => 'nullable|string|max:255',            
-         ]);
-     
-         // Update the post within a transaction
-         DB::transaction(function () use ($validated, $post) {
-             // Retrieve existing item IDs before the update
-             $oldItemIds = $post->postitems()->pluck('id')->toArray();
-             
-             $existingItemIds = [];
-             $newItems = [];
-     
-             foreach ($validated['postitems'] as $item) {
-                 if (!empty($item['id'])) {
-                     $existingItemIds[] = $item['id'];
-                 } else {
-                     $newItems[] = $item;
-                 }
-             }
-     
-             // Identify and delete removed items
-             $itemsToDelete = array_diff($oldItemIds, $existingItemIds);
-             $post->postitems()->whereIn('id', $itemsToDelete)->delete();
-     
-             // Add new items
-             foreach ($newItems as $item) {
-                 $post->postitems()->create([
-                     'item_id' => $item['item_id'],
-                     'amount' => $item['amount'],
-                     'remarks' => $item['remarks'],                   
-                 ]);
-             }
-     
-             // Update existing items
-             foreach ($validated['postitems'] as $item) {
-                 if (!empty($item['id'])) {
-                     $postItem = EXPPostItem::find($item['id']);
-     
-                     if ($postItem) {
-                         $postItem->update([
-                             'item_id' => $item['item_id'],
-                             'amount' => $item['amount'],  
-                             'remarks' => $item['remarks'],                        
-                         ]);
-                     }
-                 }
-             }
+    public function update(Request $request, EXPPost $approval)
+    {
+        // Validate input - Changed to expect 'approvalitems' to match the frontend
+        $validated = $request->validate([
+            'description'      => 'required|string|max:255',
+            'facility_id'      => 'required|exists:facilityoptions,id',
+            'stage'            => 'required|integer|min:1',
+            'approval_remarks' => 'nullable|string|max:1000', // Added for approval/rejection remarks
+            'approvalitems'    => 'required|array|min:1',
+            'approvalitems.*.id' => 'nullable|exists:exp_expensepostitems,id', // Note: table name is exp_expensepostitems
+            'approvalitems.*.item_id' => 'required|exists:sexp_items,id',
+            'approvalitems.*.amount'  => 'required|numeric|min:0.01',
+            'approvalitems.*.remarks' => 'nullable|string|max:255',
+        ], [
+            'approvalitems.min' => 'At least one expense item is required.',
+        ]);
 
-             // Compute the total based on updated post items
-             $calculatedTotal = $post->postitems->sum(fn($item) => $item->quantity * $item->price);
-          
-             // Update the post details
-             $post->update([                 
-                 'description' => $validated['description'],
-                 'facilityoption_id' => $validated['facility_id'],
-                 'stage' => $validated['stage'], 
-                 'total' => $calculatedTotal,              
-                 'user_id' => Auth::id(),
-             ]);
-         });
-     
-         return redirect()->route('expenses0.index')->with('success', 'Post updated successfully.');
-     }
+        // Use a database transaction for data integrity
+        DB::transaction(function () use ($validated, $approval, $request) {
+            // Retrieve existing item IDs associated with the approval
+            $existingItemIdsFromDb = $approval->postitems()->pluck('id')->toArray();
+            
+            $submittedItemIds = [];
+            $newItems = [];
+
+            // Separate new items from existing ones
+            foreach ($validated['approvalitems'] as $item) {
+                if (!empty($item['id'])) {
+                    $submittedItemIds[] = $item['id'];
+                } else {
+                    $newItems[] = $item;
+                }
+            }
+
+            // Determine which items to delete
+            $itemsToDelete = array_diff($existingItemIdsFromDb, $submittedItemIds);
+            if (!empty($itemsToDelete)) {
+                $approval->postitems()->whereIn('id', $itemsToDelete)->delete();
+            }
+
+            // Create new items
+            if (!empty($newItems)) {
+                foreach ($newItems as $item) {
+                    $approval->postitems()->create([
+                        'item_id' => $item['item_id'],
+                        'amount'  => $item['amount'],
+                        'remarks' => $item['remarks'],
+                    ]);
+                }
+            }
+
+            // Update existing items
+            foreach ($validated['approvalitems'] as $item) {
+                if (!empty($item['id'])) {
+                    $postItem = EXPPostItem::find($item['id']);
+                    if ($postItem) {
+                        $postItem->update([
+                            'item_id' => $item['item_id'],
+                            'amount'  => $item['amount'],
+                            'remarks' => $item['remarks'],
+                        ]);
+                    }
+                }
+            }
+
+            // Refresh the relationship to get the current state of items for total calculation
+            $approval->load('postitems');
+            $calculatedTotal = $approval->postitems->sum('amount');
+
+            // Update the main approval record
+            $approval->update([
+                'description'       => $validated['description'],
+                'facilityoption_id' => $validated['facility_id'],
+                'stage'             => $validated['stage'],
+                'total'             => $calculatedTotal,
+                'user_id'           => Auth::id(), // Or consider a dedicated 'updated_by_id'
+            ]);
+
+            // If there are approval remarks, you might want to log them
+            // This could be a separate table for approval history/logs
+            if (!empty($validated['approval_remarks'])) {
+                // Example: Log to a related model or a generic audit trail
+                // AuditTrail::log( ... );
+            }
+        });
+
+        if ($request->stage == 1) {
+            return redirect()->route('expenses1.index')->with('success', 'Expense details return successfully.');        
+      
+        } else {
+            return redirect()->route('expenses1.index')->with('success', 'Expense details updated successfully.'); 
+            //return redirect()->route('expenses1.edit', $approval->id)->with('success', 'Expense details updated successfully.');
+
+        } 
+
+    }  
+
      
   
 }

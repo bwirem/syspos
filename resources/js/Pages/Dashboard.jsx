@@ -5,20 +5,21 @@ import {
     // Sales
     faDollarSign, faFileInvoiceDollar, faHistory as faSalesHistory, faChartBar, faPlusSquare as faNewSale,
     // Procurement
-    faShoppingCart, faTruck, faFileContract as faPOContract, faTasks ,
+    faShoppingCart, faTruck, faFileContract as faPOContract, faTasks,
     // Inventory
     faBoxes, faWarehouse, faExchangeAlt, faEdit as faStockEdit, faBalanceScale, faExclamationTriangle,
+    // Expenses
+    faFileSignature, faClipboardCheck, faPlusSquare as faNewExpense,
     // Common
     faArrowRight,
 } from '@fortawesome/free-solid-svg-icons';
 import "@fortawesome/fontawesome-svg-core/styles.css";
 
-// Reusable Card Component (assuming it's defined elsewhere or copy it here)
+// Reusable Card Component
 function SummaryCard({ title, value, unit, description, linkHref, linkText, icon, iconBgColor, footerText, footerTextColor = "text-gray-500 dark:text-gray-400" }) {
     const valueTextColor = iconBgColor ? iconBgColor.replace('bg-', 'text-') : 'text-gray-800 dark:text-white';
     const linkColor = iconBgColor ? iconBgColor.replace('bg-', 'text-') : 'text-indigo-600 dark:text-indigo-400';
 
-    // Ensure value is handled if it's 0 to display it
     const displayValue = (value !== undefined && value !== null) ? value : 'N/A';
 
     return (
@@ -48,7 +49,7 @@ function SummaryCard({ title, value, unit, description, linkHref, linkText, icon
                     </Link>
                 ) : footerText ? (
                     <span className={`text-sm ${footerTextColor}`}>{footerText}</span>
-                ) : <div className="h-[20px]"></div> /* Placeholder for consistent height if no link/footer */}
+                ) : <div className="h-[20px]"></div> /* Placeholder for consistent height */}
             </div>
         </div>
     );
@@ -57,31 +58,40 @@ function SummaryCard({ title, value, unit, description, linkHref, linkText, icon
 
 export default function Dashboard({
     auth,
+    // Sales props
     salesTodayCount,
     salesTodayValue,
+    // Procurement props
     pendingPOCount,
     activeSuppliersCount,
+    // Inventory props
     lowStockItemCount,
     totalStockValue,
-    // Add other summary props from controller as needed
+    // Expense props
+    pendingExpensesCount,
+    approvedExpensesTodayValue,
 }) {
-    // Define URLs directly. Replace with your actual paths.
-    // Using Ziggy's route() is recommended if available.
+    // Define application URLs. Using Ziggy's route() is recommended if available.
     const urls = {
         // Sales
-        salesHub: '/sales-billing-hub', // Path to your SalesAndBillingDashboard.jsx
-        newSale: '/sales/create', // Example path for creating a new sale
+        salesHub: '/sales-billing-hub',
+        newSale: '/sales/create',
         dailySalesReport: '/reports/sales/daily',
 
         // Procurement
-        procurementHub: '/procurement-hub', // Path to your ProcurementDashboard.jsx
-        newPurchaseOrder: '/procurement/purchase-orders/create', // Example
-        pendingPOs: '/procurement/purchase-orders/pending', // Example
+        procurementHub: '/procurement-hub',
+        newPurchaseOrder: '/procurement/purchase-orders/create',
+        pendingPOs: '/procurement/purchase-orders/pending',
 
         // Inventory
-        inventoryHub: '/inventory-hub', // Path to your InventoryDashboard.jsx
-        stockLevels: '/inventory/stock/levels', // Example
-        lowStockAlerts: '/inventory/items/low-stock', // Example
+        inventoryHub: '/inventory-hub',
+        stockLevels: '/inventory/stock/levels',
+        lowStockAlerts: '/inventory/items/low-stock',
+
+        // Expenses
+        expensesHub: '/expenses-hub', // Main expense dashboard
+        pendingExpenses: '/expenses/pending', // List of expenses needing approval
+        newExpense: '/expenses/create', // Form to create a new expense claim
     };
 
     const formatAmount = (amount, currency = 'TZS ') => {
@@ -117,7 +127,7 @@ export default function Dashboard({
                                 value={formatAmount(salesTodayValue)}
                                 icon={faDollarSign}
                                 iconBgColor="bg-green-500"
-                                linkHref={urls.dailySalesReport} // Link to daily sales report
+                                linkHref={urls.dailySalesReport}
                                 linkText="View Daily Report"
                             />
                             <SummaryCard
@@ -126,7 +136,7 @@ export default function Dashboard({
                                 unit="Transactions"
                                 icon={faFileInvoiceDollar}
                                 iconBgColor="bg-blue-500"
-                                linkHref={urls.dailySalesReport} // Can also link here or a general transactions page
+                                linkHref={urls.dailySalesReport}
                                 linkText="Details"
                             />
                             <SummaryCard
@@ -164,7 +174,7 @@ export default function Dashboard({
                                 unit="Suppliers"
                                 icon={faTruck}
                                 iconBgColor="bg-purple-500"
-                                linkHref={urls.procurementHub} // Could link to a supplier list page
+                                linkHref={urls.procurementHub}
                                 linkText="Manage Suppliers"
                             />
                             <SummaryCard
@@ -176,7 +186,7 @@ export default function Dashboard({
                                 linkText="Create PO"
                             />
                         </div>
-                    </section>
+                    </section>                  
 
                     {/* Inventory Section */}
                     <section>
@@ -192,7 +202,7 @@ export default function Dashboard({
                                 value={formatAmount(totalStockValue)}
                                 icon={faBalanceScale}
                                 iconBgColor="bg-cyan-500"
-                                linkHref={urls.inventoryHub} // Or link to valuation report
+                                linkHref={urls.inventoryHub}
                                 linkText="View Valuation"
                             />
                             <SummaryCard
@@ -215,12 +225,43 @@ export default function Dashboard({
                         </div>
                     </section>
 
-                    {/* You can add back chart sections here if needed, similar to your original Dashboard */}
-                    {/*
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-                       // Chart placeholders
-                    </div>
-                    */}
+                    {/* Expenses Section */}
+                    <section>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-2xl font-semibold text-gray-800 dark:text-gray-100">Expenses Overview</h3>
+                            <Link href={urls.expensesHub} className="text-sm text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium flex items-center group">
+                                Go to Expenses Hub <FontAwesomeIcon icon={faArrowRight} className="ml-1.5 h-3 w-3 transition-transform duration-200 group-hover:translate-x-1" />
+                            </Link>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                            <SummaryCard
+                                title="Pending Expenses"
+                                value={pendingExpensesCount}
+                                unit="Claims"
+                                icon={faFileSignature}
+                                iconBgColor="bg-yellow-500"
+                                linkHref={urls.pendingExpenses}
+                                linkText="Process Expenses"
+                            />
+                            <SummaryCard
+                                title="Expenses Approved Today"
+                                value={formatAmount(approvedExpensesTodayValue)}
+                                icon={faClipboardCheck}
+                                iconBgColor="bg-blue-500"
+                                linkHref={urls.expensesHub} // Link to a general expenses report or hub
+                                linkText="View Reports"
+                            />
+                            <SummaryCard
+                                title="New Expense Claim"
+                                description="Submit a new request for funds."
+                                icon={faNewExpense}
+                                iconBgColor="bg-sky-500"
+                                linkHref={urls.newExpense}
+                                linkText="Create Claim"
+                            />
+                        </div>
+                    </section>
+
                 </div>
             </div>
         </AuthenticatedLayout>

@@ -9,15 +9,15 @@ import { debounce } from 'lodash';
 import Modal from '../../Components/CustomModal.jsx';
 
 // Configuration for styling different expense stages
-const approvalStageConfig = {
-    2: { label: 'Pending Approval', className: 'bg-yellow-200 text-yellow-700 hover:bg-yellow-300' },
+const historyStageConfig = {
     3: { label: 'Approved', className: 'bg-green-200 text-green-700 hover:bg-green-300' },
     4: { label: 'Rejected', className: 'bg-red-200 text-red-700 hover:bg-red-300' },
+    // Add other stages as needed
 };
 const defaultStageStyle = { label: 'Unknown Stage', className: 'bg-gray-300 text-gray-800' };
 
 
-export default function Index({ auth, approvals, filters, flash }) {
+export default function Index({ auth, historys, filters, flash }) {
     const { data, setData, get, errors, processing, reset } = useForm({
         search: filters.search || "",
     });
@@ -31,7 +31,7 @@ export default function Index({ auth, approvals, filters, flash }) {
 
     const debouncedSearch = useCallback(
         debounce((searchValue) => {
-            get(route("expenses1.index", { search: searchValue }), {
+            get(route("expenses2.index", { search: searchValue }), {
                 preserveState: true,
                 preserveScroll: true,
             });
@@ -80,11 +80,11 @@ export default function Index({ auth, approvals, filters, flash }) {
             user={auth.user}
             header={
                 <h2 className="text-xl font-semibold leading-tight text-gray-800 dark:text-gray-200">
-                    Expense Approval List
+                    Expense History List
                 </h2>
             }
         >
-            <Head title="Expense Approvals" />
+            <Head title="Expense History" />
 
             <div className="py-8">
                 <div className="max-w-7xl mx-auto sm:px-6 lg:px-8">
@@ -133,7 +133,7 @@ export default function Index({ auth, approvals, filters, flash }) {
                             </div>
                         </div>
 
-                        {/* Approvals Table */}
+                        {/* History Table */}
                         <div className="overflow-x-auto relative shadow-md sm:rounded-lg border border-gray-200 dark:border-gray-700">
                             <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
                                 <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700 dark:text-gray-400">
@@ -145,7 +145,7 @@ export default function Index({ auth, approvals, filters, flash }) {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {processing && approvals.data.length === 0 && (
+                                    {processing && historys.data.length === 0 && (
                                         <tr>
                                             <td colSpan="4" className="text-center py-10">
                                                 <FontAwesomeIcon icon={faSpinner} className="animate-spin text-2xl text-gray-400" />
@@ -153,22 +153,22 @@ export default function Index({ auth, approvals, filters, flash }) {
                                             </td>
                                         </tr>
                                     )}
-                                    {!processing && approvals.data.length === 0 && (
+                                    {!processing && historys.data.length === 0 && (
                                         <tr>
                                             <td colSpan="4" className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                                                 No items found matching your criteria.
                                             </td>
                                         </tr>
                                     )}
-                                    {approvals.data.map((approval) => {
-                                        const stageInfo = approvalStageConfig[approval.stage] || defaultStageStyle;
+                                    {historys.data.map((history) => {
+                                        const stageInfo = historyStageConfig[history.stage] || defaultStageStyle;
                                         return (
-                                            <tr key={approval.id} className="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                                            <tr key={history.id} className="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
                                                 <td className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                                    {approval.description || <span className="italic text-gray-400">N/A</span>}
+                                                    {history.description || <span className="italic text-gray-400">N/A</span>}
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
-                                                    {parseFloat(approval.total).toLocaleString(undefined, {
+                                                    {parseFloat(history.total).toLocaleString(undefined, {
                                                         minimumFractionDigits: 2,
                                                         maximumFractionDigits: 2,
                                                     })}
@@ -181,9 +181,9 @@ export default function Index({ auth, approvals, filters, flash }) {
                                                 <td className="px-6 py-4 text-center">
                                                     <div className="flex items-center justify-center space-x-2">
                                                         <Link
-                                                            href={route("expenses1.edit", approval.id)}
+                                                            href={route("expenses2.edit", history.id)}
                                                             className="font-medium text-blue-600 dark:text-blue-500 hover:underline p-1"
-                                                            title="Process"
+                                                            title="View"
                                                         >
                                                             <FontAwesomeIcon icon={faEdit} />
                                                         </Link>
@@ -198,13 +198,13 @@ export default function Index({ auth, approvals, filters, flash }) {
                         </div>
 
                         {/* Pagination */}
-                        {approvals.links && approvals.links.length > 3 && (
+                        {historys.links && historys.links.length > 3 && (
                              <nav className="mt-6 flex items-center justify-between" aria-label="Pagination">
                                 <div className="text-sm text-gray-700 dark:text-gray-400">
-                                    Showing <span className="font-medium">{approvals.from || 0}</span> to <span className="font-medium">{approvals.to || 0}</span> of <span className="font-medium">{approvals.total || 0}</span> results
+                                    Showing <span className="font-medium">{historys.from || 0}</span> to <span className="font-medium">{historys.to || 0}</span> of <span className="font-medium">{historys.total || 0}</span> results
                                 </div>
                                 <div className="flex justify-end">
-                                    {approvals.links.map((link, index) => (
+                                    {historys.links.map((link, index) => (
                                         <Link
                                             key={index}
                                             href={link.url || '#'}
@@ -215,7 +215,7 @@ export default function Index({ auth, approvals, filters, flash }) {
                                                 ${link.active ? 'z-10 bg-indigo-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600'
                                                             : 'text-gray-900 dark:text-gray-300 ring-1 ring-inset ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-offset-0'}
                                                 ${index === 0 ? 'rounded-l-md' : ''}
-                                                ${index === approvals.links.length - 1 ? 'rounded-r-md' : ''}
+                                                ${index === historys.links.length - 1 ? 'rounded-r-md' : ''}
                                                 ${!link.url ? 'cursor-not-allowed opacity-50' : ''}
                                             `}
                                             dangerouslySetInnerHTML={{ __html: link.label }}

@@ -18,6 +18,7 @@ use App\Http\Controllers\BLSCustomerController;
 
 use App\Http\Controllers\ExpPostController;
 use App\Http\Controllers\ExpApprovalController;
+use App\Http\Controllers\ExpHistoryController;
 
 use App\Http\Controllers\SEXPItemGroupController;
 use App\Http\Controllers\SEXPItemController;
@@ -156,13 +157,18 @@ Route::middleware('auth')->group(function () {
     });
     
      // expenses routes
-     Route::prefix('expenses1')->name('expenses1.')->group(function () {
+     Route::prefix('expenses1')->name('expenses1.')->group(function () {   
         Route::get('/', [ExpApprovalController::class, 'index'])->name('index');
-        Route::get('/create', [ExpApprovalController::class, 'create'])->name('create');
-        Route::post('/', [ExpApprovalController::class, 'store'])->name('store');
         Route::get('/{approval}/edit', [ExpApprovalController::class, 'edit'])->name('edit');
         Route::put('/{approval}', [ExpApprovalController::class, 'update'])->name('update');
         Route::delete('/{approval}', [ExpApprovalController::class, 'destroy'])->name('destroy');
+    });
+
+
+    // Expense History routes   
+     Route::prefix('expenses2')->name('expenses2.')->group(function () {   
+        Route::get('/', [ExpHistoryController::class, 'index'])->name('index');
+        Route::get('/{history}/edit', [ExpHistoryController::class, 'edit'])->name('edit');        
     });
 
 
