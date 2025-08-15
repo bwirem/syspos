@@ -249,7 +249,7 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
     return (
         <AuthenticatedLayout
             user={auth.user}
-            header={<h2 className="text-xl font-semibold leading-tight text-gray-800">New Receive</h2>}
+            header={<h2 className="text-xl font-semibold leading-tight text-gray-800">New Receipt</h2>}
         >
             <Head title="Create Receive" />
             <div className="py-12">
@@ -260,7 +260,7 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
                             <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
                                 <div>
                                     <label htmlFor="from_store_id" className="block text-sm font-medium leading-6 text-gray-900">
-                                        From Store <span className="text-red-500">*</span>
+                                        From Store/Supplier <span className="text-red-500">*</span>
                                     </label>
                                     <div className="mt-2">
                                         <select
@@ -270,7 +270,7 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
                                             onChange={(e) => setData("from_store_id", e.target.value)}
                                             className={`block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 ${errors.from_store_id ? "ring-red-500" : ""}`}
                                         >
-                                            <option value="">Select From Store...</option>
+                                            <option value="">Select From Store/Supplier...</option>
                                             {fromstore.map(store => (
                                                 <option key={store.id} value={store.id}>{getFromStoreName(store)}</option>
                                             ))}
