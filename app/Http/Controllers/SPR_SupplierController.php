@@ -8,60 +8,123 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
 use App\Enums\SupplierType;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;  
+use Inertia\Inertia;
 
 class SPR_SupplierController extends Controller
 {
-    /**
-     * Display a listing of SPR_Suppliers.
-     */
+    
+    
     public function index(Request $request)
     {
         $query = SPR_Supplier::query();
-
-        // Search functionality
         if ($request->filled('search')) {
-            $query->where('name', 'like', '%' . $request->search . '%');
+            $search = $request->search;
+            $query->where(fn($q) => $q->where('company_name', 'like', "%{$search}%")->orWhere('first_name', 'like', "%{$search}%")->orWhere('surname', 'like', "%{$search}%"));
         }
+        $suppliers = $query->latest()->paginate(10)->withQueryString();
 
-        // Paginate the results
-        $suppliers = $query->orderBy('created_at', 'desc')->paginate(10);
-
-        return inertia('SystemConfiguration/InventorySetup/Suppliers/Index', [
+        return Inertia::render('SystemConfiguration/InventorySetup/Suppliers/Index', [
             'suppliers' => $suppliers,
             'filters' => $request->only(['search']),
+            'success' => session('success'),
         ]);
     }
 
-    /**
-     * Show the form for creating a new supplier.
-     */
     public function create()
     {
-        return inertia('SystemConfiguration/InventorySetup/Suppliers/Create');
+        $supplierTypes = collect(SupplierType::cases())->map(fn($type) => ['value' => $type->value, 'label' => $type->label()]);
+        return Inertia::render('SystemConfiguration/InventorySetup/Suppliers/Create', [
+            'supplierTypes' => $supplierTypes,
+        ]);
     }
 
-    /**
-     * store a newly created supplier in storage.
-     */
     public function store(Request $request)
     {
-        // Validate input
         $validated = $request->validate([
-            'name' => 'required|string|max:255',            
+            'supplier_type' => ['required', 'in:' . implode(',', SupplierType::values())],
+            'first_name' => 'nullable|string|max:255',
+            'surname' => 'nullable|string|max:255',
+            'company_name' => 'nullable|string|max:255',
+            'email' => 'required|email|max:255|unique:siv_suppliers',
+            'phone' => 'nullable|string|max:13',
+            'address' => 'nullable|string',
         ]);
 
-        // Create the supplier
-        SPR_Supplier::create([
-            'name' => $validated['name'],            
-        ]);
+        if ($validated['supplier_type'] == SupplierType::INDIVIDUAL->value) {
+            Validator::make($request->all(), ['first_name' => 'required', 'surname' => 'required'])->validate();
+            $validated['company_name'] = null;
+        } else {
+            Validator::make($request->all(), ['company_name' => 'required'])->validate();
+            $validated['first_name'] = null; $validated['surname'] = null; $validated['other_names'] = null;
+        }
 
-        return redirect()->route('systemconfiguration2.suppliers.index')
-            ->with('success', 'Supplier created successfully.');
+        $supplier = SPR_Supplier::create($validated);
+        return redirect()->route('systemconfiguration2.suppliers.edit', $supplier)->with('success', 'Supplier created successfully.');
     }
 
-    /**
-     * store a newly created supplier in storage.
-     */
+    public function edit(SPR_Supplier $supplier)
+    {
+        $supplierTypes = collect(SupplierType::cases())->map(fn($type) => ['value' => $type->value, 'label' => $type->label()]);
+        return Inertia::render('SystemConfiguration/InventorySetup/Suppliers/Edit', [
+            'supplier' => $supplier,
+            'supplierTypes' => $supplierTypes,
+        ]);
+    }
+
+    
+    public function update(Request $request, SPR_Supplier $supplier)
+    {
+        // Define the base validation rules for all fields
+        $rules = [
+            'supplier_type' => ['required', Rule::in(SupplierType::values())],
+            'first_name' => 'nullable|string|max:255',
+            'other_names' => 'nullable|string|max:255',
+            'surname' => 'nullable|string|max:255',
+            'company_name' => 'nullable|string|max:255',
+            // Ensure the email is unique, but ignore the current supplier's own email
+            'email' => ['required', 'email', 'max:255', Rule::unique('siv_suppliers')->ignore($supplier->id)],
+            'phone' => 'nullable|string|max:13',
+            'address' => 'nullable|string',
+        ];
+
+        // Add conditional 'required' rules based on the selected supplier type
+        if ($request->input('supplier_type') === SupplierType::INDIVIDUAL->value) {
+            $rules['first_name'] = 'required|string|max:255';
+            $rules['surname'] = 'required|string|max:255';
+        } else {
+            $rules['company_name'] = 'required|string|max:255';
+        }
+
+        // Validate the request with the complete set of rules
+        $validated = $request->validate($rules);
+
+        // Data Cleaning: After validation, nullify fields that are not relevant
+        // to the selected supplier type to ensure data integrity.
+        if ($validated['supplier_type'] === SupplierType::INDIVIDUAL->value) {
+            $validated['company_name'] = null;
+        } else {
+            $validated['first_name'] = null;
+            $validated['other_names'] = null;
+            $validated['surname'] = null;
+        }
+
+        // Update the supplier with the validated and cleaned data
+        $supplier->update($validated);
+
+        // Redirect back to the edit page with a success message
+        return redirect()->route('systemconfiguration2.suppliers.edit', $supplier->id)
+                         ->with('success', 'Supplier updated successfully.');
+    }
+
+   
+    public function destroy(SPR_Supplier $supplier)
+    {
+        $supplier->delete();
+        return redirect()->route('systemconfiguration2.suppliers.index')->with('success', 'Supplier deleted successfully.');
+    }  
+    
    
     public function directstore(Request $request)
     {        
@@ -110,48 +173,6 @@ class SPR_SupplierController extends Controller
             'email' => $supplier->email,
             'phone' => $supplier->phone,
         ]);
-    }
-
-    
-
-    /**
-     * Show the form for editing the specified supplier.
-     */
-    public function edit(SPR_Supplier $supplier)
-    {
-        return inertia('SystemConfiguration/InventorySetup/Suppliers/Edit', [
-            'supplier' => $supplier,
-        ]);
-    }
-
-    /**
-     * Update the specified supplier in storage.
-     */
-    public function update(Request $request, SPR_Supplier $supplier)
-    {
-        // Validate input
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',            
-        ]);
-
-        // Update the supplier
-        $supplier->update([
-            'name' => $validated['name'],            
-        ]);
-
-        return redirect()->route('systemconfiguration2.suppliers.index')
-            ->with('success', 'Supplier updated successfully.');
-    }
-
-    /**
-     * Remove the specified supplier from storage.
-     */
-    public function destroy(SPR_Supplier $supplier)
-    {
-        $supplier->delete();
-
-        return redirect()->route('systemconfiguration2.suppliers.index')
-            ->with('success', 'Supplier deleted successfully.');
     }
 
     /**

@@ -33,6 +33,15 @@ class BLSCustomer extends Model
         'customer_type' => 'string',       
     ];
 
+    /**
+     * The accessors to append to the model's array form.
+     * THIS IS THE CRITICAL LINE TO ADD.
+     *
+     * @var array
+     */
+    protected $appends = ['display_name'];
+
+
     // Accessor to get the human-readable label
     public function getCustomerTypeNameAttribute()
     {
@@ -42,5 +51,21 @@ class BLSCustomer extends Model
     public function invoices()
     {
         return $this->hasMany(BILInvoice::class, 'customer_id', 'id');
+    }
+
+
+    /**
+     * Get the correct display name for the customer.
+     * THIS IS THE ACCESSOR METHOD TO ADD.
+     *
+     * @return string
+     */
+    public function getDisplayNameAttribute(): string
+    {
+        if ($this->customer_type === 'company' && !empty($this->company_name)) {
+            return $this->company_name;
+        }
+
+        return trim("{$this->first_name} {$this->other_names} {$this->surname}");
     }
 }

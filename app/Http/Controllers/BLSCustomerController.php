@@ -30,7 +30,7 @@ class BLSCustomerController extends Controller
         // Paginate the results
         $customers = $query->orderBy('created_at', 'desc')->paginate(10);
 
-        return inertia('Customers/Index', [
+        return inertia('SystemConfiguration/BillingSetup/Customers/Index', [
             'customers' => $customers,
             'filters' => $request->only(['search']),
         ]);
@@ -45,7 +45,7 @@ class BLSCustomerController extends Controller
         $customerTypes = CustomerType::cases();
         $customerTypes = array_map(fn($type) => ['value' => $type->value, 'label' => $type->label()], $customerTypes);
 
-        return inertia('Customers/Create', [
+        return inertia('SystemConfiguration/BillingSetup/Customers/Create', [
             'customerTypes' => $customerTypes,
         ]);
     }
@@ -90,7 +90,7 @@ class BLSCustomerController extends Controller
         // Create the customer
         $customer = BLSCustomer::create($validated);  
 
-        return redirect()->route('customer0.edit', ['customer' => $customer->id])          
+        return redirect()->route('systemconfiguration0.customers.edit', ['customer' => $customer->id])          
             ->with('success', 'Customer created successfully.');
     }
 
@@ -152,7 +152,7 @@ class BLSCustomerController extends Controller
         $customerTypes = array_map(fn($type) => ['value' => $type->value, 'label' => $type->label()], $customerTypes);
 
         
-        return inertia('Customers/Edit', [
+        return inertia('SystemConfiguration/BillingSetup/Customers/Edit', [
             'customer' => $customer,
             'customerTypes' => $customerTypes,               
         ]);      
@@ -208,7 +208,7 @@ class BLSCustomerController extends Controller
         $customer->update(array_merge($validated, $mappedData));
  
 
-        return redirect()->route('customer0.edit', ['customer' => $customer->id])  
+        return redirect()->route('systemconfiguration0.customers.edit', ['customer' => $customer->id])  
             ->with('success', 'Customer updated successfully.');
     }
 
@@ -221,7 +221,7 @@ class BLSCustomerController extends Controller
     {
         $customer->delete();
 
-        return redirect()->route('customer0.index')
+        return redirect()->route('systemconfiguration0.customers.index')
             ->with('success', 'Customer deleted successfully.');
     }
 

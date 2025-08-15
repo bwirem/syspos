@@ -32,7 +32,8 @@ use App\Http\Controllers\IVIssueController;
 use App\Http\Controllers\IVReceiveController;
 use App\Http\Controllers\IVReconciliationController;
 
-use App\Http\Controllers\Accounting\PaymentController;
+use App\Http\Controllers\ACCMakePaymentController;
+use App\Http\Controllers\ACCReceivePaymentController;
 
 use App\Http\Controllers\SIV_StoreController;
 use App\Http\Controllers\SIV_ProductCategoryController;
@@ -268,13 +269,51 @@ Route::middleware('auth')->group(function () {
         
     });
 
-
+    // Accounting Payment routes  
     Route::prefix('accounting0')->name('accounting0.')->group(function () {
-        Route::get('/', [PaymentController::class, 'index'])->name('index');
-        Route::post('/', [PaymentController::class, 'store'])->name('store');
+        Route::get('/', [ACCReceivePaymentController::class, 'index'])->name('index');
+        Route::get('/create', [ACCReceivePaymentController::class, 'create'])->name('create');
+        Route::post('/', [ACCReceivePaymentController::class, 'store'])->name('store');
+
+        // ADD THESE MISSING ROUTES
+        Route::get('/{payment}', [ACCReceivePaymentController::class, 'show'])->name('show');
+        Route::get('/{payment}/edit', [ACCReceivePaymentController::class, 'edit'])->name('edit');
+        Route::put('/{payment}', [ACCReceivePaymentController::class, 'update'])->name('update');
+        Route::delete('/{payment}', [ACCReceivePaymentController::class, 'destroy'])->name('destroy');
+        // END OF ADDED ROUTES
+
+        Route::get('/search/payers', [ACCReceivePaymentController::class, 'searchPayers'])->name('search.payers');
+        Route::get('/search/receivables', [ACCReceivePaymentController::class, 'searchReceivables'])->name('search.receivables');
     });
 
+    // Accounting Payment routes
+    Route::prefix('accounting1')->name('accounting1.')->group(function () {
+        // Route to display a list of all payments
+        Route::get('/', [ACCMakePaymentController::class, 'index'])->name('index');
 
+        // Route to show the form for creating a new payment
+        Route::get('/create', [ACCMakePaymentController::class, 'create'])->name('create');
+
+        // Route to store a new payment in the database
+        Route::post('/', [ACCMakePaymentController::class, 'store'])->name('store');
+
+        // Route to display a single, specific payment
+        // {payment} is a route parameter that will be passed to the controller
+        Route::get('/{payment}', [ACCMakePaymentController::class, 'show'])->name('show');
+
+        // Route to show the form for editing an existing payment
+        Route::get('/{payment}/edit', [ACCMakePaymentController::class, 'edit'])->name('edit');
+
+        // Route to update an existing payment in the database
+        // Using PUT for a full update
+        Route::put('/{payment}', [ACCMakePaymentController::class, 'update'])->name('update');
+
+        // Route to delete a payment from the database
+        Route::delete('/{payment}', [ACCMakePaymentController::class, 'destroy'])->name('destroy');
+
+        Route::get('/search/recipients', [ACCMakePaymentController::class, 'searchRecipients'])->name('search.recipients');
+        Route::get('/search/payables', [ACCMakePaymentController::class, 'searchPayables'])->name('search.payables');
+    });
     
     
     // ********************************************************************************************** */
