@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class ACCReceivePaymentController extends Controller
@@ -52,10 +53,15 @@ class ACCReceivePaymentController extends Controller
             'payer_type' => 'required|string',
             'payer_id' => 'required|integer|exists:bls_customers,id',
             'payment_method' => 'required|string|max:100',
+            'reference_number' => 'nullable|string|max:255',
+            'description' => 'nullable|string',
             'items' => 'required|array|min:1',
             'items.*.receivable_id' => 'required|integer|exists:chart_of_accounts,id',
             'items.*.receivable_type' => 'required|string',
             'items.*.amount' => 'required|numeric|min:0.01',
+            'document_rows' => 'nullable|array',
+            'document_rows.*.description' => 'required_with:document_rows.*.file|string|max:255',
+            'document_rows.*.file' => 'nullable|file|mimes:pdf,jpg,png,jpeg,doc,docx|max:5120',
         ]);
 
         DB::transaction(function () use ($validated, $request) {
@@ -67,27 +73,36 @@ class ACCReceivePaymentController extends Controller
                 'stage' => 1,
                 'payer_id' => $validated['payer_id'],
                 'payer_type' => $validated['payer_type'],
-                'payment_method' => $validated['payment_method'],
+                'payment_method' => $request->payment_method,
                 'reference_number' => $request->reference_number,
+                'description' => $request->description,
                 'currency' => $request->currency ?? 'USD',
                 'user_id' => Auth::id(),
             ]);
-            foreach ($validated['items'] as $item) $payment->items()->create($item);
-            if ($request->hasFile('documents')) {
-                 foreach ($request->file('documents') as $file) {
-                    $path = $file->store('received_payment_docs', 'public');
-                    $payment->documents()->create(['url' => $path, 'filename' => $file->getClientOriginalName(), 'type' => $file->getClientMimeType(), 'size' => $file->getSize()]);
+
+            $cleanedItems = collect($validated['items'])->map(fn($item) => collect($item)->except('receivable')->all());
+            foreach ($cleanedItems as $item) {
+                $payment->items()->create($item);
+            }
+
+            if ($request->has('document_rows')) {
+                foreach ($request->document_rows as $index => $docRow) {
+                    if ($request->hasFile("document_rows.{$index}.file")) {
+                        $file = $request->file("document_rows.{$index}.file");
+                        $path = $file->store('received_payment_docs', 'public');
+                        $payment->documents()->create([
+                            'url' => $path,
+                            'filename' => $file->getClientOriginalName(),
+                            'type' => $file->getClientMimeType(),
+                            'size' => $file->getSize(),
+                            'description' => $docRow['description'],
+                        ]);
+                    }
                 }
             }
         });
 
         return redirect()->route('accounting0.index')->with('success', 'Payment received and recorded successfully.');
-    }
-
-    public function show(ACCReceivePayment $payment)
-    {
-        $payment->load(['payer', 'items.receivable', 'documents', 'facilityoption']);
-        return Inertia::render('ACCReceivePayment/Show', ['receivedPayment' => $payment]);
     }
 
     public function edit(ACCReceivePayment $payment)
@@ -99,51 +114,30 @@ class ACCReceivePaymentController extends Controller
         ]);
     }
    
-    
     public function update(Request $request, ACCReceivePayment $payment)
     {
         $validated = $request->validate([
             'transdate' => 'required|date',
             'facilityoption_id' => 'required|exists:facilityoptions,id',
-            'payer_type' => 'required|string',
             'payer_id' => 'required|integer|exists:bls_customers,id',
-            'payment_method' => 'required|string|max:100',
             'items' => 'required|array|min:1',
-            'items.*.id' => 'nullable|exists:acc_receivepaymentitems,id',
-            'items.*.receivable_id' => 'required|integer|exists:chart_of_accounts,id',
-            'items.*.receivable_type' => 'required|string',
-            'items.*.amount' => 'required|numeric|min:0.01',
-            'documents' => 'nullable|array',
-            'documents.*' => 'file|mimes:pdf,jpg,png,jpeg,doc,docx|max:5120',
+            'document_rows' => 'nullable|array',
+            'document_rows.*.description' => 'required_with:document_rows.*.file|string|max:255',
+            'document_rows.*.file' => 'nullable|file|mimes:pdf,jpg,png,jpeg,doc,docx|max:5120',
             'documents_to_delete' => 'nullable|array',
             'documents_to_delete.*' => 'integer|exists:acc_receivepaymentdocuments,id',
         ]);
 
         DB::transaction(function () use ($validated, $request, $payment) {
-            // 1. Update the main payment record
-            $payment->update([
-                'transdate' => $validated['transdate'],
-                'facilityoption_id' => $validated['facilityoption_id'],
-                'payer_id' => $validated['payer_id'],
-                'payer_type' => $validated['payer_type'],
-                'payment_method' => $validated['payment_method'],
-                'reference_number' => $request->reference_number,
-                'description' => $request->description,
-                'currency' => $request->currency,
-            ]);
+            $payment->update($request->only(['transdate', 'facilityoption_id', 'payer_id', 'payer_type', 'payment_method', 'reference_number', 'description', 'currency']));
 
-            // 2. Sync Items
-            $itemIdsToKeep = collect($validated['items'])->pluck('id')->filter();
+            $cleanedItems = collect($validated['items'])->map(fn($item) => collect($item)->except('receivable')->all());
+            $itemIdsToKeep = $cleanedItems->pluck('id')->filter();
             $payment->items()->whereNotIn('id', $itemIdsToKeep)->delete();
-
-            foreach ($validated['items'] as $itemData) {
-                $payment->items()->updateOrCreate(
-                    ['id' => $itemData['id'] ?? null],
-                    $itemData
-                );
+            foreach ($cleanedItems as $itemData) {
+                $payment->items()->updateOrCreate(['id' => $itemData['id'] ?? null], $itemData);
             }
 
-            // 3. Sync Documents: Delete orphans
             if (!empty($validated['documents_to_delete'])) {
                 $docsToDelete = $payment->documents()->whereIn('id', $validated['documents_to_delete'])->get();
                 foreach ($docsToDelete as $doc) {
@@ -152,15 +146,16 @@ class ACCReceivePaymentController extends Controller
                 }
             }
 
-            // 4. Add new documents
-            if ($request->hasFile('documents')) {
-                foreach ($request->file('documents') as $file) {
-                    $path = $file->store('received_payment_docs', 'public');
-                    $payment->documents()->create(['url' => $path, 'filename' => $file->getClientOriginalName(), 'type' => $file->getClientMimeType(), 'size' => $file->getSize()]);
+            if ($request->has('document_rows')) {
+                foreach ($request->document_rows as $index => $docRow) {
+                    if ($request->hasFile("document_rows.{$index}.file")) {
+                        $file = $request->file("document_rows.{$index}.file");
+                        $path = $file->store('received_payment_docs', 'public');
+                        $payment->documents()->create(['url' => $path, 'filename' => $file->getClientOriginalName(), 'type' => $file->getClientMimeType(), 'size' => $file->getSize(), 'description' => $docRow['description']]);
+                    }
                 }
             }
 
-            // 5. Recalculate total and save
             $totalAmount = $payment->fresh()->items->sum('amount');
             $payment->update(['total_amount' => $totalAmount]);
         });
@@ -170,7 +165,12 @@ class ACCReceivePaymentController extends Controller
 
     public function destroy(ACCReceivePayment $payment)
     {
-        DB::transaction(fn() => $payment->delete());
+        DB::transaction(function () use ($payment) {
+            foreach ($payment->documents as $document) {
+                Storage::disk('public')->delete($document->url);
+            }
+            $payment->delete();
+        });
         return redirect()->route('accounting0.index')->with('success', 'Received payment record deleted.');
     }
 
@@ -181,22 +181,10 @@ class ACCReceivePaymentController extends Controller
                 $q->where('company_name', 'LIKE', "%{$query}%")
                   ->orWhere('first_name', 'LIKE', "%{$query}%")
                   ->orWhere('surname', 'LIKE', "%{$query}%");
-            })
-            ->limit(10)
-            ->get();
+            })->limit(10)->get();
 
-        return response()->json([
-            // UPDATE THIS to use the new accessor
-            'data' => $customers->map(function ($customer) {
-                return [
-                    'id' => $customer->id,
-                    'name' => $customer->display_name, // Use the accessor here
-                    'type' => BLSCustomer::class,
-                ];
-            })
-        ]);
+        return response()->json(['data' => $customers->map(fn($c) => ['id' => $c->id, 'name' => $c->display_name, 'type' => BLSCustomer::class])]);
     }
-
 
     public function searchReceivables(Request $request)
     {

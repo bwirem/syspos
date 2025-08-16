@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class ACCMakePaymentController extends Controller
@@ -58,10 +59,15 @@ class ACCMakePaymentController extends Controller
             'recipient_type' => 'required|string',
             'recipient_id' => 'required|integer|exists:siv_suppliers,id',
             'payment_method' => 'required|string|max:100',
+            'reference_number' => 'nullable|string|max:255',
+            'description' => 'nullable|string',
             'items' => 'required|array|min:1',
             'items.*.payable_id' => 'required|integer|exists:chart_of_accounts,id',
             'items.*.payable_type' => 'required|string',
             'items.*.amount' => 'required|numeric|min:0.01',
+            'document_rows' => 'nullable|array',
+            'document_rows.*.description' => 'required_with:document_rows.*.file|string|max:255',
+            'document_rows.*.file' => 'nullable|file|mimes:pdf,jpg,png,jpeg,doc,docx|max:5120',
         ]);
 
         DB::transaction(function () use ($validated, $request) {
@@ -73,16 +79,33 @@ class ACCMakePaymentController extends Controller
                 'stage' => 1,
                 'recipient_id' => $validated['recipient_id'],
                 'recipient_type' => $validated['recipient_type'],
-                'payment_method' => $validated['payment_method'],
+                'payment_method' => $request->payment_method,
                 'reference_number' => $request->reference_number,
-                'currency' => $request->currency ?? 'USD',
+                'description' => $request->description,
+                'currency' => $request->currency,
                 'user_id' => Auth::id(),
             ]);
-            foreach ($validated['items'] as $item) $payment->items()->create($item);
-            if ($request->hasFile('documents')) {
-                foreach ($request->file('documents') as $file) {
-                    $path = $file->store('payment_documents', 'public');
-                    $payment->documents()->create(['url' => $path, 'filename' => $file->getClientOriginalName(), 'type' => $file->getClientMimeType(), 'size' => $file->getSize()]);
+
+            // Clean the `items` array to remove the UI-only `payable` object before creating.
+            $cleanedItems = collect($validated['items'])->map(fn($item) => collect($item)->except('payable')->all());
+            foreach ($cleanedItems as $item) {
+                $payment->items()->create($item);
+            }
+
+            // Save documents from the structured `document_rows`
+            if ($request->has('document_rows')) {
+                foreach ($request->document_rows as $index => $docRow) {
+                    if ($request->hasFile("document_rows.{$index}.file")) {
+                        $file = $request->file("document_rows.{$index}.file");
+                        $path = $file->store('payment_documents', 'public');
+                        $payment->documents()->create([
+                            'url' => $path,
+                            'filename' => $file->getClientOriginalName(),
+                            'type' => $file->getClientMimeType(),
+                            'size' => $file->getSize(),
+                            'description' => $docRow['description'],
+                        ]);
+                    }
                 }
             }
         });
@@ -90,65 +113,47 @@ class ACCMakePaymentController extends Controller
         return redirect()->route('accounting1.index')->with('success', 'Payment created successfully.');
     }
 
-    public function show(ACCMakePayment $payment)
-    {
-        $payment->load(['recipient', 'items.payable', 'documents', 'facilityoption']);
-        return Inertia::render('ACCMakePayment/Show', ['payment' => $payment]);
-    }
-
     public function edit(ACCMakePayment $payment)
     {
         $payment->load(['recipient', 'items.payable', 'documents', 'facilityoption']);
-        return Inertia::render('ACCMakePayment/Edit', ['payment' => $payment, 'facilities' => FacilityOption::all(['id', 'name'])]);
+        return Inertia::render('ACCMakePayment/Edit', [
+            'payment' => $payment,
+            'facilities' => FacilityOption::all(['id', 'name']),
+        ]);
     }
 
-    
-   
     public function update(Request $request, ACCMakePayment $payment)
     {
-        // Note: For file uploads with PUT/PATCH, the front-end must send a POST request with a `_method: 'PUT'` field.
         $validated = $request->validate([
             'transdate' => 'required|date',
             'facilityoption_id' => 'required|exists:facilityoptions,id',
-            'recipient_type' => 'required|string',
             'recipient_id' => 'required|integer|exists:siv_suppliers,id',
+            'recipient_type' => 'required|string',
             'payment_method' => 'required|string|max:100',
+            'reference_number' => 'nullable|string|max:255',
+            'description' => 'nullable|string',
             'items' => 'required|array|min:1',
-            'items.*.id' => 'nullable|exists:acc_makepaymentitems,id', // For existing items
+            'items.*.id' => 'nullable|exists:acc_makepaymentitems,id',
             'items.*.payable_id' => 'required|integer|exists:chart_of_accounts,id',
             'items.*.payable_type' => 'required|string',
             'items.*.amount' => 'required|numeric|min:0.01',
-            'documents' => 'nullable|array',
-            'documents.*' => 'file|mimes:pdf,jpg,png,jpeg,doc,docx|max:5120',
+            'document_rows' => 'nullable|array',
+            'document_rows.*.description' => 'required_with:document_rows.*.file|string|max:255',
+            'document_rows.*.file' => 'nullable|file|mimes:pdf,jpg,png,jpeg,doc,docx|max:5120',
             'documents_to_delete' => 'nullable|array',
             'documents_to_delete.*' => 'integer|exists:acc_makepaymentdocuments,id',
         ]);
 
         DB::transaction(function () use ($validated, $request, $payment) {
-            // 1. Update the main payment record's details
-            $payment->update([
-                'transdate' => $validated['transdate'],
-                'facilityoption_id' => $validated['facilityoption_id'],
-                'recipient_id' => $validated['recipient_id'],
-                'recipient_type' => $validated['recipient_type'],
-                'payment_method' => $validated['payment_method'],
-                'reference_number' => $request->reference_number,
-                'description' => $request->description,
-                'currency' => $request->currency,
-            ]);
+            $payment->update($request->only(['transdate', 'facilityoption_id', 'recipient_id', 'recipient_type', 'payment_method', 'reference_number', 'description', 'currency']));
 
-            // 2. Sync Items: Delete orphans, then update or create the rest.
-            $itemIdsToKeep = collect($validated['items'])->pluck('id')->filter();
+            $cleanedItems = collect($validated['items'])->map(fn($item) => collect($item)->except('payable')->all());
+            $itemIdsToKeep = $cleanedItems->pluck('id')->filter();
             $payment->items()->whereNotIn('id', $itemIdsToKeep)->delete();
-
-            foreach ($validated['items'] as $itemData) {
-                $payment->items()->updateOrCreate(
-                    ['id' => $itemData['id'] ?? null], // Condition to find existing item
-                    $itemData // Data to update or create with
-                );
+            foreach ($cleanedItems as $itemData) {
+                $payment->items()->updateOrCreate(['id' => $itemData['id'] ?? null], $itemData);
             }
 
-            // 3. Sync Documents: Delete any marked for removal
             if (!empty($validated['documents_to_delete'])) {
                 $docsToDelete = $payment->documents()->whereIn('id', $validated['documents_to_delete'])->get();
                 foreach ($docsToDelete as $doc) {
@@ -157,23 +162,22 @@ class ACCMakePaymentController extends Controller
                 }
             }
 
-            // 4. Add any new documents
-            if ($request->hasFile('documents')) {
-                foreach ($request->file('documents') as $file) {
-                    $path = $file->store('payment_documents', 'public');
-                    $payment->documents()->create(['url' => $path, 'filename' => $file->getClientOriginalName(), 'type' => $file->getClientMimeType(), 'size' => $file->getSize()]);
+            if ($request->has('document_rows')) {
+                foreach ($request->document_rows as $index => $docRow) {
+                    if ($request->hasFile("document_rows.{$index}.file")) {
+                        $file = $request->file("document_rows.{$index}.file");
+                        $path = $file->store('payment_documents', 'public');
+                        $payment->documents()->create(['url' => $path, 'filename' => $file->getClientOriginalName(), 'type' => $file->getClientMimeType(), 'size' => $file->getSize(), 'description' => $docRow['description']]);
+                    }
                 }
             }
 
-            // 5. Recalculate the total amount and save it
             $totalAmount = $payment->fresh()->items->sum('amount');
             $payment->update(['total_amount' => $totalAmount]);
         });
 
         return redirect()->route('accounting1.index')->with('success', 'Payment updated successfully.');
     }
-
-
 
     public function destroy(ACCMakePayment $payment)
     {
@@ -182,7 +186,7 @@ class ACCMakePaymentController extends Controller
             $payment->delete();
         });
         return redirect()->route('accounting1.index')->with('success', 'Payment deleted successfully.');
-    }   
+    }
 
     public function searchRecipients(Request $request)
     {
@@ -191,21 +195,9 @@ class ACCMakePaymentController extends Controller
                 $q->where('company_name', 'LIKE', "%{$query}%")
                   ->orWhere('first_name', 'LIKE', "%{$query}%")
                   ->orWhere('surname', 'LIKE', "%{$query}%");
-            })
-            ->limit(10)
-            ->get();
+            })->limit(10)->get();
 
-        return response()->json([
-            // We now use the `display_name` accessor to create the `name` attribute
-            // that the frontend search dropdown expects.
-            'data' => $suppliers->map(function ($supplier) {
-                return [
-                    'id' => $supplier->id,
-                    'name' => $supplier->display_name, // Use the new accessor here
-                    'type' => SPR_Supplier::class,
-                ];
-            })
-        ]);
+        return response()->json(['data' => $suppliers->map(fn($s) => ['id' => $s->id, 'name' => $s->display_name, 'type' => SPR_Supplier::class])]);
     }
 
     public function searchPayables(Request $request)
