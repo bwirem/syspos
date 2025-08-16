@@ -173,7 +173,17 @@ class UserPermissionController extends Controller
      * Get getModulesAndItems.
      *
      * @return array
-     */    
+     */
+    // public function getModulesAndItems()
+    // {
+    //     $modules = $this->getModules();
+    //     $moduleItems = $this->getModuleItems();
+
+    //     return response()->json([
+    //         'modules' => $modules,
+    //         'moduleItems' => $moduleItems,
+    //     ]);
+    // }    
 
     public function getModulesAndItems()
     {
@@ -226,65 +236,54 @@ class UserPermissionController extends Controller
      *
      * @return array
      */
-   
     private function getModules(): array
     {
         return [
-            ['modulekey' => 'dashboard', 'moduletext' => 'Dashboard', 'icon' => 'home'],
-            ['modulekey' => 'billing', 'moduletext' => 'Sales and Billing', 'icon' => 'add_shopping_cart'],           
-            ['modulekey' => 'procurements', 'moduletext' => 'Procurements', 'icon' => 'inventory'],
-            ['modulekey' => 'inventory', 'moduletext' => 'Inventory', 'icon' => 'storage'],
-            ['modulekey' => 'material', 'moduletext' => 'Material Conversion', 'icon' => 'sync_alt'],
-            ['modulekey' => 'expenses', 'moduletext' => 'Expenses', 'icon' => 'attach_money'],
-            ['modulekey' => 'humanresurces', 'moduletext' => 'Human Resource', 'icon' => 'person'],          
-            ['modulekey' => 'fixedassets', 'moduletext' => 'Fixed Assets', 'icon' => 'fixed_assets'],          
-            ['modulekey' => 'accounting', 'moduletext' => 'Financial Accounting', 'icon' => 'account_balance'],
-            ['modulekey' => 'reporting', 'moduletext' => 'Reporting/Analytics', 'icon' => 'analytics'],
-            ['modulekey' => 'systemConfig', 'moduletext' => 'System Configuration', 'icon' => 'settings'],
-            ['modulekey' => 'usermanagement', 'moduletext' => 'User Management', 'icon' => 'manage_accounts'],           
+            ['modulekey' => 'dashboard', 'moduletext' => 'Dashboard', 'icon' => 'dashboard'], // Add Dashboard here
+            ['modulekey' => 'customer', 'moduletext' => 'Customers', 'icon' => 'customer'],
+            ['modulekey' => 'loan', 'moduletext' => 'Loan Management', 'icon' => 'loan'],
+            ['modulekey' => 'repaymentsSavings', 'moduletext' => 'Repayments & Savings', 'icon' => 'attach_money'],
+            ['modulekey' => 'expenses', 'moduletext' => 'Expenses', 'icon' => 'expenses_setup'],
+            ['modulekey' => 'humanresurces', 'moduletext' => 'Human Resource', 'icon' => 'person'],
+            ['modulekey' => 'accounting', 'moduletext' => 'Financial Accounting', 'icon' => 'financial_accounting'],
+            ['modulekey' => 'reporting', 'moduletext' => 'Reporting/Analytics', 'icon' => 'reporting_analytics'],
+            ['modulekey' => 'systemConfig', 'moduletext' => 'System Configuration', 'icon' => 'system_config'],
+            ['modulekey' => 'userManagement', 'moduletext' => 'User Management', 'icon' => 'manage_accounts'],
+            ['modulekey' => 'security', 'moduletext' => 'Security', 'icon' => 'security_settings'],
         ];
     }
-
-
 
     /**
      * Get the module items data with icons.
      *
      * @return array
      */
-   
-     private function getModuleItems(): array
+    private function getModuleItems(): array
     {
         return [
             'dashboard' => [
-                ['key' => 'dashboard', 'text' => 'Overview', 'icon' => 'dashboard'],
+                ['key' => 'dashboard', 'text' => 'Overview', 'icon' => 'dashboard'], // Example item for Dashboard
             ],
-            'billing' => [
-                ['key' => 'billing0', 'text' => 'Order', 'icon' => 'add_shopping_cart'],
-                ['key' => 'billing1', 'text' => 'Post Bills', 'icon' => 'post_add'],
-                ['key' => 'billing2', 'text' => 'Pay Bills', 'icon' => 'paid'],
-                ['key' => 'billing3', 'text' => 'Sales History', 'icon' => 'sales_history'],
-                ['key' => 'billing4', 'text' => 'Payments History', 'icon' => 'payments_history'],
-                ['key' => 'billing5', 'text' => 'Void History', 'icon' => 'void_history'],
-            ],            
-            'procurements' => [
-                ['key' => 'procurements0', 'text' => 'Tender and Quotation', 'icon' => 'request_quote'],
-                ['key' => 'procurements1', 'text' => 'Purchase and Receiving', 'icon' => 'shopping_cart'],
+            'customer' => [
+                ['key' => 'customer0', 'text' => 'Registration', 'icon' => 'customer'],
+                ['key' => 'customer1', 'text' => 'Group Members', 'icon' => 'person'],
+                ['key' => 'customer2', 'text' => 'Guarantors', 'icon' => 'person'],
             ],
-            'inventory' => [
-                ['key' => 'inventory0', 'text' => 'Internal Requisitions', 'icon' => 'store'],
-                ['key' => 'inventory1', 'text' => 'Goods Issuance', 'icon' => 'local_shipping'],
-                ['key' => 'inventory2', 'text' => 'Goods Receiving', 'icon' => 'goods_receiving'],
-                ['key' => 'inventory3', 'text' => 'Inventory Reconciliation', 'icon' => 'inventory_reconciliation'],
-                ['key' => 'inventory4', 'text' => 'Stock History', 'icon' => 'stock_history'],
+            'loan' => [
+                ['key' => 'loan0', 'text' => 'Application', 'icon' => 'loan'],
+                ['key' => 'loan1', 'text' => 'Approval Workflow', 'icon' => 'loan_reconciliation'],
+                ['key' => 'loan2', 'text' => 'Disbursement', 'icon' => 'paid'],
+                ['key' => 'loan3', 'text' => 'Reconciliation', 'icon' => 'sales_history'],
+                ['key' => 'loan4', 'text' => 'History', 'icon' => 'history'],
             ],
-            'material' => [
-                ['key' => 'material0', 'text' => 'Request Materials', 'icon' => 'autorenew'],
+            'repaymentsSavings' => [
+                ['key' => 'repaymentsavings0', 'text' => 'Repayments', 'icon' => 'attach_money'],
+                ['key' => 'repaymentsavings1', 'text' => 'Savings', 'icon' => 'attach_money'],
+                ['key' => 'repaymentsavings2', 'text' => 'Collections', 'icon' => 'attach_money'],
             ],
             'expenses' => [
-                ['key' => 'expenses0', 'text' => 'Expense Claim', 'icon' => 'paper_plane'],
-                ['key' => 'expenses1', 'text' => 'Expense Approval', 'icon' => 'thumbs_up'],                            
-                ['key' => 'expenses2', 'text' => 'Expense History', 'icon' => 'history'],               
+                ['key' => 'expenses0', 'text' => 'Post Expenses', 'icon' => 'expenses_setup'],
+                ['key' => 'expenses1', 'text' => 'Expenses History', 'icon' => 'history'],
             ],
             'humanresurces' => [
                 ['key' => 'humanresurces0', 'text' => 'Employee Bio Data', 'icon' => 'person'],
@@ -292,74 +291,32 @@ class UserPermissionController extends Controller
                 ['key' => 'humanresurces2', 'text' => 'Termination', 'icon' => 'person_outline'],
                 ['key' => 'humanresurces3', 'text' => 'Payroll', 'icon' => 'payroll'],
             ],
-            'fixedassets' => [
-                ['key' => 'fixedassets0', 'text' => 'Asset Register', 'icon' => 'list_alt'],
-                ['key' => 'fixedassets1', 'text' => 'Depreciation', 'icon' => 'arrow_down'],
-                ['key' => 'fixedassets2', 'text' => 'Asset Disposal', 'icon' => 'trash_alt'],                
-                ['key' => 'fixedassets3', 'text' => 'Asset Transfer', 'icon' => 'exchange_alt'],
-                ['key' => 'fixedassets4', 'text' => 'Asset Revaluation', 'icon' => 'sync_alt'],
-                ['key' => 'fixedassets5', 'text' => 'Asset Maintenance', 'icon' => 'wrench'],
-                ['key' => 'fixedassets6', 'text' => 'Asset Insurance', 'icon' => 'shield_alt'],
-                ['key' => 'fixedassets7', 'text' => 'Asset History', 'icon' => 'history'],
-            ],
             'accounting' => [
-                ['key' => 'accounting0', 'text' => 'Receive Payments', 'icon' => 'arrow_down'],
-                ['key' => 'accounting1', 'text' => 'Make Payments', 'icon' => 'arrow_up'],
-                ['key' => 'accounting2', 'text' => 'Journal Entries', 'icon' => 'journal_whills'],
-                ['key' => 'accounting3', 'text' => 'Bank Transactions', 'icon' => 'landmark'],               
-                ['key' => 'accounting4', 'text' => 'Tax Management', 'icon' => 'file_invoice_dollar'],
-                ['key' => 'accounting5', 'text' => 'Financial Statements', 'icon' => 'attach_money'],
-                ['key' => 'accounting6', 'text' => 'Budget Management', 'icon' => 'chart_pie'],
-               
-                // ['key' => 'accounting0', 'text' => 'General Journal', 'icon' => 'journal_whills'],
-                // ['key' => 'accounting1', 'text' => 'General Ledger', 'icon' => 'menu_book'],
-                // ['key' => 'accounting2', 'text' => 'Trial Balance', 'icon' => 'balance_scale'],
-                // ['key' => 'accounting3', 'text' => 'Balance Sheet', 'icon' => 'balance_scale_left'],
-                // ['key' => 'accounting4', 'text' => 'Income Statement', 'icon' => 'file_invoice_dollar'],
-                // ['key' => 'accounting5', 'text' => 'Cash Flow Statement', 'icon' => 'exchange_alt'],
-                // ['key' => 'accounting6', 'text' => 'Bank Reconciliation', 'icon' => 'landmark'],
-                // ['key' => 'accounting7', 'text' => 'Tax Report', 'icon' => 'receipt'],
-                // ['key' => 'accounting8', 'text' => 'Audit Trail', 'icon' => 'security'],
-                // ['key' => 'accounting9', 'text' => 'Budgeting', 'icon' => 'account_balance'],
-                // ['key' => 'accounting10', 'text' => 'Fixed Assets', 'icon' => 'attach_money'],
-                // ['key' => 'accounting11', 'text' => 'Accounts Payable', 'icon' => 'payments'],
-                // ['key' => 'accounting12', 'text' => 'Accounts Receivable', 'icon' => 'receipt'],
-                // ['key' => 'accounting13', 'text' => 'Inventory Valuation', 'icon' => 'inventory'],
-                // ['key' => 'accounting14', 'text' => 'Financial Ratios', 'icon' => 'assessment'],
-                // ['key' => 'accounting15', 'text' => 'Multi-Currency', 'icon' => 'language'],
-                // ['key' => 'accounting16', 'text' => 'Tax Compliance', 'icon' => 'receipt'],
-                // ['key' => 'accounting17', 'text' => 'Financial Statements', 'icon' => 'attach_money'],  
-                // ['key' => 'accounting18', 'text' => 'Year-End Closing', 'icon' => 'calendar_today'],
-                // ['key' => 'accounting19', 'text' => 'Financial Reporting', 'icon' => 'analytics'],
-                // ['key' => 'accounting20', 'text' => 'Cost Accounting', 'icon' => 'attach_money'],
-                // ['key' => 'accounting21', 'text' => 'Payroll Accounting', 'icon' => 'payroll'],
-                // ['key' => 'accounting22', 'text' => 'Financial Analysis', 'icon' => 'assessment'],
-                // ['key' => 'accounting23', 'text' => 'Financial Planning', 'icon' => 'account_balance'],
+                ['key' => 'accounting0', 'text' => 'General Journal', 'icon' => 'general_ledger'],
+                ['key' => 'accounting1', 'text' => 'General Ledger', 'icon' => 'general_ledger'],
+                ['key' => 'accounting2', 'text' => 'Profit & Loss Statements', 'icon' => 'profit_loss'],
             ],
             'reporting' => [
-                ['key' => 'reporting0', 'text' => 'Sales and Billing', 'icon' => 'add_shopping_cart'],
-                ['key' => 'reporting1', 'text' => 'Procurement', 'icon' => 'inventory'],
-                ['key' => 'reporting2', 'text' => 'Inventory', 'icon' => 'storage'],
-                ['key' => 'reporting3', 'text' => 'Material Conversion', 'icon' => 'sync_alt'],
-                ['key' => 'reporting4', 'text' => 'Expenses', 'icon' => 'attach_money'],
-                ['key' => 'reporting5', 'text' => 'Human Resource', 'icon' => 'person'],
-                ['key' => 'reporting6', 'text' => 'Fixed Assets', 'icon' => 'account_balance'],
-                ['key' => 'reporting7', 'text' => 'Accounting', 'icon' => 'account_balance'],               
+                ['key' => 'reportingAnalytics0', 'text' => 'Loan Portfolio Reports', 'icon' => 'loan_reports'],
+                ['key' => 'reportingAnalytics1', 'text' => 'Client Activity Reports', 'icon' => 'client_reports'],
+                ['key' => 'reportingAnalytics2', 'text' => 'Financial Performance Analytics', 'icon' => 'financial_analytics'],
             ],
             'systemConfig' => [
-                ['key' => 'systemconfiguration0', 'text' => 'Billing Setup', 'icon' => 'billing_setup'],
+                ['key' => 'systemconfiguration0', 'text' => 'Loan Setup', 'icon' => 'loan_setup'],
                 ['key' => 'systemconfiguration1', 'text' => 'Expenses Setup', 'icon' => 'expenses_setup'],
-                ['key' => 'systemconfiguration2', 'text' => 'Inventory Setup', 'icon' => 'inventory_setup'],
-                ['key' => 'systemconfiguration3', 'text' => 'Accounting Setup', 'icon' => 'menu_book'],
+                ['key' => 'systemconfiguration2', 'text' => 'Human Resource Setup', 'icon' => 'person'],
+                ['key' => 'systemconfiguration3', 'text' => 'Accounting Setup', 'icon' => 'financial_accounting'],
                 ['key' => 'systemconfiguration4', 'text' => 'Location Setup', 'icon' => 'location_setup'],
                 ['key' => 'systemconfiguration5', 'text' => 'Facility Setup', 'icon' => 'facility_setup'],
             ],
-            'usermanagement' => [
+            'userManagement' => [
                 ['key' => 'usermanagement', 'text' => 'Manage Users', 'icon' => 'manage_accounts'],
-            ],           
+            ],
+            'security' => [
+                ['key' => 'security', 'text' => 'Audit Trail', 'icon' => 'security_settings'],
+            ],
         ];
     }
-
     /**
      * Get the function access data.
      *
@@ -377,16 +334,16 @@ class UserPermissionController extends Controller
             'delete' => false,
         ];
 
-        // // Add loan-specific permissions only for 'loan1'
-        // if ($key === 'loan1') {
-        //     return [
-        //         'read' => false, // Set read to false for loan1
-        //         'officerreview' => false, // Default state
-        //         'managerreview' => false,
-        //         'committeereview' => false,
-        //         'approve' => false,                
-        //     ];
-        // }
+        // Add loan-specific permissions only for 'loan1'
+        if ($key === 'loan1') {
+            return [
+                'read' => false, // Set read to false for loan1
+                'officerreview' => false, // Default state
+                'managerreview' => false,
+                'committeereview' => false,
+                'approve' => false,                
+            ];
+        }
 
         return $defaultFunctionAccess; // Return default for other keys
     }

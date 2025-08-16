@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ACCReceivePayment;
+use App\Models\ACCJournalEntry;
 use App\Models\FacilityOption;
 use App\Models\BLSCustomer;
 use App\Models\ChartOfAccount;
@@ -12,9 +13,13 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
+use Exception;
 
 class ACCReceivePaymentController extends Controller
 {
+    /**
+     * Display a listing of the resource.
+     */
     public function index(Request $request)
     {
         $query = ACCReceivePayment::with(['payer', 'user', 'facilityoption']);
@@ -38,6 +43,9 @@ class ACCReceivePaymentController extends Controller
         ]);
     }
 
+    /**
+     * Show the form for creating a new resource.
+     */
     public function create()
     {
         return Inertia::render('ACCReceivePayment/Create', [
@@ -45,6 +53,9 @@ class ACCReceivePaymentController extends Controller
         ]);
     }
 
+    /**
+     * Store a newly created resource in storage.
+     */
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -70,7 +81,7 @@ class ACCReceivePaymentController extends Controller
                 'transdate' => $validated['transdate'],
                 'total_amount' => $total,
                 'facilityoption_id' => $validated['facilityoption_id'],
-                'stage' => 1,
+                'stage' => 1, // Default: Pending Verification
                 'payer_id' => $validated['payer_id'],
                 'payer_type' => $validated['payer_type'],
                 'payment_method' => $request->payment_method,
@@ -90,21 +101,22 @@ class ACCReceivePaymentController extends Controller
                     if ($request->hasFile("document_rows.{$index}.file")) {
                         $file = $request->file("document_rows.{$index}.file");
                         $path = $file->store('received_payment_docs', 'public');
-                        $payment->documents()->create([
-                            'url' => $path,
-                            'filename' => $file->getClientOriginalName(),
-                            'type' => $file->getClientMimeType(),
-                            'size' => $file->getSize(),
-                            'description' => $docRow['description'],
-                        ]);
+                        $payment->documents()->create(['url' => $path, 'filename' => $file->getClientOriginalName(), 'type' => $file->getClientMimeType(), 'size' => $file->getSize(), 'description' => $docRow['description']]);
                     }
                 }
             }
+            
+            // Create the corresponding journal entry
+            $payment->load(['payer', 'items', 'facilityoption.chartOfAccount']);
+            $this->createJournalEntryForReceipt($payment);
         });
 
-        return redirect()->route('accounting0.index')->with('success', 'Payment received and recorded successfully.');
+        return redirect()->route('accounting0.index')->with('success', 'Payment received and journalized successfully.');
     }
 
+    /**
+     * Show the form for editing the specified resource.
+     */
     public function edit(ACCReceivePayment $payment)
     {
         $payment->load(['payer', 'items.receivable', 'documents', 'facilityoption']);
@@ -114,13 +126,20 @@ class ACCReceivePaymentController extends Controller
         ]);
     }
    
+    /**
+     * Update the specified resource in storage.
+     */
     public function update(Request $request, ACCReceivePayment $payment)
     {
         $validated = $request->validate([
             'transdate' => 'required|date',
             'facilityoption_id' => 'required|exists:facilityoptions,id',
             'payer_id' => 'required|integer|exists:bls_customers,id',
+            'payer_type' => 'required|string',
             'items' => 'required|array|min:1',
+            'items.*.id' => 'nullable|exists:acc_receivepaymentitems,id',
+            'items.*.receivable_id' => 'required|integer|exists:chart_of_accounts,id',
+            'items.*.receivable_type' => 'required|string',
             'document_rows' => 'nullable|array',
             'document_rows.*.description' => 'required_with:document_rows.*.file|string|max:255',
             'document_rows.*.file' => 'nullable|file|mimes:pdf,jpg,png,jpeg,doc,docx|max:5120',
@@ -163,6 +182,9 @@ class ACCReceivePaymentController extends Controller
         return redirect()->route('accounting0.index')->with('success', 'Received payment updated successfully.');
     }
 
+    /**
+     * Remove the specified resource from storage.
+     */
     public function destroy(ACCReceivePayment $payment)
     {
         DB::transaction(function () use ($payment) {
@@ -174,6 +196,44 @@ class ACCReceivePaymentController extends Controller
         return redirect()->route('accounting0.index')->with('success', 'Received payment record deleted.');
     }
 
+    /**
+     * Creates the double-entry journal records for a given received payment.
+     */
+    private function createJournalEntryForReceipt(ACCReceivePayment $payment): void
+    {
+        $cashOrBankAccount = $payment->facilityoption->chartOfAccount;
+        if (!$cashOrBankAccount) {
+            throw new Exception("Facility #{$payment->facilityoption_id} does not have a default Chart of Account assigned.");
+        }
+
+        $journalEntry = ACCJournalEntry::create([
+            'entry_date' => $payment->transdate,
+            'description' => "Received payment #{$payment->id} from {$payment->payer->display_name}",
+            'reference_number' => $payment->reference_number,
+        ]);
+
+        // Debit the asset account (Cash/Bank) that the money went INTO
+        $journalEntry->journalEntryLines()->create([
+            'account_id' => $cashOrBankAccount->id,
+            'debit' => $payment->total_amount,
+        ]);
+
+        // Credit the revenue or asset (Accounts Receivable) accounts
+        foreach ($payment->items as $item) {
+            $journalEntry->journalEntryLines()->create([
+                'account_id' => $item->receivable_id,
+                'credit' => $item->amount,
+            ]);
+        }
+        
+        if (round($journalEntry->journalEntryLines()->sum('debit'), 2) !== round($journalEntry->journalEntryLines()->sum('credit'), 2)) {
+            throw new Exception("Journal entry for Received Payment #{$payment->id} is not balanced.");
+        }
+    }
+
+    /**
+     * Search for payers (Customers).
+     */
     public function searchPayers(Request $request)
     {
         $query = $request->input('query', '');
@@ -186,6 +246,9 @@ class ACCReceivePaymentController extends Controller
         return response()->json(['data' => $customers->map(fn($c) => ['id' => $c->id, 'name' => $c->display_name, 'type' => BLSCustomer::class])]);
     }
 
+    /**
+     * Search for receivable items (Chart of Accounts).
+     */
     public function searchReceivables(Request $request)
     {
         $query = $request->input('query', '');

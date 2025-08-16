@@ -34,6 +34,7 @@ use App\Http\Controllers\IVReconciliationController;
 
 use App\Http\Controllers\ACCMakePaymentController;
 use App\Http\Controllers\ACCReceivePaymentController;
+use App\Http\Controllers\ACCJournalEntryController;
 
 use App\Http\Controllers\SIV_StoreController;
 use App\Http\Controllers\SIV_ProductCategoryController;
@@ -269,6 +270,8 @@ Route::middleware('auth')->group(function () {
         
     });
 
+
+
     // Accounting Payment routes  
     Route::prefix('accounting0')->name('accounting0.')->group(function () {
         Route::get('/', [ACCReceivePaymentController::class, 'index'])->name('index');
@@ -314,7 +317,35 @@ Route::middleware('auth')->group(function () {
         Route::get('/search/recipients', [ACCMakePaymentController::class, 'searchRecipients'])->name('search.recipients');
         Route::get('/search/payables', [ACCMakePaymentController::class, 'searchPayables'])->name('search.payables');
     });
-    
+
+
+    // Accounting Journal Entry routes
+    Route::prefix('accounting2')->name('accounting2.')->group(function () {
+        // Route to display a list of all journal entries
+        Route::get('/', [ACCJournalEntryController::class, 'index'])->name('index');
+
+        // Route to show the form for creating a new journal entry
+        Route::get('/create', [ACCJournalEntryController::class, 'create'])->name('create');
+
+        // Route to store a new journal entry in the database
+        Route::post('/', [ACCJournalEntryController::class, 'store'])->name('store');
+
+        // Route to show a single journal entry (optional, if you create a show page)
+        // Route::get('/{journalEntry}', [ACCJournalEntryController::class, 'show'])->name('show');
+
+        // Route to show the form for editing an existing journal entry
+        Route::get('/{journalEntry}/edit', [ACCJournalEntryController::class, 'edit'])->name('edit');
+
+        // Route to update an existing journal entry in the database
+        Route::put('/{journalEntry}', [ACCJournalEntryController::class, 'update'])->name('update');
+
+        // Route to delete a journal entry from the database
+        Route::delete('/{journalEntry}', [ACCJournalEntryController::class, 'destroy'])->name('destroy');
+
+        // Route for the dynamic account search dropdown
+        Route::get('/search/accounts', [ACCJournalEntryController::class, 'searchAccounts'])->name('search.accounts');
+    });
+
     
     // ********************************************************************************************** */
 

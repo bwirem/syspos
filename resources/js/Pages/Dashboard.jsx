@@ -10,6 +10,8 @@ import {
     faBoxes, faWarehouse, faExchangeAlt, faEdit as faStockEdit, faBalanceScale, faExclamationTriangle,
     // Expenses
     faFileSignature, faClipboardCheck, faPlusSquare as faNewExpense,
+    // --- NEW: Accounting Icons ---
+    faBook, faHandHoldingDollar, faPaperPlane,
     // Common
     faArrowRight,
 } from '@fortawesome/free-solid-svg-icons';
@@ -70,6 +72,11 @@ export default function Dashboard({
     // Expense props
     pendingExpensesCount,
     approvedExpensesTodayValue,
+
+    // --- NEW: Accounting Props ---
+    paymentsMadeTodayValue,
+    paymentsReceivedTodayValue,
+    journalEntriesTodayCount,
 }) {
     // Define application URLs. Using Ziggy's route() is recommended if available.
     const urls = {
@@ -92,6 +99,12 @@ export default function Dashboard({
         expensesHub: '/expenses-hub', // Main expense dashboard
         pendingExpenses: '/expenses/pending', // List of expenses needing approval
         newExpense: '/expenses/create', // Form to create a new expense claim
+
+         // --- NEW: Accounting URLs ---
+        accountingHub: route('accounting0.index'), // Main hub can be a list of received payments for now
+        makePayment: route('accounting1.index'),
+        receivePayment: route('accounting0.index'),
+        newJournalEntry: route('accounting2.create'),
     };
 
     const formatAmount = (amount, currency = 'TZS ') => {
@@ -261,6 +274,44 @@ export default function Dashboard({
                             />
                         </div>
                     </section>
+
+                     {/* Financial Accounting Section --- */}
+                    <section>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-2xl font-semibold text-gray-800 dark:text-gray-100">Financial Accounting</h3>
+                            <Link href={urls.accountingHub} className="text-sm text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium flex items-center group">
+                                Go to Accounting Hub <FontAwesomeIcon icon={faArrowRight} className="ml-1.5 h-3 w-3 transition-transform duration-200 group-hover:translate-x-1" />
+                            </Link>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                            <SummaryCard
+                                title="Payments Received Today"
+                                value={formatAmount(paymentsReceivedTodayValue)}
+                                icon={faHandHoldingDollar}
+                                iconBgColor="bg-emerald-500"
+                                linkHref={urls.receivePayment}
+                                linkText="View Receipts"
+                            />
+                            <SummaryCard
+                                title="Payments Made Today"
+                                value={formatAmount(paymentsMadeTodayValue)}
+                                icon={faPaperPlane}
+                                iconBgColor="bg-red-500"
+                                linkHref={urls.makePayment}
+                                linkText="View Payments"
+                            />
+                            <SummaryCard
+                                title="New Journal Entry"
+                                description={`Record a manual transaction. ${journalEntriesTodayCount || 0} entries today.`}
+                                icon={faBook}
+                                iconBgColor="bg-sky-500"
+                                linkHref={urls.newJournalEntry}
+                                linkText="Create Entry"
+                            />
+                        </div>
+                    </section>
+                    {/* Financial Accounting Section --- */}
+
 
                 </div>
             </div>

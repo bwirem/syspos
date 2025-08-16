@@ -4,25 +4,18 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class FacilityOption extends Model
+class FacilityBranch extends Model
 {
     /**
      * The table associated with the model.
      *
      * @var string
      */
-    protected $table = 'facilityoptions';
+    protected $table = 'facilitybranches';
 
     // Add attributes to $fillable array for mass assignment
     protected $fillable = [  
+        'facilityoption_id',  
         'name',  
     ];
-
-
-    // In app/Models/FacilityOption.php
-
-    public function chartOfAccount()
-    {
-        return $this->belongsTo(ChartOfAccount::class);
-    }
 }
