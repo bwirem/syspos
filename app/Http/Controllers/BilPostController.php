@@ -88,6 +88,50 @@ class BilPostController extends Controller
         ]);
     }
 
+
+    public function confirmSave(Request $request)
+    {       
+        
+        // Validate the incoming order data if necessary
+        $validatedData = $request->validate([
+            'store_id' => 'required|integer|exists:siv_stores,id',
+            'pricecategory_id' => 'required|string',
+            'total' => 'required|numeric|min:0',
+            'orderitems' => 'required|array|min:1',
+            'orderitems.*.item_id' => 'required|integer|exists:bls_items,id',
+            'orderitems.*.item_name' => 'required|string', 
+            'orderitems.*.quantity' => 'required|numeric|min:0.01',
+            'orderitems.*.price' => 'required|numeric|min:0',
+        ]);
+      
+
+        return inertia('BilPosts/SaveOrderConfirmation', [
+            'orderData' => $validatedData
+        ]);
+    }
+
+    /**
+     * Show the payment processing view with customer selection.
+     */
+    public function confirmPayment(Request $request)
+    {
+        // You can use the same validation as confirmSave
+        $validatedData = $request->validate([
+            'store_id' => 'required|integer|exists:siv_stores,id',
+            'pricecategory_id' => 'required|string',
+            'total' => 'required|numeric|min:0',
+            'orderitems' => 'required|array|min:1',
+            'orderitems.*.item_id' => 'required|integer|exists:bls_items,id',
+            'orderitems.*.item_name' => 'required|string',
+            'orderitems.*.quantity' => 'required|numeric|min:0.01',
+            'orderitems.*.price' => 'required|numeric|min:0',
+        ]);
+
+        return inertia('BilPosts/ProcessPayment', [
+            'orderData' => $validatedData
+        ]);
+    }
+
     /**
      * Store a newly created order in storage.
      */
@@ -149,6 +193,37 @@ class BilPostController extends Controller
         return inertia('BilPosts/Edit', [
             'order' => $order,
             'fromstore' => SIV_Store::all(), // Assuming you have a Store model
+        ]);
+    }
+
+
+    /**
+     * Show the confirmation view before updating a saved order.
+     */
+    public function confirmUpdate(Request $request, BILOrder $order)
+    {
+        // You can validate the incoming data here if you wish
+        $orderData = $request->all();
+        $orderData['id'] = $order->id; // Ensure the original order ID is passed along
+
+        return inertia('BilPosts/ConfirmOrderUpdate', [
+            'orderData' => $orderData,
+            'originalOrder' => $order->load('customer'), // Pass original customer info for display
+        ]);
+    }
+
+    /**
+     * Show the payment view for an existing order.
+     */
+    public function confirmExistingPayment(Request $request, BILOrder $order)
+    {
+        // You can validate the incoming data here if you wish
+        $orderData = $request->all();
+        $orderData['id'] = $order->id; // Ensure the original order ID is passed along
+
+        return inertia('BilPosts/ProcessExistingOrderPayment', [
+            'orderData' => $orderData,
+            'originalOrder' => $order->load('customer'),
         ]);
     }
 
@@ -237,7 +312,7 @@ class BilPostController extends Controller
 
     public function pay(Request $request, $order = null)
     {
-         Log::info('Start processing payment:', ['order' => $order, 'request_data' => $request->all()]);
+        // Log::info('Start processing payment:', ['order' => $order, 'request_data' => $request->all()]);
 
          $order = $request->order;
 

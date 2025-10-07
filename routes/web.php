@@ -103,6 +103,15 @@ Route::middleware('auth')->group(function () {
      Route::prefix('billing1')->name('billing1.')->group(function () {
         Route::get('/', [BilPostController::class, 'index'])->name('index');
         Route::get('/create', [BilPostController::class, 'create'])->name('create');
+
+        // Add these two new routes
+        Route::post('/confirm-save', [BilPostController::class, 'confirmSave'])->name('confirmSave');
+        Route::post('/confirm-payment', [BilPostController::class, 'confirmPayment'])->name('confirmPayment');
+
+        // ADD THESE TWO NEW ROUTES FOR THE EDIT FLOW
+        Route::post('/confirm-update/{order}', [BilPostController::class, 'confirmUpdate'])->name('confirmUpdate');
+        Route::post('/confirm-existing-payment/{order}', [BilPostController::class, 'confirmExistingPayment'])->name('confirmExistingPayment');
+
         Route::post('/', [BilPostController::class, 'store'])->name('store');
         Route::get('/{order}/edit', [BilPostController::class, 'edit'])->name('edit');
         Route::put('/{order}', [BilPostController::class, 'update'])->name('update');
