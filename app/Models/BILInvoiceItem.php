@@ -12,7 +12,7 @@ class BILInvoiceItem extends Model
      *
      * @var string
      */
-    protected $table = 'bil_Invoiceitems';
+    protected $table = 'bil_invoiceitems';
 
     protected $fillable = ['invoice_id', 'item_id','store_id', 'quantity','price'];
 
