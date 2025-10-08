@@ -1,4 +1,3 @@
-// resources/js/Pages/Billing1/ProcessExistingOrderPayment.jsx
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, useForm, Link, router } from '@inertiajs/react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -34,7 +33,7 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
         paid_amount: orderData.total,
     });
     
-    // --- Customer Logic ---
+    const [amountDisplay, setAmountDisplay] = useState(formatCurrency(orderData.total || 0));
     const [customerSearchQuery, setCustomerSearchQuery] = useState(
         originalOrder.customer?.customer_type === 'company'
             ? originalOrder.customer?.company_name
@@ -50,10 +49,24 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
     });
     const [newCustomerModalLoading, setNewCustomerModalLoading] = useState(false);
     const [alertModal, setAlertModal] = useState({ isOpen: false, message: '' });
-
-    // --- Payment Methods Logic ---
     const [paymentMethods, setPaymentMethods] = useState([]);
     const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(false);
+
+    useEffect(() => {
+        if (data.sale_type === 'credit') {
+            setData('paid_amount', 0);
+            setAmountDisplay(formatCurrency(0));
+        } else {
+            setData('paid_amount', data.total);
+            setAmountDisplay(formatCurrency(data.total));
+        }
+    }, [data.sale_type, data.total]);
+
+    const handlePaidAmountChange = (e) => {
+        const value = e.target.value;
+        setData('paid_amount', value);
+        setAmountDisplay(formatCurrency(value));
+    };
 
     const fetchCustomers = useCallback((query) => {
         if (!query.trim()) { setCustomerSearchResults([]); return; }
@@ -67,20 +80,16 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
     const debouncedCustomerSearch = useMemo(() => debounce(fetchCustomers, 300), [fetchCustomers]);
 
     useEffect(() => {
-        if (customerSearchQuery !== (originalOrder.customer?.customer_type === 'company' ? originalOrder.customer?.company_name : `${originalOrder.customer?.first_name || ''} ${originalOrder.customer?.surname || ''}`.trim())) {
-            if (customerSearchQuery.trim()) {
-                debouncedCustomerSearch(customerSearchQuery);
-            } else {
-                setCustomerSearchResults([]);
-            }
+        const originalName = originalOrder.customer?.customer_type === 'company' ? originalOrder.customer.company_name : `${originalOrder.customer?.first_name || ''} ${originalOrder.customer?.surname || ''}`.trim();
+        if (customerSearchQuery !== originalName) {
+            if (customerSearchQuery.trim()) debouncedCustomerSearch(customerSearchQuery);
+            else setCustomerSearchResults([]);
         }
     }, [customerSearchQuery, debouncedCustomerSearch, originalOrder]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
-            if (customerDropdownRef.current && !customerDropdownRef.current.contains(event.target)) {
-                setShowCustomerDropdown(false);
-            }
+            if (customerDropdownRef.current && !customerDropdownRef.current.contains(event.target)) setShowCustomerDropdown(false);
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -153,9 +162,8 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
             <div className="py-12">
                 <div className="mx-auto max-w-4xl sm:px-6 lg:px-8">
                     <div className="overflow-hidden bg-white dark:bg-gray-800 p-6 shadow-sm sm:rounded-lg">
-                        <form onSubmit={submitPayment} className="space-y-6">
-                           
-                            {/* Order Summary Section */}
+                        <form onSubmit={submitPayment} className="space-y-6">      
+
                             <section className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
                                 <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-3">Order Summary</h3>
                                 <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-md">
@@ -183,13 +191,9 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
                                 <div className="text-right text-2xl font-bold mt-4 text-gray-900 dark:text-gray-100">Total Due: TZS {formatCurrency(data.total)}</div>
                             </section>
 
-                            {/* Payment Details Section */}
                             <section className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
                                 <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-3">Payment Details</h3>
-                                {/* Use a container with vertical spacing for the rows */}
                                 <div className="space-y-4">
-                                    
-                                    {/* --- Row 1: Sale Type (Full Width) --- */}
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Sale Type</label>
                                         <select value={data.sale_type} onChange={e => setData('sale_type', e.target.value)} className="w-full mt-1 border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200">
@@ -199,29 +203,40 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
                                         </select>
                                         {errors.sale_type && <p className="text-red-500 text-xs mt-1">{errors.sale_type}</p>}
                                     </div>
-
-                                    {/* --- Row 2: Payment Method and Paid Amount (Conditional Grid) --- */}
                                     {data.sale_type !== 'credit' && (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Payment Method</label>
-                                                <select value={data.payment_method} onChange={e => setData('payment_method', e.target.value)} className="w-full mt-1 border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200" disabled={paymentMethodsLoading}>
-                                                    <option value="" disabled>Select Method...</option>
-                                                    {paymentMethodsLoading ? <option>Loading...</option> : paymentMethods.map(pm => <option key={pm.id} value={pm.id}>{pm.name}</option>)}
+                                                <select value={data.payment_method} onChange={e => setData('payment_method', e.target.value)} disabled={paymentMethodsLoading} className="w-full mt-1 border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200">
+                                                    <option value="" disabled>Select...</option>
+                                                    {paymentMethods.map(pm => <option key={pm.id} value={pm.id}>{pm.name}</option>)}
                                                 </select>
                                                 {errors.payment_method && <p className="text-red-500 text-xs mt-1">{errors.payment_method}</p>}
                                             </div>
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Paid Amount</label>
-                                                <input type="number" value={data.paid_amount} onChange={e => setData('paid_amount', e.target.value)} className="w-full mt-1 border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"/>
+                                                <input type="number" value={data.paid_amount} onChange={handlePaidAmountChange} className="w-full mt-1 border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"/>
                                                 {errors.paid_amount && <p className="text-red-500 text-xs mt-1">{errors.paid_amount}</p>}
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Amount (Display)</label>
+                                                <div className="mt-1 p-2 bg-gray-100 dark:bg-gray-700/50 rounded text-right font-bold">TZS {amountDisplay}</div>
+                                                {parseFloat(data.paid_amount) > 0 && data.total > 0 && (
+                                                    <>
+                                                        {data.sale_type === 'partial' && parseFloat(data.paid_amount) < data.total && (
+                                                            <div className="mt-1 text-xs text-right text-orange-500 dark:text-orange-400">Balance Due: TZS {formatCurrency(data.total - parseFloat(data.paid_amount))}</div>
+                                                        )}
+                                                        {parseFloat(data.paid_amount) > data.total && (
+                                                            <div className="mt-1 text-xs text-right text-green-600 dark:text-green-400">Change: TZS {formatCurrency(parseFloat(data.paid_amount) - data.total)}</div>
+                                                        )}
+                                                    </>
+                                                )}
                                             </div>
                                         </div>
                                     )}
                                 </div>
                             </section>
 
-                             {/* Customer Section */}
                             <section className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
                                 <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-3">Customer Details</h3>
                                 <div className="flex items-center space-x-2">
@@ -252,7 +267,6 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
                                 {errors.customer_id && <p className="text-red-500 text-xs mt-1">{errors.customer_id}</p>}
                             </section>
 
-                            {/* Action Buttons */}
                             <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
                                 <Link href={route('billing1.edit', { order: orderData.id })} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded">Back to Edit</Link>
                                 <button type="submit" disabled={processing} className="px-4 py-2 bg-green-600 text-white rounded flex items-center">
