@@ -22,6 +22,8 @@ const formatCurrency = (value) => {
     });
 };
 
+const STORAGE_KEY = 'pendingOrderData'; // Use the same key as in Create.jsx
+
 export default function SaveOrderConfirmation({ auth, orderData }) {
     const { data, setData, post, errors, processing, reset } = useForm({
         customer_id: null,
@@ -124,7 +126,8 @@ export default function SaveOrderConfirmation({ auth, orderData }) {
         }
         post(route('billing1.store'), {
             onSuccess: () => {
-                alert('Order saved successfully!');
+                sessionStorage.removeItem(STORAGE_KEY); // <-- CLEAR STORAGE ON SUCCESS
+                //alert('Order saved successfully!');
                 reset();
             },
             onError: (formErrors) => {

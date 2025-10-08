@@ -1,4 +1,3 @@
-// resources/js/Pages/Billing1/Edit.jsx
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, useForm, Link, router } from '@inertiajs/react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -18,6 +17,10 @@ const formatCurrency = (value) => {
 };
 
 export default function Edit({ order, fromstore, auth, priceCategories: initialPriceCategories }) {
+    
+    // Dynamic storage key unique to this order
+    const STORAGE_KEY = `pendingOrderChanges_${order.id}`;
+
     const initializeOrderItems = (items) => {
         return items.map((item, index) => ({
             ...item,
@@ -37,13 +40,29 @@ export default function Edit({ order, fromstore, auth, priceCategories: initialP
     const [itemSearchResults, setItemSearchResults] = useState([]);
     const [showItemDropdown, setShowItemDropdown] = useState(false);
     const [isItemSearchLoading, setIsItemSearchLoading] = useState(false);
-    const [isAddingItem, setIsAddingItem] = useState(false); // <-- NEW STATE
-    const [blockNoItemsFound, setBlockNoItemsFound] = useState(false); // <-- NEW STATE
+    const [isAddingItem, setIsAddingItem] = useState(false);
+    const [blockNoItemsFound, setBlockNoItemsFound] = useState(false);
     const itemDropdownRef = useRef(null);
     const itemSearchInputRef = useRef(null);
 
     const [priceCategories, setPriceCategories] = useState(initialPriceCategories || []);
     const [modalState, setModalState] = useState({ isOpen: false, message: '', isAlert: false, itemToRemoveIndex: null });
+
+    // Load unsaved changes from Session Storage on component mount
+    useEffect(() => {
+        const savedData = sessionStorage.getItem(STORAGE_KEY);
+        if (savedData) {
+            try {
+                const { orderItems: savedItems, store_id, pricecategory_id } = JSON.parse(savedData);
+                if (savedItems) setOrderItems(savedItems);
+                if (store_id) setData('store_id', store_id);
+                if (pricecategory_id) setData('pricecategory_id', pricecategory_id);
+            } catch (e) {
+                console.error("Failed to parse pending order data", e);
+                sessionStorage.removeItem(STORAGE_KEY);
+            }
+        }
+    }, []);
 
     const fetchPriceCategoriesAPI = useCallback(async () => {
         if (initialPriceCategories && initialPriceCategories.length > 0) return;
@@ -85,7 +104,6 @@ export default function Edit({ order, fromstore, auth, priceCategories: initialP
     const addOrderItem = (selectedItem) => {
         setBlockNoItemsFound(true);
         setIsAddingItem(true);
-
         const newItem = {
             clientKey: `new-${Date.now()}`,
             id: null,
@@ -95,7 +113,6 @@ export default function Edit({ order, fromstore, auth, priceCategories: initialP
             price: selectedItem.price,
         };
         setOrderItems(prev => [...prev, newItem]);
-        
         setTimeout(() => {
             setItemSearchQuery('');
             setItemSearchResults([]);
@@ -106,7 +123,7 @@ export default function Edit({ order, fromstore, auth, priceCategories: initialP
     };
 
     const handleItemSearchChange = (e) => {
-        setBlockNoItemsFound(false); // Reset the block
+        setBlockNoItemsFound(false);
         setItemSearchQuery(e.target.value);
         setShowItemDropdown(!!e.target.value.trim() && !!data.pricecategory_id);
     };
@@ -144,11 +161,26 @@ export default function Edit({ order, fromstore, auth, priceCategories: initialP
             })),
         };
 
+        try {
+            const dataToSave = {
+                orderItems: orderItems,
+                store_id: data.store_id,
+                pricecategory_id: data.pricecategory_id,
+            };
+            sessionStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+        } catch (e) {
+            console.error("Failed to save pending order changes", e);
+        }
+
         if (destination === 'save') {
             router.post(route('billing1.confirmUpdate', { order: order.id }), payload);
         } else if (destination === 'pay') {
             router.post(route('billing1.confirmExistingPayment', { order: order.id }), payload);
         }
+    };
+
+    const handleCloseAndClear = () => {
+        sessionStorage.removeItem(STORAGE_KEY);
     };
 
     return (
@@ -241,7 +273,7 @@ export default function Edit({ order, fromstore, auth, priceCategories: initialP
                             </section>
 
                             <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-                                <Link href={route('billing1.index')} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Close</Link>
+                                <Link href={route('billing1.index')} onClick={handleCloseAndClear} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Close</Link>
                                 <button type="button" onClick={() => handleProceed('save')} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Save Changes</button>
                                 {order.stage < 5 && <button type="button" onClick={() => handleProceed('pay')} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">Pay Bills</button>}
                             </div>

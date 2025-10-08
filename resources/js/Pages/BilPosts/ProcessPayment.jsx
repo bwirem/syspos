@@ -23,6 +23,9 @@ const formatCurrency = (value) => {
     });
 };
 
+const STORAGE_KEY = 'pendingOrderData'; // Use the same key as in Create.jsx
+
+
 export default function ProcessPayment({ auth, orderData }) {
     const { data, setData, post, errors, processing, reset } = useForm({
         customer_id: null,
@@ -50,6 +53,8 @@ export default function ProcessPayment({ auth, orderData }) {
     const [paymentMethods, setPaymentMethods] = useState([]);
     const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(false);
     const [alertModal, setAlertModal] = useState({ isOpen: false, message: '' });
+    const [showSuccessModal, setShowSuccessModal] = useState(false); // <-- NEW SUCCESS MODAL STATE
+    const [paymentConfirmationModal, setPaymentConfirmationModal] = useState({ isOpen: false }); // <-- NEW STATE
 
     useEffect(() => {
         if (data.sale_type === 'credit') {
@@ -138,17 +143,16 @@ export default function ProcessPayment({ auth, orderData }) {
             .finally(() => setPaymentMethodsLoading(false));
     }, []);
 
-    const submitPayment = (e) => {
-        e.preventDefault();
-        if (!data.customer_id) {
-            setAlertModal({ isOpen: true, message: 'Please select a customer before proceeding.' });
-            return;
-        }
+    
+    const proceedWithSubmission = () => {
         post(route('billing1.pay'), {
             onSuccess: () => {
-                alert('Payment processed successfully!');
+                sessionStorage.removeItem(STORAGE_KEY); // <-- CLEAR STORAGE ON SUCCESS
                 reset();
-                router.visit(route('billing1.index'));
+                setShowSuccessModal(true);
+                setTimeout(() => {
+                    router.visit(route('billing1.index'));
+                }, 1500);
             },
              onError: (formErrors) => {
                 const errorMessages = Object.values(formErrors).join('\n');
@@ -156,6 +160,33 @@ export default function ProcessPayment({ auth, orderData }) {
             }
         });
     };
+
+    // This function handles the user's confirmation to proceed with a partial payment
+    const handlePaymentConfirmation = () => {
+        setPaymentConfirmationModal({ isOpen: false });
+        setData('sale_type', 'partial'); // Change the sale type
+        // Use a timeout to allow the state to update before submitting
+        setTimeout(() => proceedWithSubmission(), 50);
+    };
+
+    // This is now the gatekeeper function
+    const submitPayment = (e) => {
+        e.preventDefault();
+        if (!data.customer_id) {
+            setAlertModal({ isOpen: true, message: 'Please select a customer before proceeding.' });
+            return;
+        }
+
+        // The new validation check
+        if (data.sale_type === 'cash' && parseFloat(data.paid_amount) < data.total) {
+            setPaymentConfirmationModal({ isOpen: true });
+            return; // Stop the submission here and wait for user confirmation
+        }
+
+        // If the check passes, submit directly
+        proceedWithSubmission();
+    };
+
 
     return (
         <AuthenticatedLayout user={auth.user} header={<h2 className="text-xl font-semibold leading-tight text-gray-800 dark:text-gray-200">Process Order Payment</h2>}>
@@ -296,6 +327,35 @@ export default function ProcessPayment({ auth, orderData }) {
                     <div><label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label><input type="email" id="email" value={newCustomer.email} onChange={(e) => setNewCustomer(prev => ({...prev, email: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200" disabled={newCustomerModalLoading} /></div>
                     <div><label htmlFor="phone" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Phone</label><input type="text" id="phone" value={newCustomer.phone} onChange={(e) => setNewCustomer(prev => ({...prev, phone: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200" disabled={newCustomerModalLoading} /></div>
                 </form>
+            </Modal>
+
+            <Modal
+                isOpen={showSuccessModal}
+                title="Success"
+                isAlert={true}
+                hideCloseButton={true} // Hide buttons so user can't close it
+            >
+                <div className="text-center">
+                    <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+                        Payment processed successfully! Redirecting...
+                    </p>
+                    <FontAwesomeIcon icon={faSpinner} spin size="2x" className="text-blue-500" />
+                </div>
+            </Modal>
+
+             {/* --- NEW CONFIRMATION MODAL --- */}
+            <Modal
+                isOpen={paymentConfirmationModal.isOpen}
+                onClose={() => setPaymentConfirmationModal({ isOpen: false })}
+                onConfirm={handlePaymentConfirmation}
+                title="Confirm Payment Type"
+                confirmButtonText="Proceed as Partial"
+            >
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                    The amount paid is less than the total due.
+                    <br /><br />
+                    Do you want to proceed by changing the Sale Type to 'Partial Payment'?
+                </p>
             </Modal>
             
             <Modal isOpen={alertModal.isOpen} onClose={() => setAlertModal({ isOpen: false, message: '' })} onConfirm={() => setAlertModal({ isOpen: false, message: '' })} title="Alert" message={alertModal.message} isAlert={true} confirmButtonText="OK" />

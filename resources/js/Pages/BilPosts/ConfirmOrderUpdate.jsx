@@ -25,6 +25,10 @@ const formatCurrency = (value) => {
 };
 
 export default function ConfirmOrderUpdate({ auth, orderData, originalOrder }) {
+
+    // --- NEW: DYNAMIC STORAGE KEY ---
+    const STORAGE_KEY = `pendingOrderChanges_${orderData.id}`;
+
     const { data, setData, put, errors, processing } = useForm({
         ...orderData,
         customer_id: originalOrder.customer_id,
@@ -120,8 +124,9 @@ export default function ConfirmOrderUpdate({ auth, orderData, originalOrder }) {
         }
         put(route('billing1.update', { order: orderData.id }), {
             onSuccess: () => {
-                alert('Order updated successfully!');
-                router.visit(route('billing1.index')); // Or back to edit page
+                sessionStorage.removeItem(STORAGE_KEY); // <-- CLEAR STORAGE ON SUCCESS
+                // alert('Order updated successfully!');
+                // router.visit(route('billing1.index')); // Or back to edit page
             },
             onError: (formErrors) => {
                 const errorMessages = Object.values(formErrors).join('\n');

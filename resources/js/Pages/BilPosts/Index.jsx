@@ -21,7 +21,7 @@ const ORDER_STAGE_LABELS = {
 
 const DEBOUNCE_DELAY = 300; // milliseconds for search debounce
 
-export default function Index({ auth, orders, filters }) {
+export default function Index({ auth, orders, filters,success }) {
     const { data, setData, errors, processing } = useForm({ // Added processing
         search: filters.search || "",
         stage: filters.stage || "",
@@ -33,6 +33,14 @@ export default function Index({ auth, orders, filters }) {
         isAlert: false,
         orderToDeleteId: null,
     });
+
+    const [showSuccessModal, setShowSuccessModal] = useState(false);
+
+    useEffect(() => {
+        if (success) {
+            setShowSuccessModal(true);
+        }
+    }, [success]); 
 
     // Ref for debouncing
     const searchTimeoutRef = useRef(null);
@@ -250,6 +258,18 @@ export default function Index({ auth, orders, filters }) {
                     </div>
                 </div>
             </div>
+
+            <Modal
+                isOpen={showSuccessModal}
+                onClose={() => setShowSuccessModal(false)}
+                onConfirm={() => setShowSuccessModal(false)}
+                title="Success"
+                isAlert={true}
+                confirmButtonText="OK"
+            >
+                <p className="text-sm text-gray-600 dark:text-gray-300">{success}</p>
+            </Modal>
+
             <Modal
                 isOpen={modalState.isOpen}
                 onClose={handleModalClose}

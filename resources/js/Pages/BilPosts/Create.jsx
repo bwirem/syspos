@@ -24,6 +24,8 @@ const formatCurrency = (value) => {
     });
 };
 
+const STORAGE_KEY = 'pendingOrderData'; // Define a unique key for session storage
+
 export default function Create({ fromstore, auth }) {
     const { data, setData, errors, processing, reset } = useForm({
         store_id: auth?.user?.store_id || null,
@@ -46,6 +48,25 @@ export default function Create({ fromstore, auth }) {
     const [pricecategoryIDError, setPricecategoryIDError] = useState(null);
     const [modalState, setModalState] = useState({ isOpen: false, message: '', isAlert: false, itemToRemoveIndex: null });
     const [priceCategories, setPriceCategories] = useState([]);
+
+    // --- NEW: Load from Session Storage on component mount ---
+    useEffect(() => {
+        const savedData = sessionStorage.getItem(STORAGE_KEY);
+
+        if (savedData) {
+            try {
+                const { orderItems: savedItems, store_id, pricecategory_id } = JSON.parse(savedData);
+                
+                if (savedItems) setOrderItems(savedItems);
+                if (store_id) setData('store_id', store_id);
+                if (pricecategory_id) setData('pricecategory_id', pricecategory_id);
+
+            } catch (e) {
+                console.error("Failed to parse pending order data from session storage", e);
+                sessionStorage.removeItem(STORAGE_KEY); // Clear corrupted data
+            }
+        }
+    }, []); // Empty dependency array ensures this runs only once on mount
 
     const fetchItems = useCallback((query) => {
         if (!query.trim() || !data.pricecategory_id) {
@@ -156,11 +177,28 @@ export default function Create({ fromstore, auth }) {
             })),
         };
 
-        if (destination === 'save') {
-            router.post(route('billing1.confirmSave'), payload, { preserveState: true });
-        } else if (destination === 'pay') {
-            router.post(route('billing1.confirmPayment'), payload, { preserveState: true });
+        // --- NEW: Save to Session Storage before navigating ---
+        try {
+            const dataToSave = {
+                orderItems: orderItems,
+                store_id: data.store_id,
+                pricecategory_id: data.pricecategory_id,
+            };
+            sessionStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+        } catch (e) {
+            console.error("Failed to save pending order data to session storage", e);
         }
+
+        if (destination === 'save') {
+            router.post(route('billing1.confirmSave'), payload);
+        } else if (destination === 'pay') {
+            router.post(route('billing1.confirmPayment'), payload);
+        }
+    };
+
+    // --- NEW: Function to clear storage when abandoning the order ---
+    const handleCloseAndClear = () => {
+        sessionStorage.removeItem(STORAGE_KEY);
     };
 
     return (
@@ -247,7 +285,7 @@ export default function Create({ fromstore, auth }) {
                                             </thead>
                                             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                                                 {orderItems.map((item, index) => (
-                                                    <tr key={index}>
+                                                    <tr key={item.item_id + '-' + index}>
                                                         <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700 dark:text-gray-200">{item.item_name}</td>
                                                         <td className="px-1 py-1"><InputField id={`qty_${index}`} type="number" min="0.01" step="0.01" value={item.quantity} onChange={(e) => handleOrderItemChange(index, 'quantity', e.target.value)} className="w-full text-right text-sm dark:bg-gray-700 dark:text-gray-200" /></td>
                                                         <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700 dark:text-gray-200 text-right">{formatCurrency(item.price)}</td>
@@ -269,7 +307,13 @@ export default function Create({ fromstore, auth }) {
                             </section>
 
                             <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-                                <Link href={route('billing1.index')} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500 text-sm flex items-center"><FontAwesomeIcon icon={faTimesCircle} className="mr-2" /> Close</Link>
+                                <Link
+                                    href={route('billing1.index')}
+                                    onClick={handleCloseAndClear}
+                                    className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500 text-sm flex items-center"
+                                >
+                                    <FontAwesomeIcon icon={faTimesCircle} className="mr-2" /> Close
+                                </Link>
                                 <button type="button" onClick={() => handleProceed('save')} disabled={processing} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 text-sm flex items-center"><FontAwesomeIcon icon={processing ? faSpinner : faSave} spin={processing} className="mr-2" /> Save</button>
                                 <button type="button" onClick={() => handleProceed('pay')} disabled={processing} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 text-sm flex items-center"><FontAwesomeIcon icon={processing ? faSpinner : faMoneyBill} spin={processing} className="mr-2" /> Pay Bills</button>
                             </div>

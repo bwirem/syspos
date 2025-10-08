@@ -24,6 +24,10 @@ const formatCurrency = (value) => {
 };
 
 export default function ProcessExistingOrderPayment({ auth, orderData, originalOrder }) {
+
+    // --- NEW: DYNAMIC STORAGE KEY ---
+    const STORAGE_KEY = `pendingOrderChanges_${orderData.id}`;
+
     const { data, setData, post, errors, processing } = useForm({
         ...orderData,
         customer_id: originalOrder.customer_id,
@@ -51,6 +55,9 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
     const [alertModal, setAlertModal] = useState({ isOpen: false, message: '' });
     const [paymentMethods, setPaymentMethods] = useState([]);
     const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(false);
+    const [showSuccessModal, setShowSuccessModal] = useState(false); // <-- NEW SUCCESS MODAL STATE   
+    const [paymentConfirmationModal, setPaymentConfirmationModal] = useState({ isOpen: false }); // <-- NEW STATE
+
 
     useEffect(() => {
         if (data.sale_type === 'credit') {
@@ -136,24 +143,44 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
             setAlertModal({ isOpen: true, message: error.response?.data?.message || 'Failed to create customer.' });
             setNewCustomerModalLoading(false);
         }
-    };
-    
-    const submitPayment = (e) => {
-        e.preventDefault();
-        if (!data.customer_id) {
-            setAlertModal({ isOpen: true, message: 'A customer must be selected.' });
-            return;
-        }
+    };   
+   
+
+    const proceedWithSubmission = () => {
         post(route('billing1.pay', { order: orderData.id }), {
             onSuccess: () => {
-                alert('Payment successful!');
-                router.visit(route('billing1.index'));
+                sessionStorage.removeItem(STORAGE_KEY); // <-- CLEAR STORAGE ON SUCCESS            
+                setShowSuccessModal(true);
+                setTimeout(() => {
+                    router.visit(route('billing1.index'));
+                }, 1500);
             },
             onError: (formErrors) => {
                 const errorMessages = Object.values(formErrors).join('\n');
                 setAlertModal({ isOpen: true, message: `Payment failed:\n${errorMessages}` });
             }
         });
+    };
+
+    const handlePaymentConfirmation = () => {
+        setPaymentConfirmationModal({ isOpen: false });
+        setData('sale_type', 'partial');
+        setTimeout(() => proceedWithSubmission(), 50);
+    };
+
+    const submitPayment = (e) => {
+        e.preventDefault();
+        if (!data.customer_id) {
+            setAlertModal({ isOpen: true, message: 'A customer must be selected.' });
+            return;
+        }
+
+        if (data.sale_type === 'cash' && parseFloat(data.paid_amount) < data.total) {
+            setPaymentConfirmationModal({ isOpen: true });
+            return;
+        }
+
+        proceedWithSubmission();
     };
 
     return (
@@ -287,6 +314,35 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
                     <div><label htmlFor="email" className="block text-sm font-medium">Email</label><input type="email" id="email" value={newCustomer.email} onChange={(e) => setNewCustomer(prev => ({...prev, email: e.target.value}))} className="w-full border p-2 rounded text-sm" disabled={newCustomerModalLoading} /></div>
                     <div><label htmlFor="phone" className="block text-sm font-medium">Phone</label><input type="text" id="phone" value={newCustomer.phone} onChange={(e) => setNewCustomer(prev => ({...prev, phone: e.target.value}))} className="w-full border p-2 rounded text-sm" disabled={newCustomerModalLoading} /></div>
                 </form>
+            </Modal>
+
+           <Modal
+                isOpen={showSuccessModal}
+                title="Success"
+                isAlert={true}
+                hideCloseButton={true} // A good UX is to prevent closing during the auto-redirect
+            >
+                <div className="text-center">
+                    <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+                        Payment successful! Redirecting...
+                    </p>
+                    <FontAwesomeIcon icon={faSpinner} spin size="2x" className="text-blue-500" />
+                </div>
+            </Modal>
+
+            {/* --- NEW CONFIRMATION MODAL --- */}
+            <Modal
+                isOpen={paymentConfirmationModal.isOpen}
+                onClose={() => setPaymentConfirmationModal({ isOpen: false })}
+                onConfirm={handlePaymentConfirmation}
+                title="Confirm Payment Type"
+                confirmButtonText="Proceed as Partial"
+            >
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                    The amount paid is less than the total due.
+                    <br /><br />
+                    Do you want to proceed by changing the Sale Type to 'Partial Payment'?
+                </p>
             </Modal>
 
             <Modal isOpen={alertModal.isOpen} onClose={() => setAlertModal({isOpen: false, message: ''})} onConfirm={() => setAlertModal({isOpen: false, message: ''})} title="Alert" message={alertModal.message} isAlert confirmButtonText="OK" />
