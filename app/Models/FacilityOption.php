@@ -16,6 +16,11 @@ class FacilityOption extends Model
     // Add attributes to $fillable array for mass assignment
     protected $fillable = [  
         'name',  
+        'chart_of_account_id',
+        'affectstockatcashier',
+        'doubleentryissuing',
+        'allownegativestock',
+        'default_customer_id',
     ];
 
 

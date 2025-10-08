@@ -1,81 +1,137 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, useForm } from '@inertiajs/react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSave, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
-import '@fortawesome/fontawesome-svg-core/styles.css';
 import { Inertia } from '@inertiajs/inertia';
 import Modal from '@/Components/CustomModal';
+import '@fortawesome/fontawesome-svg-core/styles.css';
 
-export default function Edit({ facilityoption }) {
-    const { data, setData, put, errors, processing, reset } = useForm({
-        name: facilityoption.name,
+export default function Edit({ facilityoption, chartOfAccounts, customers }) {
+    const { data, setData, put, errors, processing } = useForm({
+        name: facilityoption.name || '',
+        chart_of_account_id: facilityoption.chart_of_account_id || '',
+        affectstockatcashier: facilityoption.affectstockatcashier ? true : false,
+        doubleentryissuing: facilityoption.doubleentryissuing ? true : false,
+        allownegativestock: facilityoption.allownegativestock ? true : false,
+        default_customer_id: facilityoption.default_customer_id || '',
     });
 
-    const [modalState, setModalState] = useState({
-        isOpen: false,
-        message: '',
-        isAlert: false,
-    });
+    const [modalState, setModalState] = useState({ isOpen: false, message: '', isAlert: false });
     const [isSaving, setIsSaving] = useState(false);
 
-    const handleModalClose = () => {
-        setModalState({ isOpen: false, message: '', isAlert: false });
-    };
-
-    const showAlert = (message) => {
-        setModalState({ isOpen: true, message, isAlert: true });
-    };
+    const showAlert = (message) => setModalState({ isOpen: true, message, isAlert: true });
+    const handleModalClose = () => setModalState({ isOpen: false, message: '', isAlert: false });
 
     const handleSubmit = (e) => {
         e.preventDefault();
-
         setIsSaving(true);
+
         put(route('systemconfiguration5.facilityoptions.update', facilityoption.id), {
             onSuccess: () => {
                 setIsSaving(false);
-                resetForm();
+                showAlert('Facility option updated successfully!');
             },
-            onError: (errors) => {
-                console.error(errors);
+            onError: () => {
                 setIsSaving(false);
-                showAlert('An error occurred while saving the facilityoption.');
+                showAlert('An error occurred while updating the facility option.');
             },
         });
     };
 
-    const resetForm = () => {
-        reset();
-        showAlert('Facilityoption updated successfully!');
-    };
-
     return (
-        <AuthenticatedLayout
-            header={<h2 className="text-xl font-semibold leading-tight text-gray-800">Edit Facility Options</h2>}
-        >
+        <AuthenticatedLayout header={<h2 className="text-xl font-semibold leading-tight text-gray-800">Edit Facility Options</h2>}>
             <Head title="Edit Facility Options" />
             <div className="py-12">
                 <div className="mx-auto max-w-4xl sm:px-6 lg:px-8">
                     <div className="bg-white p-6 shadow sm:rounded-lg">
                         <form onSubmit={handleSubmit} className="space-y-6">
-                            <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
-                                {/* Name Input Box */}
-                                <div className="relative flex-1">
-                                    <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                                        Name
-                                    </label>
-                                    <input
-                                        id="name"
-                                        type="text"
-                                        placeholder="Enter name..."
-                                        value={data.name}
-                                        onChange={(e) => setData('name', e.target.value)}
-                                        className={`w-full border p-2 rounded text-sm ${errors.name ? 'border-red-500' : ''}`}
-                                    />
-                                    {errors.name && <p className="text-sm text-red-600 mt-1">{errors.name}</p>}
-                                </div>
+
+                            {/* Name */}
+                            <div>
+                                <label htmlFor="name" className="block text-sm font-medium text-gray-700">Name</label>
+                                <input
+                                    id="name"
+                                    type="text"
+                                    value={data.name}
+                                    onChange={(e) => setData('name', e.target.value)}
+                                    className={`w-full border p-2 rounded text-sm ${errors.name ? 'border-red-500' : ''}`}
+                                />
+                                {errors.name && <p className="text-sm text-red-600 mt-1">{errors.name}</p>}
                             </div>
 
+                            {/* Chart of Account ID */}
+                            <div>
+                                <label htmlFor="chart_of_account_id" className="block text-sm font-medium text-gray-700">Chart of Account</label>
+                                <select
+                                    id="chart_of_account_id"
+                                    value={data.chart_of_account_id}
+                                    onChange={(e) => setData('chart_of_account_id', e.target.value)}
+                                    className={`w-full border p-2 rounded text-sm ${errors.chart_of_account_id ? 'border-red-500' : ''}`}
+                                >
+                                    <option value="">-- Select Chart of Account --</option>
+                                    {chartOfAccounts.map((account) => (
+                                        <option key={account.id} value={account.id}>
+                                            {account.account_name} ({account.account_code})
+                                        </option>
+                                    ))}
+                                </select>
+                                {errors.chart_of_account_id && <p className="text-sm text-red-600 mt-1">{errors.chart_of_account_id}</p>}
+                            </div>
+
+                            {/* Default Customer ID */}
+                            <div>
+                                <label htmlFor="default_customer_id" className="block text-sm font-medium text-gray-700">Default Customer</label>
+                                <select
+                                    id="default_customer_id"
+                                    value={data.default_customer_id}
+                                    onChange={(e) => setData('default_customer_id', e.target.value)}
+                                    className={`w-full border p-2 rounded text-sm ${errors.default_customer_id ? 'border-red-500' : ''}`}
+                                >
+                                    <option value="">-- Select Customer --</option>
+                                    {customers.map((customer) => (
+                                        <option key={customer.id} value={customer.id}>
+                                            {customer.display_name}
+                                        </option>
+                                    ))}
+                                </select>
+                                {errors.default_customer_id && <p className="text-sm text-red-600 mt-1">{errors.default_customer_id}</p>}
+                            </div>
+
+                            {/* Boolean Options */}
+                            <div className="flex flex-col space-y-2">
+                                <label className="inline-flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        checked={data.affectstockatcashier}
+                                        onChange={(e) => setData('affectstockatcashier', e.target.checked)}
+                                        className="mr-2"
+                                    />
+                                    Affect Stock at Cashier
+                                </label>
+
+                                <label className="inline-flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        checked={data.doubleentryissuing}
+                                        onChange={(e) => setData('doubleentryissuing', e.target.checked)}
+                                        className="mr-2"
+                                    />
+                                    Double Entry Issuing
+                                </label>
+
+                                <label className="inline-flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        checked={data.allownegativestock}
+                                        onChange={(e) => setData('allownegativestock', e.target.checked)}
+                                        className="mr-2"
+                                    />
+                                    Allow Negative Stock
+                                </label>
+                            </div>
+
+                            {/* Buttons */}
                             <div className="flex justify-end space-x-4 mt-6">
                                 <button
                                     type="button"
@@ -85,15 +141,17 @@ export default function Edit({ facilityoption }) {
                                     <FontAwesomeIcon icon={faTimesCircle} />
                                     <span>Close</span>
                                 </button>
+
                                 <button
                                     type="submit"
                                     disabled={processing || isSaving}
                                     className="bg-blue-600 text-white rounded p-2 flex items-center space-x-2"
                                 >
                                     <FontAwesomeIcon icon={faSave} />
-                                    <span>{isSaving ? 'Saving...' : 'Save'}</span>
+                                    <span>{isSaving ? 'Saving...' : 'Save Changes'}</span>
                                 </button>
                             </div>
+
                         </form>
                     </div>
                 </div>
@@ -102,9 +160,9 @@ export default function Edit({ facilityoption }) {
             <Modal
                 isOpen={modalState.isOpen}
                 onClose={handleModalClose}
-                title={modalState.isAlert ? "Alert" : "Confirm Action"}
+                title="Alert"
                 message={modalState.message}
-                isAlert={modalState.isAlert}
+                isAlert
             />
         </AuthenticatedLayout>
     );

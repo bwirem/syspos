@@ -30,6 +30,8 @@ use App\Models\{
     IVRequistionItem,
 
     SIV_Store,
+    
+    FacilityOption,
 };
 
 use App\Enums\{
@@ -127,8 +129,11 @@ class BilPostController extends Controller
             'orderitems.*.price' => 'required|numeric|min:0',
         ]);
 
+        $facilityoption = FacilityOption::first(); // Fetches the first record of facility options
+
         return inertia('BilPosts/ProcessPayment', [
-            'orderData' => $validatedData
+            'orderData' => $validatedData,
+            'facilityoption' => $facilityoption, // Pass the options to the frontend
         ]);
     }
 

@@ -26,7 +26,7 @@ const formatCurrency = (value) => {
 const STORAGE_KEY = 'pendingOrderData'; // Use the same key as in Create.jsx
 
 
-export default function ProcessPayment({ auth, orderData }) {
+export default function ProcessPayment({ auth, orderData, facilityoption }) {
     const { data, setData, post, errors, processing, reset } = useForm({
         customer_id: null,
         stage: '3',
@@ -55,6 +55,21 @@ export default function ProcessPayment({ auth, orderData }) {
     const [alertModal, setAlertModal] = useState({ isOpen: false, message: '' });
     const [showSuccessModal, setShowSuccessModal] = useState(false); // <-- NEW SUCCESS MODAL STATE
     const [paymentConfirmationModal, setPaymentConfirmationModal] = useState({ isOpen: false }); // <-- NEW STATE
+
+    // --- NEW LOGIC TO SET DEFAULT CUSTOMER ---
+    useEffect(() => {
+        if (data.sale_type === 'cash' && facilityoption?.default_customer_id) {
+            // Set the customer ID from facility options
+            setData('customer_id', facilityoption.default_customer_id);
+            // Optionally, you can display the name if you fetch it or pass it from the backend
+            // For now, we will just show "Cash Sale Customer" as a placeholder
+            //setCustomerSearchQuery('Cash Sale Customer'); 
+        } else {
+            // If sale type is not cash, clear the customer
+            setData('customer_id', null);
+            setCustomerSearchQuery('');
+        }
+    }, [data.sale_type, facilityoption]); // Rerun this effect when sale_type changes
 
     useEffect(() => {
         if (data.sale_type === 'credit') {
@@ -276,6 +291,8 @@ export default function ProcessPayment({ auth, orderData }) {
                                 </div>
                             </section>
 
+                             {/* If a default customer is configured, this entire section is hidden */}
+                            {data.sale_type !== 'cash' && (
                             <section className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
                                 <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-3">Customer Details</h3>
                                 <label htmlFor="customer_search" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Select or Create Customer</label>
@@ -306,6 +323,7 @@ export default function ProcessPayment({ auth, orderData }) {
                                 </div>
                                 {errors.customer_id && <p className="text-red-500 text-xs mt-1">{errors.customer_id}</p>}
                             </section>
+                            )}
 
                             <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
                                 <Link href={route('billing1.create')} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Back</Link>
