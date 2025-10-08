@@ -86,7 +86,7 @@ class BilPayController extends Controller
    
     public function pay(Request $request, $debtor = null) // Assuming $debtor might be part of the route or not strictly used here
     {
-        Log::info('Start processing payment:', ['pay_debtor_param' => $debtor, 'request_data' => $request->all()]);
+        //Log::info('Start processing payment:', ['pay_debtor_param' => $debtor, 'request_data' => $request->all()]);
 
         try {
             $validator = Validator::make($request->all(), [
