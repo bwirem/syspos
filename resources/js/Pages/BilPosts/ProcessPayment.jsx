@@ -75,10 +75,16 @@ export default function ProcessPayment({ auth, orderData, facilityoption }) {
         if (data.sale_type === 'credit') {
             setData('paid_amount', 0);
             setAmountDisplay(formatCurrency(0));
+
+        } else if (data.sale_type === 'partial') {
+            setData('paid_amount', data.paid_amount);
+            setAmountDisplay(formatCurrency(data.paid_amount));
+            
         } else {
             setData('paid_amount', data.total);
             setAmountDisplay(formatCurrency(data.total));
         }
+        
     }, [data.sale_type, data.total]);
 
     const handlePaidAmountChange = (e) => {
@@ -180,8 +186,9 @@ export default function ProcessPayment({ auth, orderData, facilityoption }) {
     const handlePaymentConfirmation = () => {
         setPaymentConfirmationModal({ isOpen: false });
         setData('sale_type', 'partial'); // Change the sale type
+        
         // Use a timeout to allow the state to update before submitting
-        setTimeout(() => proceedWithSubmission(), 50);
+        //setTimeout(() => proceedWithSubmission(), 50);
     };
 
     // This is now the gatekeeper function
