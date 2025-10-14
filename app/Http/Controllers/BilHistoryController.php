@@ -65,7 +65,9 @@ class BilHistoryController extends Controller
 
         // Add the date range filter
         if ($request->filled('start_date') && $request->filled('end_date')) {
-            $query->whereBetween('created_at', [$request->start_date, $request->end_date]);
+            $startDate = Carbon::parse($request->start_date)->startOfDay();
+            $endDate = Carbon::parse($request->end_date)->endOfDay(); // Set time to the end of the day
+            $query->whereBetween('created_at', [$startDate, $endDate]);
         }
 
         $query->where('voided', '=', 0);
