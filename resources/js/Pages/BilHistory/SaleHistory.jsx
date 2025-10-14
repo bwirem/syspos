@@ -4,30 +4,30 @@ import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
     faSearch,
-    faEye, // Changed from faEdit for Preview
-    faTrash, // For Void, as it's a destructive action
+    faEye,
+    faTrash,
 } from "@fortawesome/free-solid-svg-icons";
 import "@fortawesome/fontawesome-svg-core/styles.css";
-
-import Modal from '@/Components/CustomModal.jsx'; // Assuming @ alias
+import Modal from '@/Components/CustomModal.jsx';
 
 const DEBOUNCE_DELAY = 300;
 
 export default function Index({ auth, sales, filters }) {
     const { data, setData, put, errors, processing, clearErrors, reset } = useForm({
         search: filters.search || "",
-        remarks: '', // For the void sale modal
+        start_date: filters.start_date || "",
+        end_date: filters.end_date || "",
+        remarks: '',
     });
 
     const [voidModalState, setVoidModalState] = useState({
         isOpen: false,
         saleToVoid: null,
-        clientRemarksError: null, // For client-side "remarks empty" check
+        clientRemarksError: null,
     });
 
     const searchTimeoutRef = useRef(null);
 
-    // Effect for fetching data (debounced search)
     useEffect(() => {
         if (searchTimeoutRef.current) {
             clearTimeout(searchTimeoutRef.current);
@@ -35,7 +35,8 @@ export default function Index({ auth, sales, filters }) {
         searchTimeoutRef.current = setTimeout(() => {
             router.get(route("billing3.salehistory"), {
                 search: data.search,
-                // 'stage' was in the original dependency array but not in useForm for billing3
+                start_date: data.start_date,
+                end_date: data.end_date,
             }, {
                 preserveState: true,
                 replace: true,
@@ -47,15 +48,16 @@ export default function Index({ auth, sales, filters }) {
                 clearTimeout(searchTimeoutRef.current);
             }
         };
-    }, [data.search]);
+    }, [data.search, data.start_date, data.end_date]);
 
     const handleSearchChange = useCallback((e) => {
-        setData("search", e.target.value);
+        const { name, value } = e.target;
+        setData(name, value);
     }, [setData]);
 
     const handleVoidClick = useCallback((sale) => {
-        clearErrors('remarks'); // Clear any previous server-side remarks errors
-        setData('remarks', ''); // Reset remarks in the form
+        clearErrors('remarks');
+        setData('remarks', '');
         setVoidModalState({
             isOpen: true,
             saleToVoid: sale,
@@ -65,14 +67,13 @@ export default function Index({ auth, sales, filters }) {
 
     const handleVoidModalClose = useCallback(() => {
         setVoidModalState(prev => ({ ...prev, isOpen: false, clientRemarksError: null }));
-        // Optionally reset saleToVoid after animation if modal has one
         setTimeout(() => {
             setVoidModalState(prev => ({ ...prev, saleToVoid: null }));
-            if (!processing) { // Don't reset remarks if a submission is in progress
+            if (!processing) {
                 setData('remarks', '');
                 clearErrors('remarks');
             }
-        }, 300); // Adjust delay to match modal close animation
+        }, 300);
     }, [setData, clearErrors, processing]);
 
     const handleVoidModalConfirm = useCallback(() => {
@@ -80,25 +81,20 @@ export default function Index({ auth, sales, filters }) {
             setVoidModalState(prev => ({ ...prev, clientRemarksError: 'Void remarks are required.' }));
             return;
         }
-        setVoidModalState(prev => ({ ...prev, clientRemarksError: null })); // Clear client error
+        setVoidModalState(prev => ({ ...prev, clientRemarksError: null }));
 
         if (voidModalState.saleToVoid) {
             put(route('billing3.voidsale', voidModalState.saleToVoid.id), {
-                // data.remarks is already part of the form data handled by `put`
                 preserveScroll: true,
                 onSuccess: () => {
                     handleVoidModalClose();
-                    // Inertia will re-fetch data. Flash message for success is good.
-                    // reset('remarks'); // Reset only remarks field after successful submission
                 },
                 onError: (serverErrors) => {
-                    // `errors.remarks` will be populated automatically by useForm
                     console.error('Voiding errors:', serverErrors);
                 },
             });
         }
     }, [data.remarks, put, voidModalState.saleToVoid, handleVoidModalClose, reset]);
-
 
     return (
         <AuthenticatedLayout
@@ -123,8 +119,24 @@ export default function Index({ auth, sales, filters }) {
                                             className={`w-full rounded-md border-gray-300 py-2 pl-10 pr-4 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 md:w-64 ${errors.search ? "border-red-500" : ""}`}
                                         />
                                     </div>
+                                    <div className="flex items-center space-x-2">
+                                        <input
+                                            type="date"
+                                            name="start_date"
+                                            value={data.start_date}
+                                            onChange={handleSearchChange}
+                                            className={`rounded-md border-gray-300 py-2 px-4 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 ${errors.start_date ? "border-red-500" : ""}`}
+                                        />
+                                        <span className="text-gray-500">to</span>
+                                        <input
+                                            type="date"
+                                            name="end_date"
+                                            value={data.end_date}
+                                            onChange={handleSearchChange}
+                                            className={`rounded-md border-gray-300 py-2 px-4 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 ${errors.end_date ? "border-red-500" : ""}`}
+                                        />
+                                    </div>
                                 </div>
-                                {/* No filter tabs or create button in this version */}
                             </div>
 
                             <div className="overflow-x-auto rounded-lg border border-gray-200">
@@ -171,7 +183,7 @@ export default function Index({ auth, sales, filters }) {
                                                             <button
                                                                 onClick={() => handleVoidClick(sale)}
                                                                 className="flex items-center rounded bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-red-700"
-                                                                disabled={processing && voidModalState.saleToVoid?.id === sale.id} // Disable only for the item being processed
+                                                                disabled={processing && voidModalState.saleToVoid?.id === sale.id}
                                                                 title="Void Sale"
                                                             >
                                                                 <FontAwesomeIcon icon={faTrash} className="mr-1.5 h-3 w-3" />
@@ -191,13 +203,11 @@ export default function Index({ auth, sales, filters }) {
                                     </tbody>
                                 </table>
                             </div>
-                            {/* TODO: Pagination if sales.links exists */}
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Void Confirmation Modal */}
             {voidModalState.isOpen && voidModalState.saleToVoid && (
                 <Modal
                     isOpen={voidModalState.isOpen}
@@ -205,7 +215,7 @@ export default function Index({ auth, sales, filters }) {
                     onConfirm={handleVoidModalConfirm}
                     title="Confirm Void Sale"
                     confirmButtonText={processing ? 'Voiding...' : 'Confirm Void'}
-                    isProcessing={processing} // Use processing from useForm
+                    isProcessing={processing}
                 >
                     <div>
                         <p className="text-sm text-gray-600">

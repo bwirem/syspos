@@ -49,31 +49,35 @@ class BilHistoryController extends Controller
      * Display a listing of orders.
      */
     
-     public function saleHistory(Request $request)
-     {
-         $query = BILSale::with(['items', 'customer']); // Eager load sale items and customer
-     
-         // Filtering by customer name using relationship
-         if ($request->filled('search')) {
-             $query->whereHas('customer', function ($q) use ($request) {                 
-                 $q->where('first_name', 'like', '%' . $request->search . '%')
-                ->orWhere('surname', 'like', '%' . $request->search . '%')
-                ->orWhere('other_names', 'like', '%' . $request->search . '%')
-                ->orWhere('company_name', 'like', '%' . $request->search . '%');
-             });
-         }
+    public function saleHistory(Request $request)
+    {
+        $query = BILSale::with(['items', 'customer']); // Eager load sale items and customer
 
-         $query->where('voided', '=', 0);
-             
-     
-         // Paginate and sort sales
-         $sales = $query->orderBy('created_at', 'desc')->paginate(10);
-     
-         return inertia('BilHistory/SaleHistory', [
-             'sales' => $sales,
-             'filters' => $request->only(['search']),
-         ]);
-     }  
+        // Filtering by customer name using relationship
+        if ($request->filled('search')) {
+            $query->whereHas('customer', function ($q) use ($request) {
+                $q->where('first_name', 'like', '%' . $request->search . '%')
+                    ->orWhere('surname', 'like', '%' . $request->search . '%')
+                    ->orWhere('other_names', 'like', '%' . $request->search . '%')
+                    ->orWhere('company_name', 'like', '%' . $request->search . '%');
+            });
+        }
+
+        // Add the date range filter
+        if ($request->filled('start_date') && $request->filled('end_date')) {
+            $query->whereBetween('created_at', [$request->start_date, $request->end_date]);
+        }
+
+        $query->where('voided', '=', 0);
+
+        // Paginate and sort sales
+        $sales = $query->orderBy('created_at', 'desc')->paginate(10);
+
+        return inertia('BilHistory/SaleHistory', [
+            'sales' => $sales,
+            'filters' => $request->only(['search', 'start_date', 'end_date']),
+        ]);
+    }
 
 
      /**

@@ -165,7 +165,7 @@ export default function Dashboard({
 
                     {/* Procurement Section */}
                     <section>
-                        <div className="flex justify-between items-center mb-4">
+                        {/* <div className="flex justify-between items-center mb-4">
                             <h3 className="text-2xl font-semibold text-gray-800 dark:text-gray-100">Procurement Overview</h3>
                             <Link href={urls.procurementHub} className="text-sm text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium flex items-center group">
                                 Go to Procurement Hub <FontAwesomeIcon icon={faArrowRight} className="ml-1.5 h-3 w-3 transition-transform duration-200 group-hover:translate-x-1" />
@@ -198,7 +198,7 @@ export default function Dashboard({
                                 linkHref={urls.newPurchaseOrder}
                                 linkText="Create PO"
                             />
-                        </div>
+                        </div> */}
                     </section>                  
 
                     {/* Inventory Section */}
@@ -240,7 +240,7 @@ export default function Dashboard({
 
                     {/* Expenses Section */}
                     <section>
-                        <div className="flex justify-between items-center mb-4">
+                        {/* <div className="flex justify-between items-center mb-4">
                             <h3 className="text-2xl font-semibold text-gray-800 dark:text-gray-100">Expenses Overview</h3>
                             <Link href={urls.expensesHub} className="text-sm text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium flex items-center group">
                                 Go to Expenses Hub <FontAwesomeIcon icon={faArrowRight} className="ml-1.5 h-3 w-3 transition-transform duration-200 group-hover:translate-x-1" />
@@ -272,12 +272,12 @@ export default function Dashboard({
                                 linkHref={urls.newExpense}
                                 linkText="Create Claim"
                             />
-                        </div>
+                        </div> */}
                     </section>
 
                      {/* Financial Accounting Section --- */}
                     <section>
-                        <div className="flex justify-between items-center mb-4">
+                        {/* <div className="flex justify-between items-center mb-4">
                             <h3 className="text-2xl font-semibold text-gray-800 dark:text-gray-100">Financial Accounting</h3>
                             <Link href={urls.accountingHub} className="text-sm text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium flex items-center group">
                                 Go to Accounting Hub <FontAwesomeIcon icon={faArrowRight} className="ml-1.5 h-3 w-3 transition-transform duration-200 group-hover:translate-x-1" />
@@ -308,7 +308,7 @@ export default function Dashboard({
                                 linkHref={urls.newJournalEntry}
                                 linkText="Create Entry"
                             />
-                        </div>
+                        </div> */}
                     </section>
                     {/* Financial Accounting Section --- */}
 
