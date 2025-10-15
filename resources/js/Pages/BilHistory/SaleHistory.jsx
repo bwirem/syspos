@@ -143,6 +143,7 @@ export default function Index({ auth, sales, filters }) {
                                 <table className="min-w-full divide-y divide-gray-200 bg-white">
                                     <thead className="bg-gray-50">
                                         <tr>
+                                            <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Date</th>
                                             <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Customer Name</th>
                                             <th scope="col" className="px-4 py-3.5 text-right text-sm font-semibold text-gray-900">Total Due</th>
                                             <th scope="col" className="px-4 py-3.5 text-right text-sm font-semibold text-gray-900">Total Paid</th>
@@ -154,6 +155,9 @@ export default function Index({ auth, sales, filters }) {
                                         {sales.data.length > 0 ? (
                                             sales.data.map((sale) => (
                                                 <tr key={sale.id} className="hover:bg-gray-50">
+                                                    <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">
+                                                        {sale.created_at ? new Date(sale.created_at).toLocaleDateString() : 'N/A'}
+                                                    </td>
                                                     <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-700">
                                                         {sale.customer.customer_type === 'individual' ? (
                                                             `${sale.customer.first_name} ${sale.customer.other_names ? sale.customer.other_names + ' ' : ''}${sale.customer.surname}`.trim()

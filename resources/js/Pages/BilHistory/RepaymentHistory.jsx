@@ -155,11 +155,10 @@ export default function Index({ auth, repayments = defaultRepayments, filters = 
                                 <table className="min-w-full divide-y divide-gray-200 bg-white">
                                     <thead className="bg-gray-50">
                                         <tr>
+                                            <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Date</th>
                                             <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Customer Name</th>
                                             <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Invoice(s) Paid</th>
-                                            <th scope="col" className="px-4 py-3.5 text-right text-sm font-semibold text-gray-900">Amount Paid</th>
-                                            <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Payment Method</th>
-                                            <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Date</th>
+                                            <th scope="col" className="px-4 py-3.5 text-right text-sm font-semibold text-gray-900">Amount Paid</th> 
                                             <th scope="col" className="px-4 py-3.5 text-center text-sm font-semibold text-gray-900">Actions</th>
                                         </tr>
                                     </thead>
@@ -167,6 +166,9 @@ export default function Index({ auth, repayments = defaultRepayments, filters = 
                                         {repayments.data && repayments.data.length > 0 ? (
                                             repayments.data.map((repayment) => (
                                                 <tr key={repayment.id} className="hover:bg-gray-50">
+                                                    <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">
+                                                        {repayment.created_at ? new Date(repayment.created_at).toLocaleDateString() : 'N/A'}
+                                                    </td>
                                                     <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-700">
                                                         {repayment.customer?.customer_type === 'individual' ? (
                                                             `${repayment.customer?.first_name || ''} ${repayment.customer?.other_names || ''} ${repayment.customer?.surname || ''}`.replace(/\s+/g, ' ').trim() || 'N/A'
@@ -182,13 +184,7 @@ export default function Index({ auth, repayments = defaultRepayments, filters = 
                                                     </td>
                                                     <td className="whitespace-nowrap px-4 py-4 text-right text-sm text-gray-700">
                                                         {formatCurrency(repayment.totalpaid, repayment.currency_code)}
-                                                    </td>
-                                                    <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">
-                                                        {repayment.payment_method_name || 'N/A'} {/* Assuming this field exists */}
-                                                    </td>
-                                                    <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">
-                                                        {repayment.payment_date ? new Date(repayment.payment_date).toLocaleDateString() : 'N/A'}
-                                                    </td>
+                                                    </td> 
                                                     <td className="whitespace-nowrap px-4 py-4 text-sm text-center">
                                                         <div className="flex items-center justify-center space-x-2">
                                                             <Link
