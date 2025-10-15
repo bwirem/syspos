@@ -1,5 +1,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import { useEffect, useState } from 'react';
 import { Head, Link } from '@inertiajs/react';
+
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     // Sales
@@ -16,6 +18,7 @@ import {
     faArrowRight,
 } from '@fortawesome/free-solid-svg-icons';
 import "@fortawesome/fontawesome-svg-core/styles.css";
+import usePermissionsStore from '@/stores/usePermissionsStore';
 
 // Reusable Card Component
 function SummaryCard({ title, value, unit, description, linkHref, linkText, icon, iconBgColor, footerText, footerTextColor = "text-gray-500 dark:text-gray-400" }) {
@@ -80,9 +83,11 @@ export default function Dashboard({
 }) {
     // Define application URLs. Using Ziggy's route() is recommended if available.
     const urls = {
+
+        modules: route("usermanagement.userpermission.modulesAndItems"),
         // Sales
         salesHub: '/sales-billing-hub',
-        newSale: '/sales/create',
+        newSale: route('billing1.index'), // Assuming this route exists for creating a new sale
         dailySalesReport: '/reports/sales/daily',
 
         // Procurement
@@ -107,10 +112,15 @@ export default function Dashboard({
         newJournalEntry: route('accounting2.create'),
     };
 
+    // Fetch permissions on mount
+
+    const modules = usePermissionsStore((state) => state.modules);
+
     const formatAmount = (amount, currency = 'TZS ') => {
         if (amount === undefined || amount === null) return 'N/A';
         return currency + parseFloat(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
+    
 
     return (
         <AuthenticatedLayout
@@ -125,8 +135,10 @@ export default function Dashboard({
 
             <div className="py-12">
                 <div className="mx-auto max-w-7xl sm:px-6 lg:px-8 space-y-10">
+                     
 
                     {/* Sales Section */}
+                    {modules.some(module => module.modulekey === 'billing') && (
                     <section>
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-2xl font-semibold text-gray-800 dark:text-gray-100">Sales Overview</h3>
@@ -162,10 +174,12 @@ export default function Dashboard({
                             />
                         </div>
                     </section>
+                    )}
 
                     {/* Procurement Section */}
+                    {modules.some(module => module.modulekey === 'procurements') && (
                     <section>
-                        {/* <div className="flex justify-between items-center mb-4">
+                        <div className="flex justify-between items-center mb-4">
                             <h3 className="text-2xl font-semibold text-gray-800 dark:text-gray-100">Procurement Overview</h3>
                             <Link href={urls.procurementHub} className="text-sm text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium flex items-center group">
                                 Go to Procurement Hub <FontAwesomeIcon icon={faArrowRight} className="ml-1.5 h-3 w-3 transition-transform duration-200 group-hover:translate-x-1" />
@@ -198,10 +212,12 @@ export default function Dashboard({
                                 linkHref={urls.newPurchaseOrder}
                                 linkText="Create PO"
                             />
-                        </div> */}
-                    </section>                  
+                        </div>
+                    </section>    
+                    )}              
 
                     {/* Inventory Section */}
+                    {modules.some(module => module.modulekey === 'inventory') && (
                     <section>
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-2xl font-semibold text-gray-800 dark:text-gray-100">Inventory Overview</h3>
@@ -237,10 +253,12 @@ export default function Dashboard({
                             />
                         </div>
                     </section>
+                    )}
 
                     {/* Expenses Section */}
+                    {modules.some(module => module.modulekey === 'expenses') && (
                     <section>
-                        {/* <div className="flex justify-between items-center mb-4">
+                        <div className="flex justify-between items-center mb-4">
                             <h3 className="text-2xl font-semibold text-gray-800 dark:text-gray-100">Expenses Overview</h3>
                             <Link href={urls.expensesHub} className="text-sm text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium flex items-center group">
                                 Go to Expenses Hub <FontAwesomeIcon icon={faArrowRight} className="ml-1.5 h-3 w-3 transition-transform duration-200 group-hover:translate-x-1" />
@@ -272,12 +290,14 @@ export default function Dashboard({
                                 linkHref={urls.newExpense}
                                 linkText="Create Claim"
                             />
-                        </div> */}
+                        </div>
                     </section>
+                    )}
 
                      {/* Financial Accounting Section --- */}
+                    {modules.some(module => module.modulekey === 'accounting') && (
                     <section>
-                        {/* <div className="flex justify-between items-center mb-4">
+                        <div className="flex justify-between items-center mb-4">
                             <h3 className="text-2xl font-semibold text-gray-800 dark:text-gray-100">Financial Accounting</h3>
                             <Link href={urls.accountingHub} className="text-sm text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium flex items-center group">
                                 Go to Accounting Hub <FontAwesomeIcon icon={faArrowRight} className="ml-1.5 h-3 w-3 transition-transform duration-200 group-hover:translate-x-1" />
@@ -308,10 +328,9 @@ export default function Dashboard({
                                 linkHref={urls.newJournalEntry}
                                 linkText="Create Entry"
                             />
-                        </div> */}
-                    </section>
-                    {/* Financial Accounting Section --- */}
-
+                        </div>
+                    </section>                
+                    )}
 
                 </div>
             </div>

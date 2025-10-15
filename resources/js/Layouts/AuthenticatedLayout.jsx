@@ -181,6 +181,10 @@ export default function AuthenticatedLayout({ header, children }) {
   
     const { modules, moduleItems,fetchPermissions } = usePermissionsStore();
 
+    //2. Get the clearPermissions action from the store
+    const clearPermissions = usePermissionsStore((state) => state.clearPermissions);
+
+
     const user = usePage().props.auth.user;
     const [showingNavigationDropdown, setShowingNavigationDropdown] = useState(false);
     const [sidebarVisible, setSidebarVisible] = useState(window.innerWidth >= 640);   
@@ -315,6 +319,7 @@ export default function AuthenticatedLayout({ header, children }) {
                                                 href={route('logout')}
                                                 method="post"
                                                 as="button"
+                                                onClick={clearPermissions} // Clear permissions on logout
                                             >
                                                 <FontAwesomeIcon icon={faSignOutAlt} className="mr-2" /> Log Out
                                             </Dropdown.Link>
