@@ -10,13 +10,18 @@ import {
 import "@fortawesome/fontawesome-svg-core/styles.css";
 import Modal from '@/Components/CustomModal.jsx';
 
+const getTodayDate = () => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+};
+
 const DEBOUNCE_DELAY = 300;
 
 export default function Index({ auth, sales, filters }) {
     const { data, setData, put, errors, processing, clearErrors, reset } = useForm({
         search: filters.search || "",
-        start_date: filters.start_date || "",
-        end_date: filters.end_date || "",
+        start_date: filters.start_date || getTodayDate(),
+        end_date: filters.end_date || getTodayDate(),
         remarks: '',
     });
 
@@ -108,17 +113,7 @@ export default function Index({ auth, sales, filters }) {
                         <div className="p-6 text-gray-900">
                             <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
                                 <div className="flex items-center space-x-2">
-                                    <div className="relative flex items-center">
-                                        <FontAwesomeIcon icon={faSearch} className="absolute left-3 text-gray-500" />
-                                        <input
-                                            type="text"
-                                            name="search"
-                                            placeholder="Search by customer name or invoice"
-                                            value={data.search}
-                                            onChange={handleSearchChange}
-                                            className={`w-full rounded-md border-gray-300 py-2 pl-10 pr-4 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 md:w-64 ${errors.search ? "border-red-500" : ""}`}
-                                        />
-                                    </div>
+                                    
                                     <div className="flex items-center space-x-2">
                                         <input
                                             type="date"
@@ -134,6 +129,17 @@ export default function Index({ auth, sales, filters }) {
                                             value={data.end_date}
                                             onChange={handleSearchChange}
                                             className={`rounded-md border-gray-300 py-2 px-4 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 ${errors.end_date ? "border-red-500" : ""}`}
+                                        />
+                                    </div>
+                                    <div className="relative flex items-center">
+                                        <FontAwesomeIcon icon={faSearch} className="absolute left-3 text-gray-500" />
+                                        <input
+                                            type="text"
+                                            name="search"
+                                            placeholder="Search by customer name or invoice"
+                                            value={data.search}
+                                            onChange={handleSearchChange}
+                                            className={`w-full rounded-md border-gray-300 py-2 pl-10 pr-4 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 md:w-64 ${errors.search ? "border-red-500" : ""}`}
                                         />
                                     </div>
                                 </div>

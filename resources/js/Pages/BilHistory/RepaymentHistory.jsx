@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { Head, Link, useForm, router as inertiaRouter } from "@inertiajs/react"; // Import router and alias it
+import { Head, Link, useForm, router as inertiaRouter } from "@inertiajs/react";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -9,11 +9,17 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import "@fortawesome/fontawesome-svg-core/styles.css";
 
-import Modal from '@/Components/CustomModal.jsx'; // Assuming @ alias
+import Modal from '@/Components/CustomModal.jsx';
 
 const DEBOUNCE_DELAY = 300;
 
-// Default props to prevent errors if props are not passed (though Inertia usually provides them)
+// Helper function to get today's date in YYYY-MM-DD format
+const getTodayDate = () => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+};
+
+// Default props to prevent errors if props are not passed
 const defaultRepayments = { data: [], links: [], meta: {} };
 const defaultFilters = {};
 
@@ -21,11 +27,13 @@ export default function Index({ auth, repayments = defaultRepayments, filters = 
     const {
         data: filterCriteria,
         setData: setFilterCriteria,
-        errors: filterErrors, // Errors related to filter form fields if any (rare for GET)
-        processing: formProcessing, // General processing state from useForm
-        delete: destroyRepaymentAction, // Aliased delete method
+        errors: filterErrors,
+        processing: formProcessing,
+        delete: destroyRepaymentAction,
     } = useForm({
         search: filters.search || "",
+        start_date: filters.start_date || getTodayDate(),
+        end_date: filters.end_date || getTodayDate(),
     });
 
     const [modalState, setModalState] = useState({
@@ -37,7 +45,7 @@ export default function Index({ auth, repayments = defaultRepayments, filters = 
 
     const searchTimeoutRef = useRef(null);
 
-    // Effect for fetching data (debounced search)
+    // Effect for fetching data (debounced search and date changes)
     useEffect(() => {
         if (searchTimeoutRef.current) {
             clearTimeout(searchTimeoutRef.current);
@@ -47,6 +55,8 @@ export default function Index({ auth, repayments = defaultRepayments, filters = 
                 route("billing4.repaymenthistory"),
                 {
                     search: filterCriteria.search,
+                    start_date: filterCriteria.start_date,
+                    end_date: filterCriteria.end_date,
                 },
                 {
                     preserveState: true,
@@ -61,10 +71,11 @@ export default function Index({ auth, repayments = defaultRepayments, filters = 
                 clearTimeout(searchTimeoutRef.current);
             }
         };
-    }, [filterCriteria.search]);
+    }, [filterCriteria.search, filterCriteria.start_date, filterCriteria.end_date]);
 
-    const handleSearchChange = useCallback((e) => {
-        setFilterCriteria("search", e.target.value);
+    const handleFilterChange = useCallback((e) => {
+        const { name, value } = e.target;
+        setFilterCriteria(name, value);
     }, [setFilterCriteria]);
 
     const handleVoidClick = useCallback((repayment) => {
@@ -99,7 +110,6 @@ export default function Index({ auth, repayments = defaultRepayments, filters = 
                 preserveScroll: true,
                 onSuccess: () => {
                     handleModalClose();
-                    // Consider using Inertia flash messages for success feedback
                 },
                 onError: (errorResponse) => {
                     console.error("Failed to void repayment:", errorResponse);
@@ -132,7 +142,24 @@ export default function Index({ auth, repayments = defaultRepayments, filters = 
                     <div className="overflow-hidden bg-white shadow-sm sm:rounded-lg">
                         <div className="p-6 text-gray-900">
                             <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
-                                <div className="flex items-center space-x-2">
+                                <div className="flex flex-wrap items-center gap-4">
+                                    <div className="flex items-center space-x-2">
+                                        <input
+                                            type="date"
+                                            name="start_date"
+                                            value={filterCriteria.start_date}
+                                            onChange={handleFilterChange}
+                                            className={`rounded-md border-gray-300 py-2 px-4 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 ${filterErrors.start_date ? "border-red-500" : ""}`}
+                                        />
+                                        <span className="text-gray-500">to</span>
+                                        <input
+                                            type="date"
+                                            name="end_date"
+                                            value={filterCriteria.end_date}
+                                            onChange={handleFilterChange}
+                                            className={`rounded-md border-gray-300 py-2 px-4 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 ${filterErrors.end_date ? "border-red-500" : ""}`}
+                                        />
+                                    </div>
                                     <div className="relative flex items-center">
                                         <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                                             <FontAwesomeIcon icon={faSearch} className="h-4 w-4 text-gray-400" />
@@ -140,15 +167,14 @@ export default function Index({ auth, repayments = defaultRepayments, filters = 
                                         <input
                                             type="text"
                                             name="search"
-                                            id="search-repayments" // Added id for label association (optional)
+                                            id="search-repayments"
                                             placeholder="Search by customer or invoice"
                                             value={filterCriteria.search}
-                                            onChange={handleSearchChange}
+                                            onChange={handleFilterChange}
                                             className={`block w-full rounded-md border-gray-300 py-2 pl-10 pr-4 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 md:w-64 ${filterErrors.search ? "border-red-500" : ""}`}
                                         />
                                     </div>
                                 </div>
-                                {/* Add "Create Repayment" button if applicable */}
                             </div>
 
                             <div className="overflow-x-auto rounded-lg border border-gray-200">
@@ -158,7 +184,7 @@ export default function Index({ auth, repayments = defaultRepayments, filters = 
                                             <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Date</th>
                                             <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Customer Name</th>
                                             <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Invoice(s) Paid</th>
-                                            <th scope="col" className="px-4 py-3.5 text-right text-sm font-semibold text-gray-900">Amount Paid</th> 
+                                            <th scope="col" className="px-4 py-3.5 text-right text-sm font-semibold text-gray-900">Amount Paid</th>
                                             <th scope="col" className="px-4 py-3.5 text-center text-sm font-semibold text-gray-900">Actions</th>
                                         </tr>
                                     </thead>
@@ -177,14 +203,13 @@ export default function Index({ auth, repayments = defaultRepayments, filters = 
                                                         )}
                                                     </td>
                                                     <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">
-                                                        {/* Assuming repayment.items is an array of paid invoice details */}
                                                         {repayment.items && repayment.items.length > 0
                                                             ? repayment.items.map(item => item.invoiceno).join(', ')
                                                             : 'N/A'}
                                                     </td>
                                                     <td className="whitespace-nowrap px-4 py-4 text-right text-sm text-gray-700">
                                                         {formatCurrency(repayment.totalpaid, repayment.currency_code)}
-                                                    </td> 
+                                                    </td>
                                                     <td className="whitespace-nowrap px-4 py-4 text-sm text-center">
                                                         <div className="flex items-center justify-center space-x-2">
                                                             <Link
@@ -195,7 +220,6 @@ export default function Index({ auth, repayments = defaultRepayments, filters = 
                                                                 <FontAwesomeIcon icon={faEye} className="mr-1.5 h-3 w-3" />
                                                                 Preview
                                                             </Link>
-                                                            {/* Conditionally show Void button based on repayment status or policy */}
                                                             <button
                                                                 onClick={() => handleVoidClick(repayment)}
                                                                 className="flex items-center rounded bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-red-700"
@@ -211,7 +235,7 @@ export default function Index({ auth, repayments = defaultRepayments, filters = 
                                             ))
                                         ) : (
                                             <tr>
-                                                <td colSpan="6" className="whitespace-nowrap px-4 py-10 text-center text-sm text-gray-500">
+                                                <td colSpan="5" className="whitespace-nowrap px-4 py-10 text-center text-sm text-gray-500">
                                                     No repayments found matching your criteria.
                                                 </td>
                                             </tr>

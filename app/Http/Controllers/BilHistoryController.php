@@ -148,6 +148,13 @@ class BilHistoryController extends Controller
                ->orWhere('company_name', 'like', '%' . $request->search . '%');
             });
         }
+
+        // Add the date range filter
+        if ($request->filled('start_date') && $request->filled('end_date')) {
+            $startDate = Carbon::parse($request->start_date)->startOfDay();
+            $endDate = Carbon::parse($request->end_date)->endOfDay(); // Set time to the end of the day
+            $query->whereBetween('created_at', [$startDate, $endDate]);
+        }
      
         $query->where('voided', '=', 0);
 
@@ -156,7 +163,7 @@ class BilHistoryController extends Controller
      
          return inertia('BilHistory/RepaymentHistory', [
              'repayments' => $repayments,
-             'filters' => $request->only(['search']),
+             'filters' => $request->only(['search', 'start_date', 'end_date']),
          ]);
      } 
      
