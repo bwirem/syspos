@@ -139,21 +139,24 @@ Route::middleware('auth')->group(function () {
     Route::prefix('billing3')->name('billing3.')->group(function () {
         Route::get('/', [BilHistoryController::class, 'saleHistory'])->name('salehistory'); 
         Route::get('/{sale}/preview', [BilHistoryController::class, 'previewSale'])->name('preview');
-        Route::put('/{sale}', [BilHistoryController::class, 'postVoidSale'])->name('voidsale');        
+        Route::put('/{sale}', [BilHistoryController::class, 'postVoidSale'])->name('voidsale');  
+
     });
 
     // Pay Bills routes
     Route::prefix('billing4')->name('billing4.')->group(function () {
         Route::get('/', [BilHistoryController::class, 'repaymentHistory'])->name('repaymenthistory'); 
         Route::get('/{repayment}/preview', [BilHistoryController::class, 'previewRepayment'])->name('preview');
-        
+        Route::put('/repayments/{repayment}/void', [BilHistoryController::class, 'postVoidRepayment'])->name('void');
     });
 
     // Pay Bills routes
     Route::prefix('billing5')->name('billing5.')->group(function () {
         Route::get('/', [BilHistoryController::class, 'voidHistory'])->name('voidsalehistory'); 
         Route::get('/{voidsale}/preview', [BilHistoryController::class, 'previewVoid'])->name('preview');
-        
+        // Add this route alongside your other billing history routes
+        Route::get('/refunds/{voidsale}/create', [BilHistoryController::class, 'createRefund'])->name('refund.create');  
+        Route::post('/refunds/{voidsale}/store', [BilHistoryController::class, 'storeRefund'])->name('refund.store');      
     });
 
       

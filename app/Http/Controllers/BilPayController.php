@@ -55,8 +55,8 @@ class BilPayController extends Controller
                 ->orWhere('other_names', 'like', '%' . $request->search . '%')
                 ->orWhere('company_name', 'like', '%' . $request->search . '%');
             });
-        }   
-
+        }  
+        
         $query->where('balance', '>', 0);
     
         // Paginate and sort orders
@@ -73,15 +73,22 @@ class BilPayController extends Controller
      */
     public function edit(BILDebtor $debtor)
     {   
-        // Eager load debtor items and their related items
-        $debtor->load(['customer.invoices']);  
+        // Eager load the customer, but specifically filter the invoices relationship
+        $debtor->load(['customer' => function ($query) {
+            // Load only invoices that are NOT voided and still have a balance due.
+            // This is the most robust way to ensure only payable invoices are sent.
+            $query->with(['invoices' => function ($invoiceQuery) {
+                $invoiceQuery->where('voided', '!=', 1)
+                            ->where('status', '!=', InvoiceStatus::Cancelled->value) // Double safety check
+                            ->where('balancedue', '>', 0);
+            }]);
+        }]);  
 
         return inertia('BilPays/PayBills', [
             'debtor' => $debtor,
             'payment_types' => BLSPaymentType::all(),
         ]);
-    }   
-     
+    }    
     
    
     public function pay(Request $request, $debtor = null) // Assuming $debtor might be part of the route or not strictly used here
@@ -244,34 +251,28 @@ class BilPayController extends Controller
                     'totaldue' => $totaldue,
                     'totalpaid' =>$invoices['paidforbill'],                    
                 ]);              
+            
+                // 1. Dynamically create the correct 'paytypeXXXXXX' column name from the form data.
+                //    str_pad() ensures the ID (e.g., 1) becomes a zero-padded string (e.g., "000001").
+                $paymentMethodColumn = 'paytype' . str_pad($data['payment_method'], 6, '0', STR_PAD_LEFT);
 
-                $data['paymentmethod'] = '000001';
-                //collection
-                // Define payment types with dynamic key
-                $paymentTypes = [
-                    $data['paymentmethod'] => $invoices['paidforbill'] ?? 0,
-                    // Add more payment types if required
-                ];
-                
-                // Initialize base collection data
+                // 2. Initialize the collection data array, directly including the dynamic column.
                 $collectionData = [
-                    'transdate' =>  $transdate,
-                    'receiptno' => $receiptNo, // Trim the receipt number
-                    'paymentsource' => 1, // Assuming 1 corresponds to the paymentsource value
-                    'customer_id' =>  $invoices['customer_id'], // Customer ID
-                    'yearpart' => $yearpart,
-                    'monthpart' => $monthpart,
-                    'transtype' => BillingTransTypes::Payment->value, // Transaction type
-                    'user_id' => Auth::id(), // Current authenticated user
+                    'transdate'     => $transdate,
+                    'receiptno'     => $receiptNo,
+                    'paymentsource' => PaymentSources::InvoicePayment->value, // Use Enum for clarity instead of '1'
+                    'customer_id'   => $invoices['customer_id'],
+                    'yearpart'      => $yearpart,
+                    'monthpart'     => $monthpart,
+                    'transtype'     => BillingTransTypes::Payment->value,
+                    'user_id'       => Auth::id(),
+
+                    // 3. Add the dynamic column and its value directly to the array.
+                    $paymentMethodColumn => $invoices['paidforbill'] ?? 0,
                 ];
-                
-                // Dynamically add payment types
-                foreach ($paymentTypes as $type => $value) {
-                    $collectionData['paytype' . $type] = $value;
-                }
-                
-                // Save collection data to the database
-                BILCollection::create($collectionData);   
+
+                // 4. Save the single, correctly formatted collection record to the database.
+                BILCollection::create($collectionData);
 
             }
 

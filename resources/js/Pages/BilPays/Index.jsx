@@ -18,12 +18,19 @@ const DEBTOR_STAGE_LABELS = {
     2: 'Complete',
 };
 
+const getTodayDate = () => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+};
+
 const DEBOUNCE_DELAY = 300; // milliseconds for search debounce
 
 export default function Index({ auth, debtors, filters }) {
     const { data, setData, errors, processing } = useForm({ // `processing` might be useful if actions become forms
         search: filters.search || "",
         stage: filters.stage || "",
+        start_date: filters.start_date || getTodayDate(),
+        end_date: filters.end_date || getTodayDate(),
     });
 
     // Ref for debouncing
@@ -39,6 +46,8 @@ export default function Index({ auth, debtors, filters }) {
             router.get(route("billing2.index"), {
                 search: data.search,
                 stage: data.stage,
+                start_date: data.start_date,
+                end_date: data.end_date,
             }, {
                 preserveState: true,
                 replace: true, // Avoids polluting browser history with filter changes
@@ -50,7 +59,7 @@ export default function Index({ auth, debtors, filters }) {
                 clearTimeout(searchTimeoutRef.current);
             }
         };
-    }, [data.search, data.stage]);
+    }, [data.search, data.stage,data.start_date, data.end_date]);
 
     const handleSearchChange = useCallback((e) => {
         setData("search", e.target.value);
@@ -70,9 +79,11 @@ export default function Index({ auth, debtors, filters }) {
                 <div className="mx-auto max-w-7xl sm:px-6 lg:px-8">
                     <div className="overflow-hidden bg-white shadow-sm sm:rounded-lg">
                         <div className="p-6 text-gray-900">
-                            {/* Header Actions */}
+                            {/* Header Actions */}                          
+
                             <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
-                                <div className="flex items-center space-x-2">
+                                <div className="flex items-center space-x-2"> 
+                                    
                                     <div className="relative flex items-center">
                                         <FontAwesomeIcon icon={faSearch} className="absolute left-3 text-gray-500" />
                                         <input
@@ -112,8 +123,7 @@ export default function Index({ auth, debtors, filters }) {
                                     <thead className="bg-gray-50">
                                         <tr>
                                             <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Customer Name</th>
-                                            <th scope="col" className="px-4 py-3.5 text-right text-sm font-semibold text-gray-900">Balance</th>
-                                            <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Payment Stage</th>
+                                            <th scope="col" className="px-4 py-3.5 text-right text-sm font-semibold text-gray-900">Balance</th>                                            
                                             <th scope="col" className="px-4 py-3.5 text-center text-sm font-semibold text-gray-900">Actions</th>
                                         </tr>
                                     </thead>
@@ -133,10 +143,7 @@ export default function Index({ auth, debtors, filters }) {
                                                             minimumFractionDigits: 2,
                                                             maximumFractionDigits: 2,
                                                         })}
-                                                    </td>
-                                                    <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-700">
-                                                        {DEBTOR_STAGE_LABELS[debtor.stage] || 'Unknown'}
-                                                    </td>
+                                                    </td>                                                    
                                                     <td className="whitespace-nowrap px-4 py-4 text-sm text-center">
                                                         <div className="flex items-center justify-center"> {/* Adjusted justify-end to justify-center since only one button */}
                                                             <Link

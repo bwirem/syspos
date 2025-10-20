@@ -1,6 +1,5 @@
-// ... other imports ...
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, useForm, router } from '@inertiajs/react';
+import { Head, Link,useForm, router } from '@inertiajs/react';
 import { useState, useEffect, useCallback } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faMoneyBill, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
@@ -8,9 +7,8 @@ import '@fortawesome/fontawesome-svg-core/styles.css';
 import Modal from '@/Components/CustomModal.jsx';
 
 export default function PayBills({ auth, debtor, payment_types }) {
-    // Ensure debtor and debtor.customer exist before trying to access their properties
-    const safeDebtor = debtor || { customer: { invoices: [] } };
-    const safeCustomer = safeDebtor.customer || { invoices: [] };
+    // The controller now guarantees that only payable, non-voided invoices are received.
+    const initialDebtorInvoices = debtor?.customer?.invoices || [];
 
     const {
         data: formData,
@@ -18,25 +16,23 @@ export default function PayBills({ auth, debtor, payment_types }) {
         post: processPayment,
         errors: formErrors,
         processing,
-        reset: resetFormFields,
         clearErrors,
     } = useForm({
-        customer_id: safeDebtor.customer_id || null, // Ensure customer_id is present
+        customer_id: debtor?.customer_id || null,
         total: 0,
         debtorItems: [],
         payment_method: '',
         paid_amount: '',
-        total_paid: '',
+        total_paid: '', // This should mirror paid_amount for the backend
     });
 
-    const initialDebtorInvoices = (safeCustomer.invoices || []).filter(item => parseFloat(item.balancedue) > 0);
     const [selectedInvoicesMask, setSelectedInvoicesMask] = useState(
         new Array(initialDebtorInvoices.length).fill(true)
     );
     const [paymentModalOpen, setPaymentModalOpen] = useState(false);
     const [alertModal, setAlertModal] = useState({ isOpen: false, message: '' });
-    const [paymentMethods, setPaymentMethods] = useState(payment_types || []);
 
+    // Effect to recalculate total and update form data when invoice selection changes
     useEffect(() => {
         const currentlySelectedInvoices = initialDebtorInvoices.filter(
             (_, index) => selectedInvoicesMask[index]
@@ -53,21 +49,14 @@ export default function PayBills({ auth, debtor, payment_types }) {
                 invoiceno: inv.invoiceno,
                 totaldue: parseFloat(inv.totaldue).toFixed(2),
                 balancedue: parseFloat(inv.balancedue).toFixed(2),
-                invoice_id: inv.id, // Retain if your backend payBills needs it
             })),
-            // Ensure customer_id is correctly set from the debtor prop if it wasn't initially
-            customer_id: prevData.customer_id || safeDebtor.customer_id || null,
+            customer_id: prevData.customer_id || debtor?.customer_id || null,
         }));
-    }, [selectedInvoicesMask, initialDebtorInvoices, setFormData, safeDebtor.customer_id]);
+    }, [selectedInvoicesMask, initialDebtorInvoices, setFormData, debtor?.customer_id]);
 
 
-    const showAlert = (message) => {
-        setAlertModal({ isOpen: true, message });
-    };
-
-    const closeAlertModal = () => {
-        setAlertModal({ isOpen: false, message: '' });
-    };
+    const showAlert = (message) => setAlertModal({ isOpen: true, message });
+    const closeAlertModal = () => setAlertModal({ isOpen: false, message: '' });
 
     const handlePayBillsClick = () => {
         if (formData.debtorItems.length === 0 || parseFloat(formData.total) <= 0) {
@@ -79,69 +68,43 @@ export default function PayBills({ auth, debtor, payment_types }) {
             ...prevData,
             paid_amount: prevData.total,
             total_paid: prevData.total,
-            payment_method: paymentMethods.length > 0 ? paymentMethods[0].id.toString() : '', // Pre-select first payment method or leave empty
+            payment_method: payment_types.length > 0 ? payment_types[0].id.toString() : '',
         }));
         setPaymentModalOpen(true);
     };
 
-    const handlePaymentModalClose = () => {
-        setPaymentModalOpen(false);
-    };
+    const handlePaymentModalClose = () => setPaymentModalOpen(false);
 
     const handlePaymentModalConfirm = () => {
+        // Basic client-side checks; the backend will perform the definitive validation
         if (!formData.payment_method) {
-            // This client-side check is good, backend will also validate
             setFormData('errors', { ...formErrors, payment_method: 'Payment method is required.' });
-            // showAlert("Payment method is required."); // Or use showAlert
             return;
         }
         if (!formData.paid_amount || parseFloat(formData.paid_amount) <= 0) {
             setFormData('errors', { ...formErrors, paid_amount: 'Paid amount must be greater than zero.' });
-            // showAlert("Paid amount must be greater than zero."); // Or use showAlert
             return;
         }
 
-        // Log the data just before sending
-        console.log('Submitting payment data:', formData);
-
-        processPayment(route('billing2.pay'), { // Assuming 'billing2.pay' is the correct alias and takes no URL params for debtor ID
+        processPayment(route('billing2.pay'), {
             preserveScroll: true,
-            onSuccess: (page) => { // `page` object is often returned on success
-                console.log('Payment processed successfully! Page:', page);
-                setPaymentModalOpen(false); // << MODAL IS CLOSED HERE ON SUCCESS
-                // Check if backend sent a success message in the flash object
+            onSuccess: (page) => {
+                setPaymentModalOpen(false);
                 const successMessage = page.props.flash?.success || 'Payment processed successfully!';
                 showAlert(successMessage);
-                // resetFormFields(); // Optionally reset form fields related to payment itself
-                setTimeout(() => {
-                    // Redirect to index, or potentially reload data if staying on the same page (e.g., to update invoice list)
-                    router.get(route('billing2.index'), {}, { replace: true });
-                }, 1500);
+                // After showing success, redirect back to the main debtors list
+                setTimeout(() => router.get(route('billing2.index'), {}, { replace: true }), 1500);
             },
             onError: (pageErrors) => {
                 console.error('Payment processing failed:', pageErrors);
-                // The formErrors state is automatically updated by useForm
-                // Modal remains open for corrections.
-                // Show a general alert if no specific field errors are highlighted or if a general message exists
-                if (pageErrors.message) {
-                    showAlert(pageErrors.message);
-                } else if (Object.keys(pageErrors).length > 0 && !Object.keys(formErrors).some(k => formErrors[k])) {
-                    // If pageErrors exist but formErrors didn't update (shouldn't happen often with useForm)
-                    showAlert('Please correct the errors highlighted and try again.');
-                } else if (Object.keys(pageErrors).length === 0) {
-                    showAlert('An unexpected error occurred during payment processing.');
-                }
+                // formErrors are automatically populated by Inertia's useForm hook
             },
         });
     };
 
     const handlePaidAmountChange = (e) => {
         const value = e.target.value;
-        setFormData(prevData => ({
-            ...prevData,
-            paid_amount: value,
-            total_paid: value,
-        }));
+        setFormData(prevData => ({ ...prevData, paid_amount: value, total_paid: value }));
     };
 
     const handleCheckboxChange = (index) => {
@@ -151,13 +114,12 @@ export default function PayBills({ auth, debtor, payment_types }) {
     };
 
     const handleSelectAllChange = (e) => {
-        const isChecked = e.target.checked;
-        setSelectedInvoicesMask(new Array(initialDebtorInvoices.length).fill(isChecked));
+        setSelectedInvoicesMask(new Array(initialDebtorInvoices.length).fill(e.target.checked));
     };
 
-    const customerDisplayName = safeCustomer.customer_type === 'individual'
-        ? `${safeCustomer.first_name || ''} ${safeCustomer.other_names || ''} ${safeCustomer.surname || ''}`.replace(/\s+/g, ' ').trim()
-        : safeCustomer.company_name || 'N/A';
+    const customerDisplayName = debtor?.customer?.customer_type === 'individual'
+        ? `${debtor.customer.first_name || ''} ${debtor.customer.surname || ''}`.trim()
+        : debtor?.customer?.company_name || 'N/A';
 
     return (
         <AuthenticatedLayout
@@ -168,31 +130,18 @@ export default function PayBills({ auth, debtor, payment_types }) {
             <div className="py-12">
                 <div className="mx-auto max-w-5xl sm:px-6 lg:px-8">
                     <div className="overflow-hidden bg-white p-6 shadow-sm sm:rounded-lg">
-                        {/* Check if debtor or customer_id is missing, which is essential */}
-                        {!safeDebtor.customer_id && (
-                            <div className="mb-4 rounded-md border border-red-300 bg-red-50 p-4 text-red-700">
-                                Error: Debtor information or Customer ID is missing. Cannot proceed with payment.
-                            </div>
-                        )}
                         <div className="space-y-6">
                             <div className="mb-6 rounded-md border border-gray-200 bg-gray-50 p-4">
                                 <h3 className="text-lg font-medium leading-6 text-gray-900">Debtor Information</h3>
                                 <div className="mt-2 grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
                                     <div>
-                                        <label htmlFor="customer_name_display" className="block text-sm font-medium text-gray-700">
-                                            Customer Name
-                                        </label>
-                                        <p id="customer_name_display" className="mt-1 text-sm text-gray-900 font-semibold">{customerDisplayName}</p>
+                                        <p className="block text-sm font-medium text-gray-700">Customer Name</p>
+                                        <p className="mt-1 text-sm text-gray-900 font-semibold">{customerDisplayName}</p>
                                     </div>
                                     <div>
-                                        <label htmlFor="total_due_for_payment_display" className="block text-sm font-medium text-gray-700">
-                                            Total Due (Selected Invoices)
-                                        </label>
-                                        <p id="total_due_for_payment_display" className="mt-1 text-sm text-gray-900 font-semibold">
-                                            {parseFloat(formData.total).toLocaleString(undefined, {
-                                                minimumFractionDigits: 2,
-                                                maximumFractionDigits: 2,
-                                            })}
+                                        <p className="block text-sm font-medium text-gray-700">Total Due (Selected Invoices)</p>
+                                        <p className="mt-1 text-lg font-semibold text-indigo-600">
+                                            {parseFloat(formData.total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </p>
                                     </div>
                                 </div>
@@ -219,7 +168,7 @@ export default function PayBills({ auth, debtor, payment_types }) {
                                     </thead>
                                     <tbody className="divide-y divide-gray-200 bg-white">
                                         {initialDebtorInvoices.length > 0 ? initialDebtorInvoices.map((item, index) => (
-                                            <tr key={item.id || index} className={`${selectedInvoicesMask[index] ? 'bg-indigo-50' : ''}`}>
+                                            <tr key={item.id} className={`${selectedInvoicesMask[index] ? 'bg-indigo-50' : ''}`}>
                                                 <td className="px-4 py-3 text-center">
                                                     <input
                                                         type="checkbox"
@@ -229,42 +178,24 @@ export default function PayBills({ auth, debtor, payment_types }) {
                                                     />
                                                 </td>
                                                 <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{item.invoiceno}</td>
-                                                <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-500">
-                                                    {parseFloat(item.totaldue).toLocaleString(undefined, {
-                                                        minimumFractionDigits: 2,
-                                                        maximumFractionDigits: 2,
-                                                    })}
-                                                </td>
-                                                <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-500">
-                                                    {parseFloat(item.balancedue).toLocaleString(undefined, {
-                                                        minimumFractionDigits: 2,
-                                                        maximumFractionDigits: 2,
-                                                    })}
-                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-500">{parseFloat(item.totaldue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-right text-gray-700">{parseFloat(item.balancedue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                             </tr>
                                         )) : (
-                                            <tr>
-                                                <td colSpan="4" className="px-4 py-10 text-center text-sm text-gray-500">
-                                                    No outstanding invoices found for this debtor.
-                                                </td>
-                                            </tr>
+                                            <tr><td colSpan="4" className="px-4 py-10 text-center text-sm text-gray-500">No outstanding invoices found for this debtor.</td></tr>
                                         )}
                                     </tbody>
                                 </table>
                             </div>
 
                             <div className="flex justify-end space-x-3 border-t border-gray-200 pt-6">
-                                <button
-                                    type="button"
-                                    onClick={() => router.get(route('billing2.index'))}
-                                    className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-                                >
+                                <Link href={route('billing2.index')} className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
                                     <FontAwesomeIcon icon={faTimesCircle} className="mr-2" />
                                     Cancel
-                                </button>
+                                </Link>
                                 <button
                                     type="button"
-                                    disabled={processing || formData.debtorItems.length === 0 || parseFloat(formData.total) <= 0 || !safeDebtor.customer_id}
+                                    disabled={processing || formData.debtorItems.length === 0 || parseFloat(formData.total) <= 0}
                                     className="inline-flex items-center justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
                                     onClick={handlePayBillsClick}
                                 >
@@ -277,96 +208,57 @@ export default function PayBills({ auth, debtor, payment_types }) {
                 </div>
             </div>
 
+            <Modal isOpen={alertModal.isOpen} onClose={closeAlertModal} title="Alert" isAlert={true}>
+                <p>{alertModal.message}</p>
+            </Modal>
+
             <Modal
-                isOpen={alertModal.isOpen}
-                onClose={closeAlertModal}
-                title="Alert"
-                message={alertModal.message}
-                isAlert={true}
-            />
-
-            {paymentModalOpen && (
-                <Modal
-                    isOpen={paymentModalOpen}
-                    onClose={handlePaymentModalClose}
-                    onConfirm={handlePaymentModalConfirm}
-                    title="Process Payment"
-                    confirmButtonText={processing ? 'Processing...' : 'Confirm Payment'}
-                    confirmButtonDisabled={processing} // Ensure button is disabled when processing
-                    isProcessing={processing}
-                >
-                    <div className="space-y-4 p-1">
-                        <div>
-                            <label htmlFor="payment_total_due" className="block text-sm font-medium text-gray-700">
-                                Total Amount to Pay
-                            </label>
-                            <p id="payment_total_due" className="mt-1 rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-700">
-                                {parseFloat(formData.total).toLocaleString(undefined, {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2,
-                                })}
-                            </p>
-                        </div>
-
-                        <div>
-                            <label htmlFor="payment_method_select" className="block text-sm font-medium text-gray-700">
-                                Payment Method <span className="text-red-500">*</span>
-                            </label>
-                            <select
-                                id="payment_method_select"
-                                value={formData.payment_method}
-                                onChange={(e) => setFormData('payment_method', e.target.value)}
-                                className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm ${formErrors.payment_method ? 'border-red-500 ring-1 ring-red-500' : ''}`}
-                                disabled={processing}
-                            >
-                                <option value="" disabled>Select Payment Method</option>
-                                {paymentMethods.length === 0 && <option value="" disabled>No payment methods available</option>}
-                                {paymentMethods.map((method) => (
-                                    <option key={method.id} value={method.id}>{method.name}</option>
-                                ))}
-                            </select>
-                            {formErrors.payment_method && <p className="mt-1 text-sm text-red-600">{formErrors.payment_method}</p>}
-                        </div>
-
-                        <div>
-                            <label htmlFor="paid_amount_input" className="block text-sm font-medium text-gray-700">
-                                Amount Paid <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                                type="number"
-                                id="paid_amount_input"
-                                value={formData.paid_amount}
-                                onChange={handlePaidAmountChange}
-                                placeholder="Enter amount paid"
-                                className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm ${formErrors.paid_amount ? 'border-red-500 ring-1 ring-red-500' : ''}`}
-                                disabled={processing}
-                                step="0.01"
-                            />
-                            {formErrors.paid_amount && <p className="mt-1 text-sm text-red-600">{formErrors.paid_amount}</p>}
-                            {parseFloat(formData.paid_amount) > parseFloat(formData.total) && (
-                                <p className="mt-1 text-sm text-yellow-600">Amount paid is greater than total due for selected items.</p>
-                            )}
-                             {parseFloat(formData.paid_amount) < parseFloat(formData.total) && parseFloat(formData.paid_amount) > 0 && (
-                                <p className="mt-1 text-sm text-yellow-600">Partial payment. Balance for selected items will remain.</p>
-                            )}
-                        </div>
-                        {formErrors.message && <p className="mt-2 text-sm text-red-600">{formErrors.message}</p>}
-
-                        {/* Generic error for debtorItems if backend sends it as a single string */}
-                        {formErrors.debtorItems && typeof formErrors.debtorItems === 'string' && (
-                             <p className="mt-2 text-sm text-red-600">Invoice Items Error: {formErrors.debtorItems}</p>
-                        )}
-                        {/* For displaying debtorItems.X.field errors, you might need a loop if backend sends them this way */}
-                        {Object.keys(formErrors)
-                            .filter(key => key.startsWith('debtorItems.'))
-                            .map(key => (
-                                <p key={key} className="mt-1 text-sm text-red-600">
-                                    Error in invoice item ({key.split('.')[1]}): {formErrors[key]}
-                                </p>
-                        ))}
+                isOpen={paymentModalOpen}
+                onClose={handlePaymentModalClose}
+                onConfirm={handlePaymentModalConfirm}
+                title="Process Payment"
+                confirmButtonText={processing ? 'Processing...' : 'Confirm Payment'}
+                isProcessing={processing}
+            >
+                <div className="space-y-4 p-1">
+                    <div>
+                        <label htmlFor="payment_total_due" className="block text-sm font-medium text-gray-700">Total Amount to Pay</label>
+                        <p id="payment_total_due" className="mt-1 rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-700">{parseFloat(formData.total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                     </div>
-                </Modal>
-            )}
+                    <div>
+                        <label htmlFor="payment_method_select" className="block text-sm font-medium text-gray-700">Payment Method <span className="text-red-500">*</span></label>
+                        <select
+                            id="payment_method_select"
+                            value={formData.payment_method}
+                            onChange={(e) => setFormData('payment_method', e.target.value)}
+                            className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm ${formErrors.payment_method ? 'border-red-500' : ''}`}
+                            disabled={processing}
+                        >
+                            <option value="" disabled>Select Payment Method</option>
+                            {payment_types.map((method) => (
+                                <option key={method.id} value={method.id}>{method.name}</option>
+                            ))}
+                        </select>
+                        {formErrors.payment_method && <p className="mt-1 text-sm text-red-600">{formErrors.payment_method}</p>}
+                    </div>
+                    <div>
+                        <label htmlFor="paid_amount_input" className="block text-sm font-medium text-gray-700">Amount Paid <span className="text-red-500">*</span></label>
+                        <input
+                            type="number"
+                            id="paid_amount_input"
+                            value={formData.paid_amount}
+                            onChange={handlePaidAmountChange}
+                            placeholder="Enter amount paid"
+                            className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm ${formErrors.paid_amount ? 'border-red-500' : ''}`}
+                            disabled={processing}
+                            step="0.01"
+                        />
+                        {formErrors.paid_amount && <p className="mt-1 text-sm text-red-600">{formErrors.paid_amount}</p>}
+                        {parseFloat(formData.paid_amount) > parseFloat(formData.total) && <p className="mt-1 text-sm text-yellow-600">Amount paid is greater than total due.</p>}
+                        {parseFloat(formData.paid_amount) < parseFloat(formData.total) && parseFloat(formData.paid_amount) > 0 && <p className="mt-1 text-sm text-yellow-600">Partial payment. Balance will remain.</p>}
+                    </div>
+                </div>
+            </Modal>
         </AuthenticatedLayout>
     );
 }

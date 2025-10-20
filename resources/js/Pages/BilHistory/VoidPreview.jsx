@@ -1,41 +1,21 @@
+
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, Link, useForm } from '@inertiajs/react';
-import { useEffect } from 'react';
+import { Head, Link } from '@inertiajs/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimesCircle, faExclamationTriangle } from '@fortawesome/free-solid-svg-icons'; // Added faExclamationTriangle for void status
+import { faTimesCircle, faExclamationTriangle, faUndo, faCheckCircle } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
 
-// Modal and debounce are not used, can be removed if not planned for this specific preview.
-// import Modal from '../../Components/CustomModal.jsx';
-// const debounce = (func, delay) => { ... };
-
-export default function VoidPreview({ auth, sale }) { // `sale` prop likely contains the details of the voided sale
-    // useForm is used here mainly for consistency if other previews use it.
-    // For pure display, direct prop access is simpler.
-    // `put`, `errors`, `processing`, `reset` are not used and can be omitted from destructuring.
-    const { data, setData } = useForm({
-        // Customer details can be accessed directly from sale.customer
-        customer_id: sale.customer_id,
-        total: parseFloat(sale.total) || 0, // Original total of the sale
-        // saleitems: sale.items || [], // Not strictly needed in useForm for display
-    });
-
+export default function VoidPreview({ auth, sale }) {
+    // --- Direct Prop Access ---
     const saleItemsToDisplay = sale.items || [];
     const customer = sale.customer || {};
-    const currencyCode = sale.currency_code || 'TZS'; // Default to TZS
+    const currencyCode = sale.currency_code || 'TZS';
 
-    // This useEffect updates data.total in useForm if saleItemsToDisplay changes.
-    // For a preview, sale.total is likely the definitive original total.
-    useEffect(() => {
-        const calculatedTotal = saleItemsToDisplay.reduce(
-            (sum, item) => sum + (parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0),
-            0
-        );
-        setData('total', calculatedTotal); // Updates the useForm's data.total
-    }, [saleItemsToDisplay, setData]);
-
+    // --- Helper Functions ---
     const formatCurrency = (amount) => {
-        return parseFloat(amount).toLocaleString(undefined, {
+        const parsedAmount = parseFloat(amount);
+        if (isNaN(parsedAmount)) return 'N/A';
+        return parsedAmount.toLocaleString(undefined, {
             style: 'currency',
             currency: currencyCode,
             minimumFractionDigits: 2,
@@ -43,21 +23,28 @@ export default function VoidPreview({ auth, sale }) { // `sale` prop likely cont
         });
     };
 
-    const formatNumber = (amount, minimumFractionDigits = 2, maximumFractionDigits = 2) => {
-        return parseFloat(amount).toLocaleString(undefined, {
+    const formatNumber = (amount, minimumFractionDigits = 0, maximumFractionDigits = 2) => {
+        const parsedAmount = parseFloat(amount);
+        if (isNaN(parsedAmount)) return 'N/A';
+        return parsedAmount.toLocaleString(undefined, {
             minimumFractionDigits: minimumFractionDigits,
             maximumFractionDigits: maximumFractionDigits,
         });
     };
 
-    // Format void date if available
-    const voidDate = sale.voided_at ? new Date(sale.voided_at).toLocaleString() : 'N/A';
-
+    // --- Derived Data for Display ---
+    const voidDate = sale.created_at ? new Date(sale.created_at).toLocaleString() : 'N/A';
+    const originalTotal = saleItemsToDisplay.reduce((sum, item) => sum + (parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0), 0);
+    
+    // --- Refund Calculation Logic ---
+    const totalPaid = parseFloat(sale.totalpaid) || 0;
+    const refundedAmount = parseFloat(sale.refunded_amount) || 0;
+    const amountToRefund = totalPaid - refundedAmount;
 
     return (
         <AuthenticatedLayout
             user={auth.user}
-            header={<h2 className="text-xl font-semibold leading-tight text-gray-800">Voided Sale Preview - Invoice #{sale.invoice_number || 'N/A'}</h2>}
+            header={<h2 className="text-xl font-semibold leading-tight text-gray-800">Voided Sale Preview - Ref #{sale.invoice_number || sale.receiptno || 'N/A'}</h2>}
         >
             <Head title={`Voided Sale - ${sale.invoice_number || 'Details'}`} />
 
@@ -66,28 +53,39 @@ export default function VoidPreview({ auth, sale }) { // `sale` prop likely cont
                     <div className="overflow-hidden bg-white p-6 shadow-sm sm:rounded-lg">
                         <div className="space-y-8">
 
+                            {/* --- FIX: Use a ternary operator to prevent "0" from rendering --- */}
+                            {sale.is_refunded ? (
+                                <div className="rounded-md bg-green-50 p-4 border border-green-200">
+                                    <div className="flex">
+                                        <div className="flex-shrink-0">
+                                            <FontAwesomeIcon icon={faCheckCircle} className="h-5 w-5 text-green-400" aria-hidden="true" />
+                                        </div>
+                                        <div className="ml-3">
+                                            <h3 className="text-sm font-medium text-green-800">Fully Refunded</h3>
+                                            <div className="mt-2 text-sm text-green-700">
+                                                <p>The total paid amount for this voided sale has been successfully refunded.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : null}
+
                             {/* Void Information Section */}
                             <div className="rounded-md bg-red-50 p-4 border border-red-200">
                                 <div className="flex">
-                                    <div className="flex-shrink-0">
-                                        <FontAwesomeIcon icon={faExclamationTriangle} className="h-5 w-5 text-red-400" aria-hidden="true" />
-                                    </div>
+                                    <div className="flex-shrink-0"><FontAwesomeIcon icon={faExclamationTriangle} className="h-5 w-5 text-red-400" aria-hidden="true" /></div>
                                     <div className="ml-3">
                                         <h3 className="text-sm font-medium text-red-800">This sale has been voided.</h3>
                                         <div className="mt-2 text-sm text-red-700">
                                             <p><strong>Voided On:</strong> {voidDate}</p>
-                                            {sale.void_remarks && (
-                                                <p className="mt-1"><strong>Reason:</strong> {sale.void_remarks}</p>
-                                            )}
-                                            {sale.voided_by_user && ( // Assuming you have user info who voided
-                                                 <p className="mt-1"><strong>Voided By:</strong> {sale.voided_by_user.name || 'N/A'}</p>
-                                            )}
+                                            {sale.reasons && (<p className="mt-1"><strong>Reason:</strong> {sale.reasons}</p>)}
+                                            {sale.voided_by_user && (<p className="mt-1"><strong>Voided By:</strong> {sale.voided_by_user.name || 'N/A'}</p>)}
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-
+                            {/* --- COMPLETE: Original Customer Details --- */}
                             <div>
                                 <h3 className="text-lg font-medium leading-6 text-gray-900 border-b border-gray-200 pb-2 mb-4">
                                     Original Customer Details
@@ -111,6 +109,7 @@ export default function VoidPreview({ auth, sale }) { // `sale` prop likely cont
                                 )}
                             </div>
 
+                            {/* --- COMPLETE: Original Sale Items --- */}
                             <div>
                                 <h3 className="text-lg font-medium leading-6 text-gray-900 border-b border-gray-200 pb-2 mb-4">
                                     Original Sale Items
@@ -126,47 +125,26 @@ export default function VoidPreview({ auth, sale }) { // `sale` prop likely cont
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-200 bg-white">
-                                            {saleItemsToDisplay.length > 0 ? saleItemsToDisplay.map((item, index) => (
-                                                <tr key={item.id || index}>
-                                                    <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                                                        {item.item?.name || item.product_name || 'Unknown Item'}
-                                                    </td>
-                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-500">
-                                                        {formatNumber(item.quantity, 0, 2)}
-                                                    </td>
-                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-500">
-                                                        {formatCurrency(item.price)}
-                                                    </td>
-                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-500">
-                                                        {formatCurrency(item.quantity * item.price)}
-                                                    </td>
+                                            {saleItemsToDisplay.length > 0 ? saleItemsToDisplay.map((item) => (
+                                                <tr key={item.id}>
+                                                    <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{item.item?.name || 'Unknown Item'}</td>
+                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-500">{formatNumber(item.quantity)}</td>
+                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-500">{formatCurrency(item.price)}</td>
+                                                    <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-right text-gray-700">{formatCurrency(item.quantity * item.price)}</td>
                                                 </tr>
                                             )) : (
-                                                <tr>
-                                                    <td colSpan="4" className="px-4 py-10 text-center text-sm text-gray-500">No items in this sale.</td>
-                                                </tr>
+                                                <tr><td colSpan="4" className="px-4 py-10 text-center text-sm text-gray-500">No items in this sale.</td></tr>
                                             )}
                                         </tbody>
                                         {saleItemsToDisplay.length > 0 && (
                                             <tfoot className="bg-gray-100">
-                                                <tr className="font-semibold">
-                                                    <td colSpan="3" className="px-4 py-3 text-right text-sm uppercase text-gray-700">Original Grand Total</td>
-                                                    <td className="px-4 py-3 text-right text-sm text-gray-800">
-                                                        {formatCurrency(data.total)}
-                                                    </td>
-                                                </tr>
-                                                {/* Display original discount, tax, net amount, paid, balance if relevant for a voided sale record */}
-                                                {typeof sale.discount_amount !== 'undefined' && parseFloat(sale.discount_amount) > 0 && (
-                                                    <tr><td colSpan="3" className="px-4 py-3 text-right text-sm text-gray-700">Original Discount</td><td className="px-4 py-3 text-right text-sm text-gray-800">({formatCurrency(sale.discount_amount)})</td></tr>
-                                                )}
-                                                {typeof sale.tax_amount !== 'undefined' && parseFloat(sale.tax_amount) > 0 && (
-                                                    <tr><td colSpan="3" className="px-4 py-3 text-right text-sm text-gray-700">Original Tax</td><td className="px-4 py-3 text-right text-sm text-gray-800">{formatCurrency(sale.tax_amount)}</td></tr>
-                                                )}
-                                                {typeof sale.totaldue !== 'undefined' && (
-                                                    <tr className="font-semibold border-t-2 border-gray-300"><td colSpan="3" className="px-4 py-3 text-right text-sm uppercase text-gray-700">Original Net Amount Due</td><td className="px-4 py-3 text-right text-sm text-gray-800">{formatCurrency(sale.totaldue)}</td></tr>
-                                                )}
-                                                {typeof sale.totalpaid !== 'undefined' && parseFloat(sale.totalpaid) > 0 && ( // Only show if something was paid before voiding
-                                                    <tr><td colSpan="3" className="px-4 py-3 text-right text-sm text-gray-700">Original Amount Paid</td><td className="px-4 py-3 text-right text-sm text-gray-800">{formatCurrency(sale.totalpaid)}</td></tr>
+                                                <tr className="font-semibold"><td colSpan="3" className="px-4 py-3 text-right text-sm uppercase text-gray-700">Original Grand Total</td><td className="px-4 py-3 text-right text-sm text-gray-800">{formatCurrency(originalTotal)}</td></tr>
+                                                {typeof sale.totaldue !== 'undefined' && (<tr className="font-semibold border-t-2 border-gray-300"><td colSpan="3" className="px-4 py-3 text-right text-sm uppercase text-gray-700">Original Net Amount Due</td><td className="px-4 py-3 text-right text-sm text-gray-800">{formatCurrency(sale.totaldue)}</td></tr>)}
+                                                {totalPaid > 0 && (
+                                                    <>
+                                                        <tr className="font-bold text-green-700"><td colSpan="3" className="px-4 py-3 text-right text-sm uppercase">Amount Paid Before Void</td><td className="px-4 py-3 text-right text-sm">{formatCurrency(totalPaid)}</td></tr>
+                                                        <tr className="font-bold text-red-700"><td colSpan="3" className="px-4 py-3 text-right text-sm uppercase">Amount Refunded</td><td className="px-4 py-3 text-right text-sm">({formatCurrency(refundedAmount)})</td></tr>
+                                                    </>
                                                 )}
                                             </tfoot>
                                         )}
@@ -174,14 +152,26 @@ export default function VoidPreview({ auth, sale }) { // `sale` prop likely cont
                                 </div>
                             </div>
 
+                            {/* --- COMPLETE: Action Buttons --- */}
                             <div className="flex justify-end space-x-3 border-t border-gray-200 pt-6 mt-6">
                                 <Link
-                                    href={route('billing5.voidsalehistory')} // Changed route to void sale history
+                                    href={route('billing5.voidsalehistory')}
                                     className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
                                 >
                                     <FontAwesomeIcon icon={faTimesCircle} className="mr-2 h-4 w-4" />
                                     Close
                                 </Link>
+
+                                {/* Smart Conditional Refund Button */}
+                                {amountToRefund > 0 && (
+                                    <Link
+                                        href={route('billing5.refund.create', sale.id)}
+                                        className="inline-flex items-center justify-center rounded-md border border-transparent bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+                                    >
+                                        <FontAwesomeIcon icon={faUndo} className="mr-2 h-4 w-4" />
+                                        Process Refund
+                                    </Link>
+                                )}
                             </div>
                         </div>
                     </div>

@@ -1,43 +1,48 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { Head, Link, useForm, router as inertiaRouter } from "@inertiajs/react"; // Correct router import
+import { Head, Link, useForm, router as inertiaRouter } from "@inertiajs/react";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import {
-    faSearch,
-    faEye,
-    faTrash,
-} from "@fortawesome/free-solid-svg-icons";
+import { faSearch, faEye } from "@fortawesome/free-solid-svg-icons"; // faTrash removed
 import "@fortawesome/fontawesome-svg-core/styles.css";
-
-import Modal from '@/Components/CustomModal.jsx'; // Assuming @ alias
 
 const DEBOUNCE_DELAY = 300;
 
-// Default props to prevent errors if props are not passed
+// Default props for safety
 const defaultVoidSales = { data: [], links: [], meta: {} };
-const defaultFilters = {};
+const defaultFilters = { search: '', start_date: '', end_date: '' };
+
+// A helper component for the status badges
+const RefundStatusBadge = ({ voidsale }) => {
+    const totalPaid = parseFloat(voidsale.totalpaid) || 0;
+    const refundedAmount = parseFloat(voidsale.refunded_amount) || 0;
+
+    if (totalPaid === 0) {
+        return <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800">N/A</span>;
+    }
+    if (voidsale.is_refunded) {
+        return <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">Fully Refunded</span>;
+    }
+    if (refundedAmount > 0) {
+        return <span className="inline-flex items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-medium text-yellow-800">Partially Refunded</span>;
+    }
+    return <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">Pending Refund</span>;
+};
+
 
 export default function Index({ auth, voidsales = defaultVoidSales, filters = defaultFilters }) {
+    // Simplified useForm hook, removed delete action and processing state
     const {
         data: filterCriteria,
         setData: setFilterCriteria,
         errors: filterErrors,
-        processing: formProcessing, // For delete action
-        delete: destroyVoidSaleRecordAction,
     } = useForm({
         search: filters.search || "",
-    });
-
-    const [modalState, setModalState] = useState({
-        isOpen: false,
-        message: '',
-        isAlert: false,
-        voidSaleRecordToDeleteId: null,
+        start_date: filters.start_date,
+        end_date: filters.end_date,
     });
 
     const searchTimeoutRef = useRef(null);
 
-    // Effect for fetching data (debounced search)
     useEffect(() => {
         if (searchTimeoutRef.current) {
             clearTimeout(searchTimeoutRef.current);
@@ -45,14 +50,8 @@ export default function Index({ auth, voidsales = defaultVoidSales, filters = de
         searchTimeoutRef.current = setTimeout(() => {
             inertiaRouter.get(
                 route("billing5.voidsalehistory"),
-                {
-                    search: filterCriteria.search,
-                },
-                {
-                    preserveState: true,
-                    preserveScroll: true,
-                    replace: true,
-                }
+                filterCriteria,
+                { preserveState: true, preserveScroll: true, replace: true }
             );
         }, DEBOUNCE_DELAY);
 
@@ -61,54 +60,12 @@ export default function Index({ auth, voidsales = defaultVoidSales, filters = de
                 clearTimeout(searchTimeoutRef.current);
             }
         };
-    }, [filterCriteria.search]);
+    }, [filterCriteria]);
 
-    const handleSearchChange = useCallback((e) => {
-        setFilterCriteria("search", e.target.value);
+    const handleFilterChange = useCallback((e) => {
+        const { name, value } = e.target;
+        setFilterCriteria(name, value);
     }, [setFilterCriteria]);
-
-    const handleDeleteVoidSaleRecordClick = useCallback((voidsale) => {
-        const customerName = voidsale.customer?.customer_type === 'individual'
-            ? `${voidsale.customer?.first_name || ''} ${voidsale.customer?.other_names || ''} ${voidsale.customer?.surname || ''}`.replace(/\s+/g, ' ').trim() || 'N/A'
-            : voidsale.customer?.company_name || 'N/A';
-
-        setModalState({
-            isOpen: true,
-            message: `Are you sure you want to delete the record of this voided sale for ${customerName} (Invoice: ${voidsale.invoice_number || 'N/A'})? This action cannot be undone.`,
-            isAlert: false,
-            voidSaleRecordToDeleteId: voidsale.id,
-        });
-    }, []);
-
-    const handleModalClose = useCallback(() => {
-        setModalState({ isOpen: false, message: '', isAlert: false, voidSaleRecordToDeleteId: null });
-    }, []);
-
-    const showAlert = useCallback((message) => {
-        setModalState({
-            isOpen: true,
-            message: message,
-            isAlert: true,
-            voidSaleRecordToDeleteId: null,
-        });
-    }, []);
-
-    const handleModalConfirm = useCallback(() => {
-        if (modalState.voidSaleRecordToDeleteId) {
-            destroyVoidSaleRecordAction(route("billing5.destroy", modalState.voidSaleRecordToDeleteId), {
-                preserveScroll: true,
-                onSuccess: () => {
-                    handleModalClose();
-                    // Optionally use Inertia flash messages for success
-                },
-                onError: (errorResponse) => {
-                    console.error("Failed to delete voided sale record:", errorResponse);
-                    const errorMessage = typeof errorResponse === 'string' ? errorResponse : (errorResponse?.message || Object.values(errorResponse).join(' ') || "An unknown error occurred.");
-                    showAlert(`Failed to delete record: ${errorMessage}. Please try again.`);
-                },
-            });
-        }
-    }, [destroyVoidSaleRecordAction, modalState.voidSaleRecordToDeleteId, handleModalClose, showAlert]);
 
     const formatCurrency = (amount, currencyCodeParam = 'TZS') => {
         const parsedAmount = parseFloat(amount);
@@ -131,34 +88,28 @@ export default function Index({ auth, voidsales = defaultVoidSales, filters = de
                 <div className="mx-auto max-w-7xl sm:px-6 lg:px-8">
                     <div className="overflow-hidden bg-white shadow-sm sm:rounded-lg">
                         <div className="p-6 text-gray-900">
+                            {/* Filter Section */}
                             <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
                                 <div className="flex items-center space-x-2">
-                                    <div className="relative flex items-center">
-                                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                                            <FontAwesomeIcon icon={faSearch} className="h-4 w-4 text-gray-400" />
-                                        </div>
-                                        <input
-                                            type="text"
-                                            name="search"
-                                            id="search-voidsales"
-                                            placeholder="Search by customer or invoice #"
-                                            value={filterCriteria.search}
-                                            onChange={handleSearchChange}
-                                            className={`block w-full rounded-md border-gray-300 py-2 pl-10 pr-4 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 md:w-64 ${filterErrors.search ? "border-red-500" : ""}`}
-                                        />
-                                    </div>
+                                    <input type="date" name="start_date" value={filterCriteria.start_date} onChange={handleFilterChange} className={`rounded-md border-gray-300 py-2 px-4 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 ${filterErrors.start_date ? "border-red-500" : ""}`} />
+                                    <span className="text-gray-500">to</span>
+                                    <input type="date" name="end_date" value={filterCriteria.end_date} onChange={handleFilterChange} className={`rounded-md border-gray-300 py-2 px-4 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 ${filterErrors.end_date ? "border-red-500" : ""}`} />
                                 </div>
-                                {/* No "Create" button for a voided sales history list */}
+                                <div className="relative flex items-center">
+                                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3"><FontAwesomeIcon icon={faSearch} className="h-4 w-4 text-gray-400" /></div>
+                                    <input type="text" name="search" id="search-voidsales" placeholder="Search by customer or ref #" value={filterCriteria.search} onChange={handleFilterChange} className={`block w-full rounded-md border-gray-300 py-2 pl-10 pr-4 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 md:w-64 ${filterErrors.search ? "border-red-500" : ""}`} />
+                                </div>
                             </div>
 
+                            {/* Voided Sales Table */}
                             <div className="overflow-x-auto rounded-lg border border-gray-200">
                                 <table className="min-w-full divide-y divide-gray-200 bg-white">
                                     <thead className="bg-gray-50">
                                         <tr>
-                                            <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Customer Name</th>
-                                            <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Invoice #</th>
-                                            <th scope="col" className="px-4 py-3.5 text-right text-sm font-semibold text-gray-900">Original Total</th>
-                                            <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Void Remarks</th>
+                                            <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Customer</th>
+                                            <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Reference #</th>
+                                            <th scope="col" className="px-4 py-3.5 text-right text-sm font-semibold text-gray-900">Amount Paid</th>
+                                            <th scope="col" className="px-4 py-3.5 text-center text-sm font-semibold text-gray-900">Refund Status</th>
                                             <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Voided On</th>
                                             <th scope="col" className="px-4 py-3.5 text-center text-sm font-semibold text-gray-900">Actions</th>
                                         </tr>
@@ -168,73 +119,35 @@ export default function Index({ auth, voidsales = defaultVoidSales, filters = de
                                             voidsales.data.map((voidsale) => (
                                                 <tr key={voidsale.id} className="hover:bg-gray-50">
                                                     <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-700">
-                                                        {voidsale.customer?.customer_type === 'individual' ? (
-                                                            `${voidsale.customer?.first_name || ''} ${voidsale.customer?.other_names || ''} ${voidsale.customer?.surname || ''}`.replace(/\s+/g, ' ').trim() || 'N/A'
-                                                        ) : (
-                                                            voidsale.customer?.company_name || 'N/A'
-                                                        )}
+                                                        {voidsale.customer?.customer_type === 'individual' ? `${voidsale.customer?.first_name || ''} ${voidsale.customer?.surname || ''}`.trim() : voidsale.customer?.company_name || 'N/A'}
                                                     </td>
-                                                    <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">
-                                                        {voidsale.invoice_number || 'N/A'}
-                                                    </td>
-                                                    <td className="whitespace-nowrap px-4 py-4 text-right text-sm text-gray-700">
-                                                        {formatCurrency(voidsale.total || voidsale.totaldue, voidsale.currency_code)}
-                                                    </td>
-                                                    <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500 max-w-xs truncate" title={voidsale.remarks}>
-                                                        {voidsale.remarks || 'N/A'}
-                                                    </td>
-                                                    <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">
-                                                        {voidsale.voided_at ? new Date(voidsale.voided_at).toLocaleDateString() : 'N/A'}
-                                                    </td>
+                                                    <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">{voidsale.invoiceno || voidsale.receiptno || 'N/A'}</td>
+                                                    <td className="whitespace-nowrap px-4 py-4 text-right text-sm text-gray-700">{formatCurrency(voidsale.totalpaid, voidsale.currency_code)}</td>
+                                                    <td className="whitespace-nowrap px-4 py-4 text-center text-sm"><RefundStatusBadge voidsale={voidsale} /></td>
+                                                    <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">{voidsale.created_at ? new Date(voidsale.created_at).toLocaleDateString() : 'N/A'}</td>
                                                     <td className="whitespace-nowrap px-4 py-4 text-sm text-center">
                                                         <div className="flex items-center justify-center space-x-2">
-                                                            <Link
-                                                                href={route("billing5.preview", voidsale.id)}
-                                                                className="flex items-center rounded bg-sky-500 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-sky-600"
-                                                                title="Preview Voided Sale Details"
-                                                            >
-                                                                <FontAwesomeIcon icon={faEye} className="mr-1.5 h-3 w-3" />
-                                                                Preview
+                                                            <Link href={route("billing5.preview", voidsale.id)} className="flex items-center rounded bg-sky-500 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-sky-600" title="Preview Voided Sale Details">
+                                                                <FontAwesomeIcon icon={faEye} className="mr-1.5 h-3 w-3" /> Preview
                                                             </Link>
-                                                            {/* The ability to delete a voided sale record might depend on business rules */}
-                                                            <button
-                                                                onClick={() => handleDeleteVoidSaleRecordClick(voidsale)}
-                                                                className="flex items-center rounded bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-red-700"
-                                                                disabled={formProcessing && modalState.voidSaleRecordToDeleteId === voidsale.id}
-                                                                title="Delete This Void Record"
-                                                            >
-                                                                <FontAwesomeIcon icon={faTrash} className="mr-1.5 h-3 w-3" />
-                                                                Delete
-                                                            </button>
+                                                            {/* The Delete button has been removed from here */}
                                                         </div>
                                                     </td>
                                                 </tr>
                                             ))
                                         ) : (
-                                            <tr>
-                                                <td colSpan="6" className="whitespace-nowrap px-4 py-10 text-center text-sm text-gray-500">
-                                                    No voided sales records found.
-                                                </td>
-                                            </tr>
+                                            <tr><td colSpan="6" className="whitespace-nowrap px-4 py-10 text-center text-sm text-gray-500">No voided sales records found.</td></tr>
                                         )}
                                     </tbody>
                                 </table>
                             </div>
-                            {/* TODO: Add Pagination (e.g., <Pagination links={voidsales.links} />) */}
                         </div>
                     </div>
                 </div>
             </div>
-            <Modal
-                isOpen={modalState.isOpen}
-                onClose={handleModalClose}
-                onConfirm={modalState.isAlert ? null : handleModalConfirm}
-                title={modalState.isAlert ? "Alert" : "Confirm Delete Record"}
-                message={modalState.message}
-                isAlert={modalState.isAlert}
-                isProcessing={formProcessing && modalState.voidSaleRecordToDeleteId !== null}
-                confirmButtonText={modalState.isAlert ? "OK" : (formProcessing ? "Deleting..." : "Confirm Delete")}
-            />
+            
+            {/* The Confirmation Modal has been removed */}
+
         </AuthenticatedLayout>
     );
 }

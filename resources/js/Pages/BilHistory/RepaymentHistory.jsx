@@ -1,51 +1,31 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useCallback, useRef } from "react";
 import { Head, Link, useForm, router as inertiaRouter } from "@inertiajs/react";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import {
-    faSearch,
-    faEye,
-    faTrash,
-} from "@fortawesome/free-solid-svg-icons";
+import { faSearch, faEye } from "@fortawesome/free-solid-svg-icons"; // faTrash icon removed
 import "@fortawesome/fontawesome-svg-core/styles.css";
-
-import Modal from '@/Components/CustomModal.jsx';
 
 const DEBOUNCE_DELAY = 300;
 
-// Helper function to get today's date in YYYY-MM-DD format
-const getTodayDate = () => {
-    const today = new Date();
-    return today.toISOString().split('T')[0];
-};
-
-// Default props to prevent errors if props are not passed
+// Default props for safety
 const defaultRepayments = { data: [], links: [], meta: {} };
-const defaultFilters = {};
+const defaultFilters = { search: '', start_date: '', end_date: '' };
 
 export default function Index({ auth, repayments = defaultRepayments, filters = defaultFilters }) {
+    // Simplified useForm hook, as void-related logic has been removed.
     const {
         data: filterCriteria,
         setData: setFilterCriteria,
         errors: filterErrors,
-        processing: formProcessing,
-        delete: destroyRepaymentAction,
     } = useForm({
         search: filters.search || "",
-        start_date: filters.start_date || getTodayDate(),
-        end_date: filters.end_date || getTodayDate(),
-    });
-
-    const [modalState, setModalState] = useState({
-        isOpen: false,
-        message: '',
-        isAlert: false,
-        repaymentToVoidId: null,
+        start_date: filters.start_date, // Guaranteed by the updated controller
+        end_date: filters.end_date,     // Guaranteed by the updated controller
     });
 
     const searchTimeoutRef = useRef(null);
 
-    // Effect for fetching data (debounced search and date changes)
+    // Effect for handling debounced filtering
     useEffect(() => {
         if (searchTimeoutRef.current) {
             clearTimeout(searchTimeoutRef.current);
@@ -53,11 +33,7 @@ export default function Index({ auth, repayments = defaultRepayments, filters = 
         searchTimeoutRef.current = setTimeout(() => {
             inertiaRouter.get(
                 route("billing4.repaymenthistory"),
-                {
-                    search: filterCriteria.search,
-                    start_date: filterCriteria.start_date,
-                    end_date: filterCriteria.end_date,
-                },
+                filterCriteria,
                 {
                     preserveState: true,
                     preserveScroll: true,
@@ -71,54 +47,12 @@ export default function Index({ auth, repayments = defaultRepayments, filters = 
                 clearTimeout(searchTimeoutRef.current);
             }
         };
-    }, [filterCriteria.search, filterCriteria.start_date, filterCriteria.end_date]);
+    }, [filterCriteria]);
 
     const handleFilterChange = useCallback((e) => {
         const { name, value } = e.target;
         setFilterCriteria(name, value);
     }, [setFilterCriteria]);
-
-    const handleVoidClick = useCallback((repayment) => {
-        const customerName = repayment.customer?.customer_type === 'individual'
-            ? `${repayment.customer?.first_name || ''} ${repayment.customer?.other_names || ''} ${repayment.customer?.surname || ''}`.replace(/\s+/g, ' ').trim() || 'N/A'
-            : repayment.customer?.company_name || 'N/A';
-
-        setModalState({
-            isOpen: true,
-            message: `Are you sure you want to void this repayment for ${customerName}? This action cannot be undone.`,
-            isAlert: false,
-            repaymentToVoidId: repayment.id,
-        });
-    }, []);
-
-    const handleModalClose = useCallback(() => {
-        setModalState({ isOpen: false, message: '', isAlert: false, repaymentToVoidId: null });
-    }, []);
-
-    const showAlert = useCallback((message) => {
-        setModalState({
-            isOpen: true,
-            message: message,
-            isAlert: true,
-            repaymentToVoidId: null,
-        });
-    }, []);
-
-    const handleModalConfirm = useCallback(() => {
-        if (modalState.repaymentToVoidId) {
-            destroyRepaymentAction(route("billing4.destroy", modalState.repaymentToVoidId), {
-                preserveScroll: true,
-                onSuccess: () => {
-                    handleModalClose();
-                },
-                onError: (errorResponse) => {
-                    console.error("Failed to void repayment:", errorResponse);
-                    const errorMessage = typeof errorResponse === 'string' ? errorResponse : (errorResponse?.message || Object.values(errorResponse).join(' ') || "An unknown error occurred.");
-                    showAlert(`Failed to void repayment: ${errorMessage}. Please try again.`);
-                },
-            });
-        }
-    }, [destroyRepaymentAction, modalState.repaymentToVoidId, handleModalClose, showAlert]);
 
     const formatCurrency = (amount, currencyCodeParam = 'TZS') => {
         const parsedAmount = parseFloat(amount);
@@ -141,42 +75,42 @@ export default function Index({ auth, repayments = defaultRepayments, filters = 
                 <div className="mx-auto max-w-7xl sm:px-6 lg:px-8">
                     <div className="overflow-hidden bg-white shadow-sm sm:rounded-lg">
                         <div className="p-6 text-gray-900">
+                            {/* Filter Section */}
                             <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
-                                <div className="flex flex-wrap items-center gap-4">
-                                    <div className="flex items-center space-x-2">
-                                        <input
-                                            type="date"
-                                            name="start_date"
-                                            value={filterCriteria.start_date}
-                                            onChange={handleFilterChange}
-                                            className={`rounded-md border-gray-300 py-2 px-4 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 ${filterErrors.start_date ? "border-red-500" : ""}`}
-                                        />
-                                        <span className="text-gray-500">to</span>
-                                        <input
-                                            type="date"
-                                            name="end_date"
-                                            value={filterCriteria.end_date}
-                                            onChange={handleFilterChange}
-                                            className={`rounded-md border-gray-300 py-2 px-4 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 ${filterErrors.end_date ? "border-red-500" : ""}`}
-                                        />
+                                <div className="flex items-center space-x-2">
+                                    <input
+                                        type="date"
+                                        name="start_date"
+                                        value={filterCriteria.start_date}
+                                        onChange={handleFilterChange}
+                                        className={`rounded-md border-gray-300 py-2 px-4 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 ${filterErrors.start_date ? "border-red-500" : ""}`}
+                                    />
+                                    <span className="text-gray-500">to</span>
+                                    <input
+                                        type="date"
+                                        name="end_date"
+                                        value={filterCriteria.end_date}
+                                        onChange={handleFilterChange}
+                                        className={`rounded-md border-gray-300 py-2 px-4 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 ${filterErrors.end_date ? "border-red-500" : ""}`}
+                                    />
+                                </div>
+                                <div className="relative flex items-center">
+                                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                        <FontAwesomeIcon icon={faSearch} className="h-4 w-4 text-gray-400" />
                                     </div>
-                                    <div className="relative flex items-center">
-                                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                                            <FontAwesomeIcon icon={faSearch} className="h-4 w-4 text-gray-400" />
-                                        </div>
-                                        <input
-                                            type="text"
-                                            name="search"
-                                            id="search-repayments"
-                                            placeholder="Search by customer or invoice"
-                                            value={filterCriteria.search}
-                                            onChange={handleFilterChange}
-                                            className={`block w-full rounded-md border-gray-300 py-2 pl-10 pr-4 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 md:w-64 ${filterErrors.search ? "border-red-500" : ""}`}
-                                        />
-                                    </div>
+                                    <input
+                                        type="text"
+                                        name="search"
+                                        id="search-repayments"
+                                        placeholder="Search by customer or invoice"
+                                        value={filterCriteria.search}
+                                        onChange={handleFilterChange}
+                                        className={`block w-full rounded-md border-gray-300 py-2 pl-10 pr-4 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 md:w-64 ${filterErrors.search ? "border-red-500" : ""}`}
+                                    />
                                 </div>
                             </div>
 
+                            {/* Repayments Table */}
                             <div className="overflow-x-auto rounded-lg border border-gray-200">
                                 <table className="min-w-full divide-y divide-gray-200 bg-white">
                                     <thead className="bg-gray-50">
@@ -196,22 +130,19 @@ export default function Index({ auth, repayments = defaultRepayments, filters = 
                                                         {repayment.created_at ? new Date(repayment.created_at).toLocaleDateString() : 'N/A'}
                                                     </td>
                                                     <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-700">
-                                                        {repayment.customer?.customer_type === 'individual' ? (
-                                                            `${repayment.customer?.first_name || ''} ${repayment.customer?.other_names || ''} ${repayment.customer?.surname || ''}`.replace(/\s+/g, ' ').trim() || 'N/A'
-                                                        ) : (
+                                                        {repayment.customer?.customer_type === 'individual' ?
+                                                            `${repayment.customer?.first_name || ''} ${repayment.customer?.surname || ''}`.trim() :
                                                             repayment.customer?.company_name || 'N/A'
-                                                        )}
+                                                        }
                                                     </td>
                                                     <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">
-                                                        {repayment.items && repayment.items.length > 0
-                                                            ? repayment.items.map(item => item.invoiceno).join(', ')
-                                                            : 'N/A'}
+                                                        {repayment.items?.map(item => item.invoiceno).join(', ') || 'N/A'}
                                                     </td>
                                                     <td className="whitespace-nowrap px-4 py-4 text-right text-sm text-gray-700">
                                                         {formatCurrency(repayment.totalpaid, repayment.currency_code)}
                                                     </td>
                                                     <td className="whitespace-nowrap px-4 py-4 text-sm text-center">
-                                                        <div className="flex items-center justify-center space-x-2">
+                                                        <div className="flex items-center justify-center">
                                                             <Link
                                                                 href={route("billing4.preview", repayment.id)}
                                                                 className="flex items-center rounded bg-sky-500 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-sky-600"
@@ -220,15 +151,6 @@ export default function Index({ auth, repayments = defaultRepayments, filters = 
                                                                 <FontAwesomeIcon icon={faEye} className="mr-1.5 h-3 w-3" />
                                                                 Preview
                                                             </Link>
-                                                            <button
-                                                                onClick={() => handleVoidClick(repayment)}
-                                                                className="flex items-center rounded bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-red-700"
-                                                                disabled={formProcessing && modalState.repaymentToVoidId === repayment.id}
-                                                                title="Void Repayment"
-                                                            >
-                                                                <FontAwesomeIcon icon={faTrash} className="mr-1.5 h-3 w-3" />
-                                                                Void
-                                                            </button>
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -243,21 +165,11 @@ export default function Index({ auth, repayments = defaultRepayments, filters = 
                                     </tbody>
                                 </table>
                             </div>
-                            {/* TODO: Add Pagination (e.g., <Pagination links={repayments.links} />) */}
                         </div>
                     </div>
                 </div>
             </div>
-            <Modal
-                isOpen={modalState.isOpen}
-                onClose={handleModalClose}
-                onConfirm={modalState.isAlert ? null : handleModalConfirm}
-                title={modalState.isAlert ? "Alert" : "Confirm Void Repayment"}
-                message={modalState.message}
-                isAlert={modalState.isAlert}
-                isProcessing={formProcessing && modalState.repaymentToVoidId !== null}
-                confirmButtonText={modalState.isAlert ? "OK" : (formProcessing ? "Voiding..." : "Confirm Void")}
-            />
+            {/* Modal for voiding has been removed from this component */}
         </AuthenticatedLayout>
     );
 }

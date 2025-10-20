@@ -262,7 +262,7 @@ class UserPermissionController extends Controller
             'billing' => [
                 ['key' => 'billing0', 'text' => 'Order', 'icon' => 'add_shopping_cart'],
                 ['key' => 'billing1', 'text' => 'Post Bills', 'icon' => 'post_add'],
-                ['key' => 'billing2', 'text' => 'Pay Bills', 'icon' => 'paid'],
+                ['key' => 'billing2', 'text' => 'Pay Bills (Debtors)', 'icon' => 'paid'],
                 ['key' => 'billing3', 'text' => 'Sales History', 'icon' => 'sales_history'],
                 ['key' => 'billing4', 'text' => 'Payments History', 'icon' => 'payments_history'],
                 ['key' => 'billing5', 'text' => 'Void History', 'icon' => 'void_history'],
@@ -378,17 +378,15 @@ class UserPermissionController extends Controller
         ];
 
         // // Add loan-specific permissions only for 'loan1'
-        // if ($key === 'loan1') {
-        //     return [
-        //         'read' => false, // Set read to false for loan1
-        //         'officerreview' => false, // Default state
-        //         'managerreview' => false,
-        //         'committeereview' => false,
-        //         'approve' => false,                
-        //     ];
-        // }
-
-        return $defaultFunctionAccess; // Return default for other keys
+        if ($key === 'billing3') {
+            return [
+                'read' => false,
+                'void' => false,                            
+            ];
+        }else{
+            return $defaultFunctionAccess; // Return default for other keys
+        }
+        
     }
 
 }

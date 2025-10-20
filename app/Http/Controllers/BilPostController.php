@@ -50,35 +50,63 @@ class BilPostController extends Controller
      */
     
      public function index(Request $request)
-     {
-         $query = BILOrder::with(['orderitems', 'customer']); // Eager load order items and customer
-     
-         // Filtering by customer name using relationship
-         if ($request->filled('search')) {
-             $query->whereHas('customer', function ($q) use ($request) {
+    {
+        // --- 1. SET DEFAULT DATES ---
+        // Get today's date in 'YYYY-MM-DD' format.
+        $today = now()->format('Y-m-d');
+
+        // Use the dates from the request, OR use today's date as a default.
+        // This is the core logic to handle the initial page load correctly.
+        $startDate = $request->input('start_date', $today);
+        $endDate = $request->input('end_date', $today);
+
+        // --- 2. BUILD THE QUERY ---
+        $query = BILOrder::with(['orderitems', 'customer']); // Eager load relations
+
+        // Filtering by customer name using a relationship
+        if ($request->filled('search')) {
+            $query->whereHas('customer', function ($q) use ($request) {
                 $q->where('first_name', 'like', '%' . $request->search . '%')
-                ->orWhere('surname', 'like', '%' . $request->search . '%')
-                ->orWhere('other_names', 'like', '%' . $request->search . '%')
-                ->orWhere('company_name', 'like', '%' . $request->search . '%');
-             });
-         }
-     
-         // Filtering by stage (Ensure 'stage' exists in the BILOrder model)
-         if ($request->filled('stage')) {
-             $query->where('stage', $request->stage);
-         }
-       
-         $query->whereBetween('stage', [3, 4]);
-     
-         // Paginate and sort orders
-         $orders = $query->orderBy('created_at', 'desc')->paginate(10);
-     
-         return inertia('BilPosts/Index', [
-             'orders' => $orders,
-             'filters' => $request->only(['search', 'stage']),
-         ]);
-     }
-     
+                  ->orWhere('surname', 'like', '%' . $request->search . '%')
+                  ->orWhere('other_names', 'like', '%' . $request->search . '%')
+                  ->orWhere('company_name', 'like', '%' . $request->search . '%');
+            });
+        }
+
+        // --- 3. ALWAYS APPLY DATE FILTER ---
+        // The 'if' condition is removed. The filter is now always applied using
+        // either the requested dates or the defaults we set above.
+        $parsedStartDate = Carbon::parse($startDate)->startOfDay();
+        $parsedEndDate = Carbon::parse($endDate)->endOfDay();
+        $query->whereBetween('created_at', [$parsedStartDate, $parsedEndDate]);
+
+        // Filtering by a specific stage if provided
+        if ($request->filled('stage')) {
+            $query->where('stage', $request->stage);
+        }
+
+        // General filter to only show orders in specific stages (e.g., Pending, Proforma)
+        $query->whereIn('stage', [3, 4]); // Using whereIn is slightly cleaner for an array
+
+        // Paginate and sort orders
+        // Use withQueryString() to ensure pagination links retain filter parameters
+        $orders = $query->orderBy('created_at', 'desc')->paginate(10)->withQueryString();
+
+        // --- 4. RETURN DATA TO INERTIA ---
+        return inertia('BilPosts/Index', [
+            'orders' => $orders,
+            // Explicitly pass the filters that were used for the query.
+            // This ensures the frontend always has the correct state.
+            'filters' => [
+                'search'     => $request->input('search', ''),
+                'stage'      => $request->input('stage', ''),
+                'start_date' => $startDate,
+                'end_date'   => $endDate,
+            ],
+            // You can also pass flash success messages this way
+            // 'success' => session('success'),
+        ]);
+    }     
 
     /**
      * Show the form for creating a new order.
@@ -754,36 +782,27 @@ class BilPostController extends Controller
 
             }
 
-            //collection
-            if ($receiptNo){
+            if ($receiptNo) {
+                // 1. Dynamically create the correct 'paytypeXXXXXX' column name.
+                //    This assumes $data['payment_method'] holds the ID (e.g., 1, 2) from the frontend form.
+                //    str_pad() ensures it's formatted correctly (e.g., "000001").
+                $paymentMethodColumn = 'paytype' . str_pad($data['payment_method'], 6, '0', STR_PAD_LEFT);
 
-                $data['paymentmethod'] = '000001';
-                // Define payment types with dynamic key
-                $paymentTypes = [                    
-                    $data['paymentmethod'] => $data['paid_amount'] ?? 0,
-                    // Add more payment types if required
-                ];
-                
-                // Initialize base collection data
-                $collectionData = [
-                    'transdate' => $transdate,
-                    'receiptno' => $receiptNo, // Trim the receipt number
-                    'paymentsource' => $paymentSource, 
-                    'customer_id' => $data['customer_id'], // Customer ID                    
-                    'yearpart' => $yearpart,
-                    'monthpart' => $monthpart,               
-                    'transtype' => BillingTransTypes::Payment->value,
-                    'user_id' => Auth::id(), // Current authenticated user
-                ];
-                
-                // Dynamically add payment types
-                foreach ($paymentTypes as $type => $value) {
-                    $collectionData['paytype' . $type] = $value;
-                }
-                
-                // Save collection data to the database
-                BILCollection::create($collectionData);                    
-                
+                // 2. Create the collection record directly with the dynamic column.
+                BILCollection::create([
+                    'transdate'     => $transdate,
+                    'receiptno'     => $receiptNo,
+                    'paymentsource' => $paymentSource, // Uses the $paymentSource calculated earlier in the method
+                    'customer_id'   => $data['customer_id'],
+                    'yearpart'      => $yearpart,
+                    'monthpart'     => $monthpart,
+                    'transtype'     => BillingTransTypes::Payment->value,
+                    'user_id'       => Auth::id(),
+
+                    // 3. Add the dynamic column and its value directly.
+                    //    The value is the total amount paid for this entire transaction.
+                    $paymentMethodColumn => $data['paid_amount'] ?? 0,
+                ]);
             }
             
          });
