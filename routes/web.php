@@ -6,7 +6,10 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\BilOrderController;
 use App\Http\Controllers\BilPostController;
 use App\Http\Controllers\BilPayController;
-use App\Http\Controllers\BilHistoryController;
+
+use App\Http\Controllers\BilSalesHistoryController;
+use App\Http\Controllers\BilRepaymentHistoryController;
+use App\Http\Controllers\BilVoidHistoryController;
 
 use App\Http\Controllers\BLSItemGroupController;
 use App\Http\Controllers\BLSItemController;
@@ -137,26 +140,26 @@ Route::middleware('auth')->group(function () {
 
     // Pay Bills routes
     Route::prefix('billing3')->name('billing3.')->group(function () {
-        Route::get('/', [BilHistoryController::class, 'saleHistory'])->name('salehistory'); 
-        Route::get('/{sale}/preview', [BilHistoryController::class, 'previewSale'])->name('preview');
-        Route::put('/{sale}', [BilHistoryController::class, 'postVoidSale'])->name('voidsale');  
+        Route::get('/', [BilSalesHistoryController::class, 'saleHistory'])->name('salehistory'); 
+        Route::get('/{sale}/preview', [BilSalesHistoryController::class, 'previewSale'])->name('preview');
+        Route::put('/{sale}', [BilSalesHistoryController::class, 'postVoidSale'])->name('voidsale');  
 
     });
 
     // Pay Bills routes
     Route::prefix('billing4')->name('billing4.')->group(function () {
-        Route::get('/', [BilHistoryController::class, 'repaymentHistory'])->name('repaymenthistory'); 
-        Route::get('/{repayment}/preview', [BilHistoryController::class, 'previewRepayment'])->name('preview');
-        Route::put('/repayments/{repayment}/void', [BilHistoryController::class, 'postVoidRepayment'])->name('void');
+        Route::get('/', [BilRepaymentHistoryController::class, 'repaymentHistory'])->name('repaymenthistory'); 
+        Route::get('/{repayment}/preview', [BilRepaymentHistoryController::class, 'previewRepayment'])->name('preview');
+        Route::put('/repayments/{repayment}/void', [BilRepaymentHistoryController::class, 'postVoidRepayment'])->name('void');
     });
 
     // Pay Bills routes
     Route::prefix('billing5')->name('billing5.')->group(function () {
-        Route::get('/', [BilHistoryController::class, 'voidHistory'])->name('voidsalehistory'); 
-        Route::get('/{voidsale}/preview', [BilHistoryController::class, 'previewVoid'])->name('preview');
+        Route::get('/', [BilVoidHistoryController::class, 'voidHistory'])->name('voidsalehistory'); 
+        Route::get('/{voidsale}/preview', [BilVoidHistoryController::class, 'previewVoid'])->name('preview');
         // Add this route alongside your other billing history routes
-        Route::get('/refunds/{voidsale}/create', [BilHistoryController::class, 'createRefund'])->name('refund.create');  
-        Route::post('/refunds/{voidsale}/store', [BilHistoryController::class, 'storeRefund'])->name('refund.store');      
+        Route::get('/refunds/{voidsale}/create', [BilVoidHistoryController::class, 'createRefund'])->name('refund.create');  
+        Route::post('/refunds/{voidsale}/store', [BilVoidHistoryController::class, 'storeRefund'])->name('refund.store');      
     });
 
       

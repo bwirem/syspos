@@ -422,19 +422,21 @@ class BilHistoryController extends Controller
         $voidno = $this->generateUniqueNumber('VOD', 'voidno');       
         $invoice = BILInvoice::where('invoiceno', $invoiceno)->firstOrFail();
 
-        // --- ATOMIC TRANSACTION ---
+        // --- ATOMIC TRANSACTION WRAPPER ---
+        // The entire operation is wrapped in one transaction. If any part fails, everything is rolled back.
         DB::transaction(function () use ($invoice, $transdate, $voidno, $reasons, $yearpart, $monthpart) {
             
             // --- 1. FIND AND VOID ALL ASSOCIATED PAYMENTS FIRST ---
-            // This reverses the cash side and debits the customer for the voided payments.
+            // This reverses the cash side and correctly re-establishes debt for each payment.
             $paymentDetails = BILInvoicePaymentDetail::where('invoiceno', $invoice->invoiceno)->get();
             
             foreach ($paymentDetails as $detail) {
+                // Find the parent payment record that hasn't been voided yet
                 $payment = BILInvoicePayment::where('receiptno', $detail->receiptno)->where('voided', 0)->first();
                 if ($payment) {
-                    // Call the separate voidPayment function for each payment found.
-                    // It will handle its own debtor log and balance adjustments.
-                    $this->voidPayment($payment->id, $transdate, "Voided due to cancellation of Invoice #{$invoice->invoiceno}");
+                    // Call the helper function to handle the payment-specific reversal logic.
+                    // This function MUST NOT have its own DB::transaction() wrapper.
+                    $this->voidPayment($payment, $transdate, "Voided due to cancellation of Invoice #{$invoice->invoiceno}");
                 }
             }
 
@@ -451,7 +453,7 @@ class BilHistoryController extends Controller
                 'voiduser_id' => Auth::id(),
             ]);
 
-            // --- 3. UPDATE THE CORRESPONDING SALE RECORD ---
+            // --- 3. UPDATE THE CORRESPONDING BILSale RECORD ---
             $sale = BILSale::where('invoiceno', $invoice->invoiceno)->first();
             if ($sale) {
                 $sale->update([                 
@@ -466,13 +468,13 @@ class BilHistoryController extends Controller
                 ]);
             }
         
-            // --- 4. CREATE THE PRIMARY HISTORICAL VOIDED SALE RECORD ---
+            // --- 4. CREATE THE PRIMARY HISTORICAL VOIDED SALE RECORD (FOR THE INVOICE) ---
             $voidedsale = BILVoidedSale::create([
                 'transdate' => $transdate,
                 'customer_id' => $invoice->customer_id, 
                 'invoiceno'=> $invoice->invoiceno,
                 'totaldue' => $invoice->totaldue,
-                'totalpaid' => $invoice->totalpaid, // Store the original paid amount for historical record
+                'totalpaid' => $invoice->totalpaid,
                 'balancedue' => $invoice->balancedue, 
                 'paidforinvoice' => $invoice->paidforinvoice,  
                 'status' => InvoiceStatus::Cancelled->value,                
@@ -491,51 +493,32 @@ class BilHistoryController extends Controller
             ]);
             
             // --- 5. REVERSE INVENTORY/STOCK BY CREATING NEGATIVE ITEM ENTRIES ---
-            $invoiceItems = $invoice->items()->where('quantity', '>', 0)->get(); // Get original items, not reversals
+            $invoiceItems = $invoice->items()->where('quantity', '>', 0)->get();
         
             foreach ($invoiceItems as $invoiceItem) {
-                // Data for negative quantity entries to reverse stock
-                $reversalItemData = [
-                    'item_id' => $invoiceItem->item_id,
-                    'quantity' => -$invoiceItem->quantity, // Negative quantity
-                    'price' => $invoiceItem->price,
-                ];
-
-                // Create reversal item on the original invoice
+                $reversalItemData = ['item_id' => $invoiceItem->item_id, 'quantity' => -$invoiceItem->quantity, 'price' => $invoiceItem->price];
                 $invoice->items()->create($reversalItemData);
-
-                // Create reversal item on the original sale if it exists
                 if ($sale) {
                     $sale->items()->create($reversalItemData);
                 }
-
-                // Data for the historical voided sale record (with positive quantity)
-                $historicalItemData = [
-                    'item_id' => $invoiceItem->item_id,
-                    'quantity' => $invoiceItem->quantity, // Positive quantity
-                    'price' => $invoiceItem->price,
-                ];
-
-                // Log the original item in the new voided sale record
+                $historicalItemData = ['item_id' => $invoiceItem->item_id, 'quantity' => $invoiceItem->quantity, 'price' => $invoiceItem->price];
                 $voidedsale->items()->create($historicalItemData);
             }
 
             // --- 6. REVERSE THE ORIGINAL DEBT CREATION FROM THE DEBTOR'S ACCOUNT ---
             $debtor = BILDebtor::where('customer_id', $invoice->customer_id)->first();
-            
             if ($debtor) {
-                // Decrement the balance by the FULL ORIGINAL INVOICE AMOUNT (`totaldue`).
-                // This reverses the initial debt. The payment reversals were handled in step 1.
+                // This reverses the initial debt. The payments were reversed in Step 1.
                 $debtor->decrement('balance', $invoice->totaldue);
 
-                // Create a log entry for this reversal. This is a CREDIT to the customer's account.
+                // Create a log entry for this reversal (a CREDIT to the customer's account).
                 BILDebtorLog::create([
                     'transdate' => $transdate,
                     'debtor_id' => $debtor->id,
                     'reference' => $voidno,
-                    'debtortype' => "Individual", // Or determine dynamically
+                    'debtortype' => "Individual", // Or make dynamic if needed
                     'debitamount' => 0,
-                    'creditamount' => $invoice->totaldue, // Credit the full original amount
+                    'creditamount' => $invoice->totaldue,
                     'transtype' => BillingTransTypes::SaleCancellation->value,
                     'transdescription' => "Cancellation of Invoice #{$invoice->invoiceno}", 
                     'user_id' => auth()->id(),
@@ -647,6 +630,7 @@ class BilHistoryController extends Controller
         });
             
     }
+
     
     public function storeRefund(Request $request, BILVoidedSale $voidsale)
     {
