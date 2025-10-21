@@ -32,6 +32,7 @@ use App\Models\{
     SIV_Store,
     
     FacilityOption,
+    BLSPaymentType
 };
 
 use App\Enums\{
@@ -162,6 +163,7 @@ class BilPostController extends Controller
         return inertia('BilPosts/ProcessPayment', [
             'orderData' => $validatedData,
             'facilityoption' => $facilityoption, // Pass the options to the frontend
+            'paymentMethods' => BLSPaymentType::all(),
         ]);
     }
 
@@ -241,7 +243,7 @@ class BilPostController extends Controller
 
         return inertia('BilPosts/ConfirmOrderUpdate', [
             'orderData' => $orderData,
-            'originalOrder' => $order->load('customer'), // Pass original customer info for display
+            'originalOrder' => $order->load('customer'), // Pass original customer info for display            
         ]);
     }
 
@@ -257,6 +259,7 @@ class BilPostController extends Controller
         return inertia('BilPosts/ProcessExistingOrderPayment', [
             'orderData' => $orderData,
             'originalOrder' => $order->load('customer'),
+            'paymentMethods' => BLSPaymentType::all(),
         ]);
     }
 

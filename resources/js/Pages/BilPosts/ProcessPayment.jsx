@@ -26,7 +26,7 @@ const formatCurrency = (value) => {
 const STORAGE_KEY = 'pendingOrderData'; // Use the same key as in Create.jsx
 
 
-export default function ProcessPayment({ auth, orderData, facilityoption }) {
+export default function ProcessPayment({ auth, orderData, facilityoption, paymentMethods }) {
     const { data, setData, post, errors, processing, reset } = useForm({
         customer_id: null,
         stage: '3',
@@ -49,9 +49,7 @@ export default function ProcessPayment({ auth, orderData, facilityoption }) {
     const [newCustomer, setNewCustomer] = useState({
         customer_type: 'individual', first_name: '', other_names: '', surname: '', company_name: '', email: '', phone: '',
     });
-    const [newCustomerModalLoading, setNewCustomerModalLoading] = useState(false);
-    const [paymentMethods, setPaymentMethods] = useState([]);
-    const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(false);
+    const [newCustomerModalLoading, setNewCustomerModalLoading] = useState(false);   
     const [alertModal, setAlertModal] = useState({ isOpen: false, message: '' });
     const [showSuccessModal, setShowSuccessModal] = useState(false); // <-- NEW SUCCESS MODAL STATE
     const [paymentConfirmationModal, setPaymentConfirmationModal] = useState({ isOpen: false }); // <-- NEW STATE
@@ -149,21 +147,7 @@ export default function ProcessPayment({ auth, orderData, facilityoption }) {
         } finally {
             setNewCustomerModalLoading(false);
         }
-    };
-
-    useEffect(() => {
-        setPaymentMethodsLoading(true);
-        axios.get(route('systemconfiguration0.paymenttypes.search'))
-            .then(response => {
-                const fetchedMethods = response.data.paymenttype || [];
-                setPaymentMethods(fetchedMethods);
-                if (!data.payment_method && fetchedMethods.length > 0) {
-                    setData('payment_method', fetchedMethods[0].id);
-                }
-            })
-            .finally(() => setPaymentMethodsLoading(false));
-    }, []);
-
+    };    
     
     const proceedWithSubmission = () => {
         post(route('billing1.pay'), {
@@ -268,9 +252,9 @@ export default function ProcessPayment({ auth, orderData, facilityoption }) {
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Payment Method</label>
-                                                <select value={data.payment_method} onChange={e => setData('payment_method', e.target.value)} className="w-full mt-1 border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200" disabled={paymentMethodsLoading}>
+                                                <select value={data.payment_method} onChange={e => setData('payment_method', e.target.value)} className="w-full mt-1 border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200">
                                                     <option value="" disabled>Select Method...</option>
-                                                    {paymentMethodsLoading ? <option>Loading...</option> : paymentMethods.map(pm => <option key={pm.id} value={pm.id}>{pm.name}</option>)}
+                                                    {paymentMethods.map(pm => <option key={pm.id} value={pm.id}>{pm.name}</option>)}
                                                 </select>
                                                 {errors.payment_method && <p className="text-red-500 text-xs mt-1">{errors.payment_method}</p>}
                                             </div>

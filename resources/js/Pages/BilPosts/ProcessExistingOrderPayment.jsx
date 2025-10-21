@@ -23,7 +23,7 @@ const formatCurrency = (value) => {
     });
 };
 
-export default function ProcessExistingOrderPayment({ auth, orderData, originalOrder }) {
+export default function ProcessExistingOrderPayment({ auth, orderData, originalOrder,paymentMethods }) {
 
     // --- NEW: DYNAMIC STORAGE KEY ---
     const STORAGE_KEY = `pendingOrderChanges_${orderData.id}`;
@@ -53,8 +53,6 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
     });
     const [newCustomerModalLoading, setNewCustomerModalLoading] = useState(false);
     const [alertModal, setAlertModal] = useState({ isOpen: false, message: '' });
-    const [paymentMethods, setPaymentMethods] = useState([]);
-    const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(false);
     const [showSuccessModal, setShowSuccessModal] = useState(false); // <-- NEW SUCCESS MODAL STATE   
     const [paymentConfirmationModal, setPaymentConfirmationModal] = useState({ isOpen: false }); // <-- NEW STATE
 
@@ -101,21 +99,7 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
-
-    useEffect(() => {
-        setPaymentMethodsLoading(true);
-        axios.get(route('systemconfiguration0.paymenttypes.search'))
-            .then(response => {
-                const fetchedMethods = response.data.paymenttype || [];
-                setPaymentMethods(fetchedMethods);
-                if (!data.payment_method && fetchedMethods.length > 0) {
-                    setData('payment_method', auth?.user?.paymenttype_id || fetchedMethods[0].id);
-                }
-            })
-            .catch(() => setAlertModal({ isOpen: true, message: 'Failed to load payment methods.' }))
-            .finally(() => setPaymentMethodsLoading(false));
-    }, []);
-
+   
     const selectCustomer = (customer) => {
         setData('customer_id', customer.id);
         const customerName = customer.customer_type === 'company' ? customer.company_name : `${customer.first_name || ''} ${customer.surname || ''}`.trim();
@@ -234,7 +218,7 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Payment Method</label>
-                                                <select value={data.payment_method} onChange={e => setData('payment_method', e.target.value)} disabled={paymentMethodsLoading} className="w-full mt-1 border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200">
+                                                <select value={data.payment_method} onChange={e => setData('payment_method', e.target.value)} className="w-full mt-1 border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200">
                                                     <option value="" disabled>Select...</option>
                                                     {paymentMethods.map(pm => <option key={pm.id} value={pm.id}>{pm.name}</option>)}
                                                 </select>
