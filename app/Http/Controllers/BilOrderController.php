@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\BILOrder;
 use App\Models\BILOrderItem;
 use App\Models\SIV_Store;
+use App\Models\BLSPriceCategory;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -53,8 +54,25 @@ class BilOrderController extends Controller
      */
     public function create()
     {
+        // Fetch all records from facilitypricecategories
+        $rows = BLSPriceCategory::query()->first();
+    
+        $priceCategories = [];
+    
+        if ($rows) {
+            for ($i = 1; $i <= 13; $i++) {
+                if (!empty($rows->{'useprice' . $i}) && $rows->{'useprice' . $i} == 1) {
+                    $priceCategories[] = [
+                        'pricename' => 'price' . $i,
+                        'pricedescription' => trim($rows->{'price' . $i}),
+                    ];
+                }
+            }
+        }
+
         return inertia('BilOrders/Create', [
             'fromstore' => SIV_Store::all(), // Assuming you have a Store model
+            'priceCategories' => $priceCategories,
         ]);
     }
 
@@ -116,9 +134,26 @@ class BilOrderController extends Controller
         // Eager load order items and their related items
         $order->load(['customer', 'store', 'orderitems.item']); 
 
+        // Fetch all records from facilitypricecategories
+        $rows = BLSPriceCategory::query()->first();
+    
+        $priceCategories = [];
+    
+        if ($rows) {
+            for ($i = 1; $i <= 13; $i++) {
+                if (!empty($rows->{'useprice' . $i}) && $rows->{'useprice' . $i} == 1) {
+                    $priceCategories[] = [
+                        'pricename' => 'price' . $i,
+                        'pricedescription' => trim($rows->{'price' . $i}),
+                    ];
+                }
+            }
+        }
+
         return inertia('BilOrders/Edit', [
             'order' => $order,
             'fromstore' => SIV_Store::all(), // Assuming you have a Store model
+            'priceCategories' => $priceCategories,
         ]);
     }
 

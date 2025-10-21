@@ -27,7 +27,7 @@ const formatCurrency = (value) => {
     });
 };
 
-export default function Create({fromstore , auth }) {
+export default function Create({fromstore , auth, priceCategories}) {
     // Form state using Inertia's useForm hook
     const { data, setData, post, errors, processing, reset } = useForm({
         customer_name: '',
@@ -132,18 +132,7 @@ export default function Create({fromstore , auth }) {
             .finally(() => setIsCustomerSearchLoading(false));
     }, []);
 
-    // Fetch price categories dynamically (using Inertia)
-
-    const [priceCategories, setPriceCategories] = useState([]);
-
-    useEffect(() => {
-        axios.get(route('systemconfiguration0.pricecategories.viewactive'))
-            .then(response => setPriceCategories(response.data.priceCategories))
-            .catch(() => showAlert('Failed to fetch item groups.'));
-    }, []);
-
-
-   
+       
     // Debounced search handler
     const debouncedItemSearch = useMemo(() => debounce(fetchItems, 300), [fetchItems]);
     // Debounced customer search handler

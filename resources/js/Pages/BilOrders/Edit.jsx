@@ -27,7 +27,7 @@ const formatCurrency = (value) => {
 };
 
 
-export default function Edit({ order ,fromstore, auth }) {
+export default function Edit({ order ,fromstore, auth,priceCategories }) {
     const { data, setData, put, errors, processing, reset } = useForm({       
 
         customer_type: order.customer.customer_type,
@@ -122,16 +122,7 @@ export default function Edit({ order ,fromstore, auth }) {
             .finally(() => setIsCustomerSearchLoading(false));
     }, []);
 
-       
-    const [priceCategories, setPriceCategories] = useState([]);
-
-    useEffect(() => {
-        axios.get(route('systemconfiguration0.pricecategories.viewactive'))
-            .then(response => setPriceCategories(response.data.priceCategories))
-            .catch(() => showAlert('Failed to fetch item groups.'));
-    }, []);
-
-   
+    
 
     // Debounced search handler
     const debouncedSearch = useMemo(() => debounce(fetchItems, 300), [fetchItems]);
