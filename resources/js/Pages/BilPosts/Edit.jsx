@@ -16,7 +16,7 @@ const formatCurrency = (value) => {
     return parseFloat(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
-export default function Edit({ order, fromstore, auth, priceCategories: initialPriceCategories }) {
+export default function Edit({ order, fromstore, auth, priceCategories }) {
     
     // Dynamic storage key unique to this order
     const STORAGE_KEY = `pendingOrderChanges_${order.id}`;
@@ -44,8 +44,7 @@ export default function Edit({ order, fromstore, auth, priceCategories: initialP
     const [blockNoItemsFound, setBlockNoItemsFound] = useState(false);
     const itemDropdownRef = useRef(null);
     const itemSearchInputRef = useRef(null);
-
-    const [priceCategories, setPriceCategories] = useState(initialPriceCategories || []);
+    
     const [modalState, setModalState] = useState({ isOpen: false, message: '', isAlert: false, itemToRemoveIndex: null });
 
     // Load unsaved changes from Session Storage on component mount
@@ -63,20 +62,7 @@ export default function Edit({ order, fromstore, auth, priceCategories: initialP
             }
         }
     }, []);
-
-    const fetchPriceCategoriesAPI = useCallback(async () => {
-        if (initialPriceCategories && initialPriceCategories.length > 0) return;
-        try {
-            const response = await axios.get(route('systemconfiguration0.pricecategories.viewactive'));
-            setPriceCategories(response.data.priceCategories || []);
-        } catch (error) {
-            showAlert('Failed to fetch price categories.');
-        }
-    }, [initialPriceCategories]);
-
-    useEffect(() => {
-        fetchPriceCategoriesAPI();
-    }, [fetchPriceCategoriesAPI]);
+    
 
     const fetchItems = useCallback((query) => {
         if (!query.trim() || !data.pricecategory_id) { setItemSearchResults([]); return; }

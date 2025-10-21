@@ -26,7 +26,7 @@ const formatCurrency = (value) => {
 
 const STORAGE_KEY = 'pendingOrderData'; // Define a unique key for session storage
 
-export default function Create({ fromstore, auth }) {
+export default function Create({ fromstore,priceCategories, auth }) {
     const { data, setData, errors, processing, reset } = useForm({
         store_id: auth?.user?.store_id || null,
         pricecategory_id: auth?.user?.pricecategory_id || null,
@@ -47,7 +47,7 @@ export default function Create({ fromstore, auth }) {
     const [storeIDError, setStoreIDError] = useState(null);
     const [pricecategoryIDError, setPricecategoryIDError] = useState(null);
     const [modalState, setModalState] = useState({ isOpen: false, message: '', isAlert: false, itemToRemoveIndex: null });
-    const [priceCategories, setPriceCategories] = useState([]);
+   
 
     // --- NEW: Load from Session Storage on component mount ---
     useEffect(() => {
@@ -79,12 +79,7 @@ export default function Create({ fromstore, auth }) {
             .catch(() => showAlert('Failed to fetch items.'))
             .finally(() => setIsItemSearchLoading(false));
     }, [data.pricecategory_id]);
-
-    useEffect(() => {
-        axios.get(route('systemconfiguration0.pricecategories.viewactive'))
-            .then(response => setPriceCategories(response.data.priceCategories))
-            .catch(() => showAlert('Failed to fetch price categories.'));
-    }, []);
+   
 
     const debouncedItemSearch = useMemo(() => debounce(fetchItems, 300), [fetchItems]);
 
