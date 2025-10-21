@@ -27,6 +27,11 @@ class BILVoidedSale extends Model
         return $this->hasMany(BILVoidedSaleItem::class, 'voidedsale_id', 'id')
                     ->with('item'); // Include the relationship to IV Items
     }
+
+    public function invoicepaymentdetails()
+    {        
+        return $this->hasMany(BILInvoicePaymentDetail::class, 'receiptno', 'receiptno');
+    }
    
     public function customer()
     {

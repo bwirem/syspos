@@ -87,7 +87,7 @@ class BilVoidHistoryController extends Controller
     public function previewVoid(BILVoidedSale $voidsale)
     {       
         // Eager load all relationships needed for the preview and potential refund action
-        $voidsale->load(['customer', 'items.item']); 
+        $voidsale->load(['customer', 'items.item', 'invoicepaymentdetails']); 
 
         return Inertia::render('BilHistory/VoidPreview', [
             'sale' => $voidsale,           
@@ -167,63 +167,4 @@ class BilVoidHistoryController extends Controller
         return redirect()->route('billing5.voidsalehistory')->with('success', 'Refund processed successfully!');
     }
 
-    // region Collection Viewing Methods
-    
-    public function viewCollectionByReceipt($receiptNo, $voidSource)
-    {       
-        $paymentSource = ($voidSource == VoidSources::InvoicePayment->value) 
-            ? PaymentSources::InvoicePayment->value 
-            : PaymentSources::CashSale->value;
-    
-        try {
-            $collection = $this->getCollectionByReceiptAndSource($receiptNo, $paymentSource);
-            if (!$collection) {
-                return response()->json(['success' => false, 'message' => 'No collections found.'], 404);
-            }
-            $paymentTypes = $this->getPaymentTypes();
-            $paymentsMade = $this->preparePaymentsMade($collection, $paymentTypes);
-            return response()->json(['success' => true, 'data' => $paymentsMade]);
-        } catch (\Exception $ex) {
-            return response()->json(['success' => false, 'error' => $ex->getMessage()], 500);
-        }
-    }
-     
-    private function getCollectionByReceiptAndSource($receiptNo, $paymentSource)
-    {
-        return BILCollection::select(DB::raw($this->getSumColumns()))
-            ->where('receiptno', $receiptNo)->where('paymentsource', $paymentSource)->first();
-    }
-     
-    private function getPaymentTypes()
-    {
-        return DB::table('bls_paymenttypes')->pluck('description', 'id');
-    }
-     
-    private function preparePaymentsMade($collection, $paymentTypes)
-    {
-        $paymentsMade = [];
-        foreach ($collection->toArray() as $key => $value) {
-            if ($value != 0 && str_starts_with($key, 'paytype')) {
-                $payTypeCode = strtolower($key);
-                $payTypeNumber = ltrim(substr($payTypeCode, strlen('paytype')), '0');
-                $payTypeDescription = $paymentTypes->get($payTypeNumber, $payTypeCode);
-                $paymentsMade[] = [
-                    'paytypecode' => $payTypeCode, 'paytypedescription' => trim($payTypeDescription),
-                    'paidamount' => $value, 'refundedamount' => 0,
-                ];
-            }
-        }
-        return $paymentsMade;
-    }
-     
-    private function getSumColumns()
-    {
-        $columns = DB::table('information_schema.columns')
-            ->where('table_schema', config('database.connections.mysql.database'))
-            ->where('table_name', 'bil_collections')->pluck('column_name');
-        $paytypeColumns = array_filter($columns->toArray(), fn($c) => stripos($c, 'paytype') === 0);
-        if (empty($paytypeColumns)) return '1'; // Return a valid SQL literal if no columns found
-        return implode(', ', array_map(fn($c) => "SUM($c) AS $c", $paytypeColumns));
-    }
-    // endregion
 }

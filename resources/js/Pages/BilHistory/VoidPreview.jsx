@@ -109,41 +109,128 @@ export default function VoidPreview({ auth, sale }) {
                                 )}
                             </div>
 
-                            {/* --- COMPLETE: Original Sale Items --- */}
+                           {/* --- COMPLETE: Original Sale Items or Invoice Payment Details --- */}
                             <div>
                                 <h3 className="text-lg font-medium leading-6 text-gray-900 border-b border-gray-200 pb-2 mb-4">
-                                    Original Sale Items
+                                    {sale.items?.length > 0 ? 'Original Sale Items' : 'Invoice Payment Details'}
                                 </h3>
+
                                 <div className="overflow-x-auto rounded-lg border border-gray-200">
                                     <table className="min-w-full divide-y divide-gray-200">
                                         <thead className="bg-gray-100">
-                                            <tr>
-                                                <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Item</th>
-                                                <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Quantity</th>
-                                                <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Price</th>
-                                                <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Subtotal</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-200 bg-white">
-                                            {saleItemsToDisplay.length > 0 ? saleItemsToDisplay.map((item) => (
-                                                <tr key={item.id}>
-                                                    <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{item.item?.name || 'Unknown Item'}</td>
-                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-500">{formatNumber(item.quantity)}</td>
-                                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-500">{formatCurrency(item.price)}</td>
-                                                    <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-right text-gray-700">{formatCurrency(item.quantity * item.price)}</td>
+                                            {sale.items?.length > 0 ? (
+                                                <tr>
+                                                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Item</th>
+                                                    <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Quantity</th>
+                                                    <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Price</th>
+                                                    <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Subtotal</th>
                                                 </tr>
-                                            )) : (
-                                                <tr><td colSpan="4" className="px-4 py-10 text-center text-sm text-gray-500">No items in this sale.</td></tr>
+                                            ) : (
+                                                <tr>
+                                                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Invoice No</th>
+                                                    <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Total Due</th>
+                                                    <th scope="col" className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Total Paid</th>
+                                                </tr>
+                                            )}
+                                        </thead>
+
+                                        <tbody className="divide-y divide-gray-200 bg-white">
+                                            {sale.items?.length > 0 ? (
+                                                sale.items.map((item) => (
+                                                    <tr key={item.id}>
+                                                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                                                            {item.item?.name || 'Unknown Item'}
+                                                        </td>
+                                                        <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-500">
+                                                            {formatNumber(item.quantity)}
+                                                        </td>
+                                                        <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-500">
+                                                            {formatCurrency(item.price)}
+                                                        </td>
+                                                        <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-right text-gray-700">
+                                                            {formatCurrency(item.quantity * item.price)}
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            ) : sale.invoicepaymentdetails?.length > 0 ? (
+                                                sale.invoicepaymentdetails.map((detail, index) => (
+                                                    <tr key={index}>
+                                                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                                                            {detail.invoiceno || 'N/A'}
+                                                        </td>
+                                                        <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-500">
+                                                            {formatCurrency(detail.totaldue)}
+                                                        </td>
+                                                        <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-700 font-semibold">
+                                                            {formatCurrency(detail.totalpaid)}
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            ) : (
+                                                <tr>
+                                                    <td colSpan="4" className="px-4 py-10 text-center text-sm text-gray-500">
+                                                        No item or payment detail records found.
+                                                    </td>
+                                                </tr>
                                             )}
                                         </tbody>
-                                        {saleItemsToDisplay.length > 0 && (
+
+                                        {/* --- Totals --- */}
+                                        {(sale.items?.length > 0 || sale.invoicepaymentdetails?.length > 0) && (
                                             <tfoot className="bg-gray-100">
-                                                <tr className="font-semibold"><td colSpan="3" className="px-4 py-3 text-right text-sm uppercase text-gray-700">Original Grand Total</td><td className="px-4 py-3 text-right text-sm text-gray-800">{formatCurrency(originalTotal)}</td></tr>
-                                                {typeof sale.totaldue !== 'undefined' && (<tr className="font-semibold border-t-2 border-gray-300"><td colSpan="3" className="px-4 py-3 text-right text-sm uppercase text-gray-700">Original Net Amount Due</td><td className="px-4 py-3 text-right text-sm text-gray-800">{formatCurrency(sale.totaldue)}</td></tr>)}
-                                                {totalPaid > 0 && (
+                                                {sale.items?.length > 0 ? (
                                                     <>
-                                                        <tr className="font-bold text-green-700"><td colSpan="3" className="px-4 py-3 text-right text-sm uppercase">Amount Paid Before Void</td><td className="px-4 py-3 text-right text-sm">{formatCurrency(totalPaid)}</td></tr>
-                                                        <tr className="font-bold text-red-700"><td colSpan="3" className="px-4 py-3 text-right text-sm uppercase">Amount Refunded</td><td className="px-4 py-3 text-right text-sm">({formatCurrency(refundedAmount)})</td></tr>
+                                                        <tr className="font-semibold">
+                                                            <td colSpan="3" className="px-4 py-3 text-right text-sm uppercase text-gray-700">
+                                                                Original Grand Total
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right text-sm text-gray-800">
+                                                                {formatCurrency(originalTotal)}
+                                                            </td>
+                                                        </tr>
+                                                        {typeof sale.totaldue !== 'undefined' && (
+                                                            <tr className="font-semibold border-t-2 border-gray-300">
+                                                                <td colSpan="3" className="px-4 py-3 text-right text-sm uppercase text-gray-700">
+                                                                    Original Net Amount Due
+                                                                </td>
+                                                                <td className="px-4 py-3 text-right text-sm text-gray-800">
+                                                                    {formatCurrency(sale.totaldue)}
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                        {totalPaid > 0 && (
+                                                            <>
+                                                                <tr className="font-bold text-green-700">
+                                                                    <td colSpan="3" className="px-4 py-3 text-right text-sm uppercase">
+                                                                        Amount Paid Before Void
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-right text-sm">
+                                                                        {formatCurrency(totalPaid)}
+                                                                    </td>
+                                                                </tr>
+                                                                <tr className="font-bold text-red-700">
+                                                                    <td colSpan="3" className="px-4 py-3 text-right text-sm uppercase">
+                                                                        Amount Refunded
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-right text-sm">
+                                                                        ({formatCurrency(refundedAmount)})
+                                                                    </td>
+                                                                </tr>
+                                                            </>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        {totalPaid > 0 && (
+                                                            <tr className="font-semibold">
+                                                                <td className="px-4 py-3 text-right text-sm uppercase text-gray-700">
+                                                                    Total Paid Before Void
+                                                                </td>
+                                                                <td colSpan="2" className="px-4 py-3 text-right text-sm text-gray-800">
+                                                                    {formatCurrency(totalPaid)}
+                                                                </td>
+                                                            </tr>
+                                                        )}
                                                     </>
                                                 )}
                                             </tfoot>
@@ -151,6 +238,7 @@ export default function VoidPreview({ auth, sale }) {
                                     </table>
                                 </div>
                             </div>
+
 
                             {/* --- COMPLETE: Action Buttons --- */}
                             <div className="flex justify-end space-x-3 border-t border-gray-200 pt-6 mt-6">
