@@ -121,8 +121,8 @@ Route::middleware('auth')->group(function () {
         Route::delete('/{order}', [BilPostController::class, 'destroy'])->name('destroy');
     
         // New Route for handling Payments
-        Route::post('/pay', [BilPostController::class, 'pay'])->name('pay');  // POST route with no parameter
-        Route::put('/pay/{order}', [BilPostController::class, 'pay'])->name('pay_update');  // PUT route with {order} param and a different name.
+        Route::post('/pay', [BilPostController::class, 'processPayment'])->name('pay');  // POST route with no parameter
+        Route::put('/pay/{order}', [BilPostController::class, 'processPayment'])->name('pay_update');  // PUT route with {order} param and a different name.
     
     });
 

@@ -26,7 +26,7 @@ use App\Enums\{
 
 class BilVoidHistoryController extends Controller
 {
-    // This trait provides generateUniqueRefundNumber()
+    // This trait provides generateUniqueNumber()
     use GeneratesUniqueNumbers;
 
     /**
@@ -134,8 +134,8 @@ class BilVoidHistoryController extends Controller
             $transdate = Carbon::parse($validated['transdate']);
             $yearpart = $transdate->year;
             $monthpart = $transdate->month;
-            $refundAmount = $validated['refund_amount'];
-            $refundNo = $this->generateUniqueRefundNumber('REF', 'refundno');
+            $refundAmount = $validated['refund_amount'];           
+            $refundNo = $this->generateUniqueNumber(BILRefund::class, 'refundno', 'REF');
 
             // B. Create the BILRefund record
             BILRefund::create([

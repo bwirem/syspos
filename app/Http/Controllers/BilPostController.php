@@ -1,71 +1,42 @@
 <?php
 
 namespace App\Http\Controllers;
+
+use App\Http\Controllers\Traits\HandlesOrdering;
+use App\Http\Controllers\Traits\GeneratesUniqueNumbers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
-use App\Models\{   
-    BILOrder,
-    BILOrderItem,
-    BILSale,
-    BILReceipt,
-    BILInvoice,
-    BILInvoiceLog,
-
-    BILInvoicePayment,
-    BILInvoicePaymentDetail,
-    
-
-    BILDebtor,
-    BILDebtorLog,
-
-    BILVoidedSale,
-    BILCollection,
-
-    IVRequistion,
-    IVRequistionItem,
-
-    SIV_Store,
-    
-    FacilityOption,
-    BLSPaymentType,
-    BLSPriceCategory
+use App\Models\{
+    BILOrder, BILOrderItem, BILSale, BILReceipt, BILInvoice, BILInvoiceLog,
+    BILInvoicePayment, BILInvoicePaymentDetail, BILDebtor, BILDebtorLog,
+    BILCollection, IVRequistion, IVRequistionItem, SIV_Store,
+    FacilityOption, BLSPaymentType, BLSPriceCategory
 };
 
 use App\Enums\{
-    VoidSources,
-    BillingTransTypes,
-    InvoiceStatus,
-    PaymentSources,
-    InvoiceTransTypes,
-    StoreType
+    BillingTransTypes, InvoiceStatus, PaymentSources, InvoiceTransTypes, StoreType
 };
 
 class BilPostController extends Controller
 {
-    /**
-     * Display a listing of orders.
-     */
-    
-     public function index(Request $request)
-    {
-        // --- 1. SET DEFAULT DATES ---
-        // Get today's date in 'YYYY-MM-DD' format.
-        $today = now()->format('Y-m-d');
+    use HandlesOrdering;
+    use GeneratesUniqueNumbers;
 
-        // Use the dates from the request, OR use today's date as a default.
-        // This is the core logic to handle the initial page load correctly.
+    /**
+     * Display a listing of posted or proforma orders.
+     */
+    public function index(Request $request)
+    {
+        $today = now()->format('Y-m-d');
         $startDate = $request->input('start_date', $today);
         $endDate = $request->input('end_date', $today);
 
-        // --- 2. BUILD THE QUERY ---
-        $query = BILOrder::with(['orderitems', 'customer']); // Eager load relations
+        $query = BILOrder::with(['orderitems', 'customer']);
 
-        // Filtering by customer name using a relationship
         if ($request->filled('search')) {
             $query->whereHas('customer', function ($q) use ($request) {
                 $q->where('first_name', 'like', '%' . $request->search . '%')
@@ -75,96 +46,47 @@ class BilPostController extends Controller
             });
         }
 
-        // --- 3. ALWAYS APPLY DATE FILTER ---
-        // The 'if' condition is removed. The filter is now always applied using
-        // either the requested dates or the defaults we set above.
         $parsedStartDate = Carbon::parse($startDate)->startOfDay();
         $parsedEndDate = Carbon::parse($endDate)->endOfDay();
         $query->whereBetween('created_at', [$parsedStartDate, $parsedEndDate]);
 
-        // Filtering by a specific stage if provided
         if ($request->filled('stage')) {
             $query->where('stage', $request->stage);
         }
 
-        // General filter to only show orders in specific stages (e.g., Pending, Proforma)
-        $query->whereIn('stage', [3, 4]); // Using whereIn is slightly cleaner for an array
+        $query->whereIn('stage', [3, 4]); // Proforma (3) and Saved for Later (4)
 
-        // Paginate and sort orders
-        // Use withQueryString() to ensure pagination links retain filter parameters
         $orders = $query->orderBy('created_at', 'desc')->paginate(10)->withQueryString();
 
-        // --- 4. RETURN DATA TO INERTIA ---
         return inertia('BilPosts/Index', [
             'orders' => $orders,
-            // Explicitly pass the filters that were used for the query.
-            // This ensures the frontend always has the correct state.
             'filters' => [
-                'search'     => $request->input('search', ''),
-                'stage'      => $request->input('stage', ''),
+                'search'     => $request->input('search'),
+                'stage'      => $request->input('stage'),
                 'start_date' => $startDate,
                 'end_date'   => $endDate,
             ],
-            // You can also pass flash success messages this way
-            // 'success' => session('success'),
         ]);
-    }     
+    }
 
     /**
      * Show the form for creating a new order.
      */
     public function create()
     {
-        // Fetch all records from facilitypricecategories
-        $rows = BLSPriceCategory::query()->first();
-    
-        $priceCategories = [];
-    
-        if ($rows) {
-            for ($i = 1; $i <= 13; $i++) {
-                if (!empty($rows->{'useprice' . $i}) && $rows->{'useprice' . $i} == 1) {
-                    $priceCategories[] = [
-                        'pricename' => 'price' . $i,
-                        'pricedescription' => trim($rows->{'price' . $i}),
-                    ];
-                }
-            }
-        }
-
-        return inertia('BilPosts/Create',[           
-            'fromstore' => SIV_Store::all(), // Assuming you have a Store model
-            'priceCategories' => $priceCategories,
-        ]);
-    }
-
-
-    public function confirmSave(Request $request)
-    {       
-        
-        // Validate the incoming order data if necessary
-        $validatedData = $request->validate([
-            'store_id' => 'required|integer|exists:siv_stores,id',
-            'pricecategory_id' => 'required|string',
-            'total' => 'required|numeric|min:0',
-            'orderitems' => 'required|array|min:1',
-            'orderitems.*.item_id' => 'required|integer|exists:bls_items,id',
-            'orderitems.*.item_name' => 'required|string', 
-            'orderitems.*.quantity' => 'required|numeric|min:0.01',
-            'orderitems.*.price' => 'required|numeric|min:0',
-        ]);
-      
-
-        return inertia('BilPosts/SaveOrderConfirmation', [
-            'orderData' => $validatedData
+        return inertia('BilPosts/Create', [
+            'fromstore' => SIV_Store::all(),
+            'priceCategories' => $this->fetchPriceCategories(),
         ]);
     }
 
     /**
-     * Show the payment processing view with customer selection.
+     * Show a confirmation view before saving a new order.
+     * THIS METHOD HAS BEEN RESTORED.
      */
-    public function confirmPayment(Request $request)
+    public function confirmSave(Request $request)
     {
-        // You can use the same validation as confirmSave
+        // Validate the incoming order data
         $validatedData = $request->validate([
             'store_id' => 'required|integer|exists:siv_stores,id',
             'pricecategory_id' => 'required|string',
@@ -176,109 +98,75 @@ class BilPostController extends Controller
             'orderitems.*.price' => 'required|numeric|min:0',
         ]);
 
-        $facilityoption = FacilityOption::first(); // Fetches the first record of facility options
-
-        return inertia('BilPosts/ProcessPayment', [
-            'orderData' => $validatedData,
-            'facilityoption' => $facilityoption, // Pass the options to the frontend
-            'paymentMethods' => BLSPaymentType::all(),
+        return inertia('BilPosts/SaveOrderConfirmation', [
+            'orderData' => $validatedData
         ]);
     }
 
     /**
-     * Store a newly created order in storage.
+     * Store a newly created order with a "Saved for Later" status.
      */
-    
-     public function store(Request $request)
-     {
-         // Validate input
-         $validated = $request->validate([             
-             'customer_id' => 'required|exists:bls_customers,id', //validate customer id             
-             'store_id' => 'required|exists:siv_stores,id', //validate store id       
-             'stage' => 'required|integer|min:1',
-             'orderitems' => 'required|array',
-             'orderitems.*.item_id' => 'required|exists:bls_items,id',  
-             'orderitems.*.quantity' => 'required|numeric|min:0',
-             'orderitems.*.price' => 'required|numeric|min:0', 
-         ]);
-     
-         // Begin database transaction
-         DB::transaction(function () use ($validated) {
-             // Create the order without a total initially
-             $order = BILOrder::create([
-                 'customer_id' => $validated['customer_id'],
-                 'store_id' => $validated['store_id'],
-                 'stage' => $validated['stage'],
-                 'total' => 0, // Set an initial total (will update later)
-                 'user_id' => Auth::id(),
-             ]);    
-     
-             // Create associated order items
-             foreach ($validated['orderitems'] as $item) {
-                 $order->orderitems()->create([
-                     'item_id' => $item['item_id'],
-                     'quantity' => $item['quantity'],
-                     'price' => $item['price'],
-                 ]);
-             }
-     
-             // Reload the relationship to ensure all items are fetched
-             $order->load('orderitems');
-     
-             // Compute the total based on updated order items
-             $calculatedTotal = $order->orderitems->sum(fn($item) => $item->quantity * $item->price);
-     
-             // Update order with the correct total
-             $order->update(['total' => $calculatedTotal]);
-         });
-     
-         return redirect()->route('billing1.index')->with('success', 'Order created successfully.');
-     }     
+    public function store(Request $request)
+    {
+        $this->createOrder($request); // Uses HandlesOrdering trait
+        return redirect()->route('billing1.index')->with('success', 'Order created successfully.');
+    }
 
     /**
      * Show the form for editing the specified order.
      */
     public function edit(BILOrder $order)
-    {       
-        // Eager load order items and their related items
-        $order->load(['customer', 'store', 'orderitems.item']); 
-
-        // Fetch all records from facilitypricecategories
-        $rows = BLSPriceCategory::query()->first();
-    
-        $priceCategories = [];
-    
-        if ($rows) {
-            for ($i = 1; $i <= 13; $i++) {
-                if (!empty($rows->{'useprice' . $i}) && $rows->{'useprice' . $i} == 1) {
-                    $priceCategories[] = [
-                        'pricename' => 'price' . $i,
-                        'pricedescription' => trim($rows->{'price' . $i}),
-                    ];
-                }
-            }
-        }
-
+    {
+        $order->load(['customer', 'store', 'orderitems.item']);
         return inertia('BilPosts/Edit', [
             'order' => $order,
-            'fromstore' => SIV_Store::all(), // Assuming you have a Store model
-            'priceCategories' => $priceCategories,
+            'fromstore' => SIV_Store::all(),
+            'priceCategories' => $this->fetchPriceCategories(),
         ]);
     }
-
 
     /**
      * Show the confirmation view before updating a saved order.
      */
     public function confirmUpdate(Request $request, BILOrder $order)
     {
-        // You can validate the incoming data here if you wish
         $orderData = $request->all();
-        $orderData['id'] = $order->id; // Ensure the original order ID is passed along
+        $orderData['id'] = $order->id; // Pass the order ID along
 
         return inertia('BilPosts/ConfirmOrderUpdate', [
             'orderData' => $orderData,
-            'originalOrder' => $order->load('customer'), // Pass original customer info for display            
+            'originalOrder' => $order->load('customer'), // Show original details for comparison
+        ]);
+    }
+
+    /**
+     * Update the specified order.
+     */
+    public function update(Request $request, BILOrder $order)
+    {
+        $this->updateOrder($request, $order); // Uses HandlesOrdering trait
+        return redirect()->route('billing1.index')->with('success', 'Order updated successfully.');
+    }
+
+    /**
+     * Show the payment processing view for a new order.
+     */
+    public function confirmPayment(Request $request)
+    {
+        $validatedData = $request->validate([
+            'store_id' => 'required|integer|exists:siv_stores,id',
+            'pricecategory_id' => 'required|string',
+            'total' => 'required|numeric|min:0',
+            'orderitems' => 'required|array|min:1',
+            'orderitems.*.item_id' => 'required|integer|exists:bls_items,id',
+            'orderitems.*.quantity' => 'required|numeric|min:0.01',
+            'orderitems.*.price' => 'required|numeric|min:0',
+        ]);
+
+        return inertia('BilPosts/ProcessPayment', [
+            'orderData' => $validatedData,
+            'facilityoption' => FacilityOption::first(),
+            'paymentMethods' => BLSPaymentType::all(),
         ]);
     }
 
@@ -287,9 +175,8 @@ class BilPostController extends Controller
      */
     public function confirmExistingPayment(Request $request, BILOrder $order)
     {
-        // You can validate the incoming data here if you wish
         $orderData = $request->all();
-        $orderData['id'] = $order->id; // Ensure the original order ID is passed along
+        $orderData['id'] = $order->id;
 
         return inertia('BilPosts/ProcessExistingOrderPayment', [
             'orderData' => $orderData,
@@ -298,562 +185,276 @@ class BilPostController extends Controller
         ]);
     }
 
-
     /**
-     * Update the specified order in storage.
+     * Processes the payment for a new or existing order.
+     * This is the main endpoint that finalizes a sale.
      */
-
-     public function update(Request $request, BILOrder $order)
-     {
-         // Validate input
-         $validated = $request->validate([             
-             'customer_id' => 'required|exists:bls_customers,id', //validate customer id             
-             'store_id' => 'required|exists:siv_stores,id', //validate store id       
-             'total' => 'required|numeric|min:0',
-             'stage' => 'required|integer|min:1',
-             'orderitems' => 'required|array',
-             'orderitems.*.id' => 'nullable|exists:bil_orderitems,id',
-             'orderitems.*.item_id' => 'required|exists:bls_items,id',
-             'orderitems.*.quantity' => 'required|numeric|min:0',
-             'orderitems.*.price' => 'required|numeric|min:0',
-         ]);
-     
-         // Update the order within a transaction
-         DB::transaction(function () use ($validated, $order) {
-             // Retrieve existing item IDs before the update
-             $oldItemIds = $order->orderitems()->pluck('id')->toArray();
-             
-             $existingItemIds = [];
-             $newItems = [];
-     
-             foreach ($validated['orderitems'] as $item) {
-                 if (!empty($item['id'])) {
-                     $existingItemIds[] = $item['id'];
-                 } else {
-                     $newItems[] = $item;
-                 }
-             }
-     
-             // Identify and delete removed items
-             $itemsToDelete = array_diff($oldItemIds, $existingItemIds);
-             $order->orderitems()->whereIn('id', $itemsToDelete)->delete();
-     
-             // Add new items
-             foreach ($newItems as $item) {
-                 $order->orderitems()->create([
-                     'item_id' => $item['item_id'],
-                     'quantity' => $item['quantity'],
-                     'price' => $item['price'],
-                 ]);
-             }
-     
-             // Update existing items
-             foreach ($validated['orderitems'] as $item) {
-                 if (!empty($item['id'])) {
-                     $orderItem = BILOrderItem::find($item['id']);
-     
-                     if ($orderItem) {
-                         $orderItem->update([
-                             'item_id' => $item['item_id'],
-                             'quantity' => $item['quantity'],
-                             'price' => $item['price'],
-                         ]);
-                     }
-                 }
-             }
-     
-             // Compute the total based on updated order items
-             $calculatedTotal = $order->orderitems->sum(fn($item) => $item->quantity * $item->price);
-     
-             // Update the order details
-             $order->update([                 
-                 'customer_id' => $validated['customer_id'],                 
-                 'store_id' => $validated['store_id'],
-                 'stage' => $validated['stage'],
-                 'total' => $calculatedTotal,
-                 'user_id' => Auth::id(),
-             ]);
-         });
-     
-         return redirect()->route('billing1.index')->with('success', 'Order updated successfully.');
-     }
-     
-    
-    // ... other methods
-
-    public function pay(Request $request, $order = null)
+    public function processPayment(Request $request, BILOrder $order = null)
     {
-        // Log::info('Start processing payment:', ['order' => $order, 'request_data' => $request->all()]);
 
-         $order = $request->order;
+        // we manually check the request body for an ID and load the order.
+        if (!$order) {
+            $orderId = $request->input('id') ?? $request->input('order');
+            if ($orderId) {
+                $order = BILOrder::find($orderId);
+            }
+        }
+
+        $validated = $request->validate([
+            'orderitems' => 'required|array|min:1',
+            'orderitems.*.id' => 'nullable|exists:bil_orderitems,id',
+            'orderitems.*.item_id' => 'required|integer|exists:bls_items,id',
+            'orderitems.*.quantity' => 'required|numeric|min:0.01',
+            'orderitems.*.price' => 'required|numeric|min:0',
+            'payment_method' => 'nullable|integer|exists:bls_paymenttypes,id',
+            'paid_amount' => 'nullable|numeric|min:0',
+            'total' => 'required|numeric|min:0',
+            'customer_id' => 'required|integer|exists:bls_customers,id',
+            'store_id' => 'required|integer|exists:siv_stores,id',
+        ]);
 
         try {
-                if ($order) {
-                // Edit mode: Handle PUT request with order ID
-                $validator = Validator::make($request->all(), [
-                    'orderitems' => 'required|array',
-                    'orderitems.*.item_id' => 'required|integer',
-                    'orderitems.*.quantity' => 'required|numeric',
-                    'orderitems.*.price' => 'required|numeric',
-                    'payment_method' => 'nullable|integer',
-                    'paid_amount' => 'nullable|numeric',                    
-                    'total' => 'nullable|numeric',   //Total Due
-                    'sale_type' => 'required|string',
-                    'customer_id' => 'required|integer',
-                    'store_id' => 'required|integer',
-                    'stage' => 'required|integer',
-                ]);
-
-                    if ($validator->fails()) {
-                        Log::error('Validation errors during payment update:', [
-                        'errors' => $validator->errors()->all(),
-                        'request_data' => $request->all(),
-                    ]);
-                    return response()->json(['success' => false, 'message' => $validator->errors()->first()], 422);
-                }
-                    
-                $validated = $validator->validated();
-
-                // Update the order within a transaction
-                DB::transaction(function () use ($validated, $order) {
-                        $bilorder = BILOrder::findOrFail($order);
-
-                    // Get old items and sync them
-                    $oldItemIds = $bilorder->orderitems()->pluck('id')->toArray();
-                    // Sync order items
-                    $newItemIds = [];
-                        foreach ($validated['orderitems'] as $item) {
-                        if(!empty($item['id'])){
-                            $newItemIds[] = $item['id'];
-                        } else {
-                            //Create new item
-                            $bilorder->orderitems()->create([
-                            'item_id' => $item['item_id'],
-                            'quantity' => $item['quantity'],
-                            'price' => $item['price'],
-                        ]);
-                    }
-                    }
-                $itemsToDelete = array_diff($oldItemIds, $newItemIds);
-                    $bilorder->orderitems()->whereIn('id', $itemsToDelete)->delete(); // Use detach to remove
-                    
-                    foreach ($validated['orderitems'] as $item) {
-                        if(!empty($item['id'])) {
-                            $orderItem = BILOrderItem::find($item['id']);
-                            if ($orderItem) {
-                                    $orderItem->update([
-                                    'item_id' => $item['item_id'],
-                                    'quantity' => $item['quantity'],
-                                    'price' => $item['price'],
-                                ]);
-                            }
-                    }
-                    }
-    
-                    // Compute the total based on updated order items
-                    $calculatedTotal = $bilorder->orderitems->sum(fn($item) => $item->quantity * $item->price);
-
-                    // Update the order details
-                    $bilorder->update([
-                        'customer_id' => $validated['customer_id'],
-                        'store_id' => $validated['store_id'],
-                        'stage' => 5,
-                        'total' => $calculatedTotal,
-                        'user_id' => Auth::id(),
-                    ]);
-
-                    //Fill post Bills table
-                    $this->postBills($validated);
-
-                });
-            
-                return redirect()->route('billing1.index') // CHANGE 'billing1.index' to your actual route name
-                ->with('success', 'Payment processed successfully.');
-
-            } else {
-                    // Create mode: Handle POST request
-                $validator = Validator::make($request->all(), [
-                        'orderitems' => 'required|array',
-                        'orderitems.*.item_id' => 'required|integer',
-                        'orderitems.*.quantity' => 'required|numeric',
-                        'orderitems.*.price' => 'required|numeric',
-                        'payment_method' => 'nullable|integer',
-                        'paid_amount' => 'nullable|numeric',                        
-                        'total' => 'nullable|numeric',   // Total Due           
-                        'sale_type' => 'required|string',
-                        'customer_id' => 'required|integer',
-                        'store_id' => 'required|integer',
-                        'stage' => 'required|integer',
-                ]);
-
-                if ($validator->fails()) {
-                    Log::error('Validation errors during payment create:', [
-                        'errors' => $validator->errors()->all(),
-                        'request_data' => $request->all(),
-                    ]);
-                    return response()->json(['success' => false, 'message' => $validator->errors()->first()], 422);
-                }
-
-                $validated = $validator->validated();
-                
-                // Begin database transaction
-                DB::transaction(function () use ($validated) {
-                    // Create the order without a total initially
-                $order = BILOrder::create([
-                    'customer_id' => $validated['customer_id'],
-                    'store_id' => $validated['store_id'],
-                    'stage' => 5,
-                    'total' => 0, // Set an initial total (will update later)
-                    'user_id' => Auth::id(),
-                ]);    
-    
-                // Create associated order items
-                foreach ($validated['orderitems'] as $item) {
-                        $order->orderitems()->create([
-                        'item_id' => $item['item_id'],
-                        'quantity' => $item['quantity'],
-                        'price' => $item['price'],
-                    ]);
-                }
-    
-                // Reload the relationship to ensure all items are fetched
-                $order->load('orderitems');
-    
-                // Compute the total based on updated order items
-                $calculatedTotal = $order->orderitems->sum(fn($item) => $item->quantity * $item->price);
-    
-                // Update order with the correct total
-                $order->update(['total' => $calculatedTotal]);
-
-                //Fill post Bills table
-                $this->postBills($validated);
-
-                });
-
-                
-                return redirect()->route('billing1.index') // CHANGE 'billing1.index' to your actual route name
-                    ->with('success', 'Payment processed successfully.');
-            }
-
+            DB::transaction(function () use ($validated, $order) {
+                $finalOrder = $this->createOrUpdateFinalOrder($validated, $order);
+                $this->postBills($validated, $finalOrder);
+            });
+            return redirect()->route('billing1.index')->with('success', 'Payment processed successfully.');
         } catch (\Exception $e) {
             Log::error('Error during payment processing:', [
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
-                'order' => $order,
+                'order_id' => $order?->id,
                 'request_data' => $request->all(),
             ]);
-            return response()->json(['success' => false, 'message' => 'Error during payment processing.'], 500);
+            return back()->with('error', 'An unexpected error occurred during payment processing.');
         }
     }
-    
 
+    //--------------------------------------------------------------------------
+    // PRIVATE HELPER METHODS
+    //--------------------------------------------------------------------------
 
-    // postBills
-
-    public function postBills($data)
+    /**
+     * Creates a new order or updates an existing one for the final payment stage.
+     */
+    private function createOrUpdateFinalOrder(array $validated, ?BILOrder $order): BILOrder
     {
-        
-        $paymentSource = PaymentSources::CashSale->value;
+        $calculatedTotal = collect($validated['orderitems'])->sum(fn($item) => $item['quantity'] * $item['price']);
 
-        // Calculate amounts
-        $amtToInvoice = $data['total']; //- ($data['discount'] ?? 0);
-        $has_receipt = $data['paid_amount'] > 0 || $amtToInvoice == 0;
-        $has_invoice = $data['paid_amount'] < $amtToInvoice;
+        $orderData = [
+            'customer_id' => $validated['customer_id'],
+            'store_id' => $validated['store_id'],
+            'stage' => 5, // Final "Posted" stage
+            'total' => $calculatedTotal,
+            'user_id' => Auth::id(),
+        ];
 
-        if($has_invoice){
-
-            $paymentSource = PaymentSources::InvoicePayment->value;
+        if ($order) {
+            $order->update($orderData);
+        } else {
+            $order = BILOrder::create($orderData);
         }
 
-        // Generate unique numbers
-        $receiptNo = $has_receipt ? $this->generateUniqueNumber('REC', 'receiptno') : '';
-        $invoiceNo = $has_invoice ? $this->generateUniqueNumber('INV', 'invoiceno') : '';
+        // Sync order items (add, update, delete)
+        $incomingItemIds = collect($validated['orderitems'])->pluck('id')->filter()->all();
+        $order->orderitems()->whereNotIn('id', $incomingItemIds)->delete();
+        foreach ($validated['orderitems'] as $itemData) {
+            $order->orderitems()->updateOrCreate(['id' => $itemData['id'] ?? null], $itemData);
+        }
 
-        // Use a transaction for atomicity
-        DB::transaction(function () use ($data,$receiptNo, $invoiceNo, $amtToInvoice,$paymentSource) {
+        return $order->fresh(); // Return a fresh instance with all relations
+    }
 
-            // Parse year and month parts
-            //$transdate = $data['transdate'];
-            $transdate = Carbon::now(); // Get the current date and time
-            $yearpart = Carbon::parse($transdate)->year;
-            $monthpart = Carbon::parse($transdate)->month;
+    /**
+     * Orchestrates all accounting and inventory posting after a sale is finalized.
+     */
+    private function postBills(array $data, BILOrder $order): void
+    {
+        $transdate = Carbon::now();
+        $totalDue = $data['total'];
+        $paidAmount = $data['paid_amount'] ?? 0;
+        $hasPayment = $paidAmount > 0;
+        $isCreditSale = $paidAmount < $totalDue;
 
-            $TransDescription1 = "Sales";
-            $TransDescription2 = "Payment";
-            $DebtorType = "Individual";            
+        // Generate unique numbers only if they are needed
+        $receiptNo = $hasPayment ? $this->generateUniqueNumber(BILReceipt::class, 'receiptno', 'REC') : null;
+        $invoiceNo = $isCreditSale ? $this->generateUniqueNumber(BILInvoice::class, 'invoiceno', 'INV') : null;
 
-            // Create the sale record
-            $sale = BILSale::create([
-                'transdate' => $transdate,
-                'customer_id' => $data['customer_id'],
-                'receiptno' => $receiptNo,
-                'invoiceno' => $invoiceNo,
-                'totaldue' => $amtToInvoice,
-                'totalpaid' => $data['paid_amount'],
-                'changeamount' => max(0, $data['paid_amount'] - $amtToInvoice),
-                'yearpart' => $yearpart,
-                'monthpart' => $monthpart,
-                'transtype' => BillingTransTypes::Sales->value,
-                'user_id' => Auth::id(),
+        $this->createSaleRecord($data, $transdate, $receiptNo, $invoiceNo);
+        $this->createInventoryRequisition($data, $transdate, $order->orderitems);
+
+        if ($isCreditSale) {
+            $this->handleInvoicingAndDebtors($data, $transdate, $invoiceNo, $receiptNo);
+        }
+
+        if ($hasPayment && !$isCreditSale) {
+            $this->createReceiptRecord($data, $transdate, $receiptNo);
+        }
+
+        if ($hasPayment) {
+            $paymentSource = $isCreditSale ? PaymentSources::InvoicePayment->value : PaymentSources::CashSale->value;
+            $this->createCollectionRecord($data, $transdate, $receiptNo, $paymentSource);
+        }
+    }
+
+    /**
+     * Creates the primary sale record.
+     */
+    private function createSaleRecord(array $data, Carbon $transdate, ?string $receiptNo, ?string $invoiceNo): void
+    {
+        $sale = BILSale::create([
+            'transdate' => $transdate,
+            'customer_id' => $data['customer_id'],
+            'receiptno' => $receiptNo,
+            'invoiceno' => $invoiceNo,
+            'totaldue' => $data['total'],
+            'totalpaid' => $data['paid_amount'] ?? 0,
+            'changeamount' => max(0, ($data['paid_amount'] ?? 0) - $data['total']),
+            'yearpart' => $transdate->year,
+            'monthpart' => $transdate->month,
+            'transtype' => BillingTransTypes::Sales->value,
+            'user_id' => Auth::id(),
+        ]);
+        $sale->items()->createMany($data['orderitems']);
+    }
+
+    /**
+     * Creates an inventory requisition to be processed by the stores department.
+     */
+    private function createInventoryRequisition(array $data, Carbon $transdate, $orderItems): void
+    {
+        $requisition = IVRequistion::create([
+            'transdate' => $transdate,
+            'tostore_id' => $data['customer_id'],
+            'tostore_type' => StoreType::Customer->value,
+            'fromstore_id' => $data['store_id'],
+            'stage' => 3, // Ready for inventory issue
+            'total' => 0,
+            'user_id' => Auth::id(),
+        ]);
+
+        $requisitionItemsData = [];
+        foreach ($orderItems->load('item.product') as $orderItem) {
+            if ($product = $orderItem->item->product) {
+                $requisitionItemsData[] = [
+                    'product_id' => $product->id,
+                    'quantity' => $orderItem->quantity,
+                    'price' => $product->costprice, // Use cost price for inventory value
+                ];
+            }
+        }
+        $requisition->requistionitems()->createMany($requisitionItemsData);
+
+        $costTotal = $requisition->requistionitems()->sum(DB::raw('quantity * price'));
+        $requisition->update(['total' => $costTotal]);
+    }
+
+    /**
+     * Handles creation of invoices, debtor records, and all related logs for credit sales.
+     */
+    private function handleInvoicingAndDebtors(array $data, Carbon $transdate, string $invoiceNo, ?string $receiptNo): void
+    {
+        $paidAmount = $data['paid_amount'] ?? 0;
+        $totalDue = $data['total'];
+        $balance = $totalDue - $paidAmount;
+        $userId = Auth::id();
+
+        // 1. Create Invoice
+        $invoice = BILInvoice::create([
+            'transdate' => $transdate, 'customer_id' => $data['customer_id'], 'invoiceno' => $invoiceNo,
+            'totaldue' => $totalDue, 'totalpaid' => $paidAmount, 'balancedue' => $balance,
+            'status' => $balance <= 0 ? InvoiceStatus::Closed->value : InvoiceStatus::Open->value,
+            'yearpart' => $transdate->year, 'monthpart' => $transdate->month, 'user_id' => $userId,
+        ]);
+        $invoice->items()->createMany($data['orderitems']);
+
+        // 2. Create Invoice Logs
+        BILInvoiceLog::create([
+            'transdate' => $transdate, 'customer_id' => $data['customer_id'], 'reference' => $invoiceNo,
+            'invoiceno' => $invoiceNo, 'debitamount' => $totalDue, 'creditamount' => 0,
+            'transtype' => InvoiceTransTypes::NewInvoice->value, 'transdescription' => 'Sales', 'user_id' => $userId,
+        ]);
+        if ($receiptNo) {
+            BILInvoiceLog::create([
+                'transdate' => $transdate, 'customer_id' => $data['customer_id'], 'reference' => $receiptNo,
+                'invoiceno' => $invoiceNo, 'debitamount' => 0, 'creditamount' => $paidAmount,
+                'transtype' => InvoiceTransTypes::Payment->value, 'transdescription' => 'Payment', 'user_id' => $userId,
             ]);
+        }
 
-            // Insert associated sale items
-            foreach ($data['orderitems'] as $item) {
-                $sale->items()->create($item);
-            }
+        // 3. Update Debtor Record
+        $debtor = BILDebtor::firstOrCreate(
+            ['customer_id' => $data['customer_id'], 'debtortype' => 'Individual'],
+            ['transdate' => $transdate, 'balance' => 0, 'user_id' => $userId]
+        );
+        $debtor->increment('balance', $balance);
 
-            $saleId = $sale->id;            
+        // 4. Create Debtor Logs
+        BILDebtorLog::create([
+            'transdate' => $transdate, 'debtor_id' => $debtor->id, 'reference' => $invoiceNo, 'debtortype' => 'Individual',
+            'debitamount' => $totalDue, 'creditamount' => 0, 'transtype' => BillingTransTypes::Invoice->value,
+            'transdescription' => 'Sales', 'user_id' => $userId,
+        ]);
+        if ($receiptNo) {
+            BILDebtorLog::create([
+                'transdate' => $transdate, 'debtor_id' => $debtor->id, 'reference' => $receiptNo, 'debtortype' => 'Individual',
+                'debitamount' => 0, 'creditamount' => $paidAmount, 'transtype' => BillingTransTypes::Payment->value,
+                'transdescription' => 'Payment', 'user_id' => $userId,
+            ]);
+        }
 
-            $sale = BILSale::with('items.item.product')->find($saleId);
-
-            if($sale){
-
-                $requistion = IVRequistion::create([
-                    'transdate' => $transdate,
-                    'tostore_id' =>$data['customer_id'],
-                    'tostore_type'  => StoreType::Customer->value, // Specify it's a customer
-                    'fromstore_id' => $data['store_id'],
-                    'stage' => 3,// Send to inventory Issues
-                    'total' => 0, // Set an initial total (will update later)
-                    'user_id' => Auth::id(),
-                ]);    
-        
-                // Create associated requistion items
-                foreach ($sale->items as $saleItem) {
-                    $product = $saleItem->item->product;
-
-                    if ($product) {
-                        $requistion->requistionitems()->create([
-                            'product_id' => $product->id,
-                            'quantity' => $saleItem->quantity,
-                            'price' => $product->costprice,
-                        ]);
-                    }
-                }
-        
-                // Reload the relationship to ensure all items are fetched
-                $requistion->load('requistionitems');
-        
-                // Compute the total based on updated requistion items
-                $calculatedTotal = $requistion->requistionitems->sum(fn($item) => $item->quantity * $item->price);
-        
-                // Update requistion with the correct total
-                $requistion->update(['total' => $calculatedTotal]);  
-            }           
-
-            //invoice if any
-            if ($invoiceNo) {
-                // Create the invoice record
-                $invoice = BILInvoice::create([
-                    'transdate' => $transdate,
-                    'customer_id' => $data['customer_id'],
-                    'invoiceno' => $invoiceNo,
-                    'totaldue' => $amtToInvoice,
-                    'totalpaid' => 0,
-                    'paidforinvoice' => $data['paid_amount'],
-                    'balancedue' => $amtToInvoice,
-                    'status' => InvoiceStatus::Open->value, // For Open                    
-                    'yearpart' => $yearpart,
-                    'monthpart' => $monthpart,
-                    'user_id' => Auth::id(),
-                ]);
-            
-                // Update the invoice if a receipt exists
-                if ($receiptNo) {
-                    // Use the query builder for raw updates
-                    DB::table('bil_invoices')
-                        ->where('invoiceno', $invoiceNo)
-                        ->update([
-                            'balancedue' => DB::raw("balancedue - {$data['paid_amount']}"),
-                            'totalpaid' => DB::raw("totalpaid + {$data['paid_amount']}"),
-                        ]);
-            
-                    // Check if the invoice is fully paid and update the status
-                    $invoice = BILInvoice::where('invoiceno', $invoiceNo)->first(); // Reload the invoice
-                    if ($invoice->balancedue == 0) {
-                        $invoice->update(['status' => InvoiceStatus::Closed->value]); // For Fully Paid
-                    }
-                }
-
-                // Create the invoice log record
-                $invoiceLog = BILInvoiceLog::create([
-                    'transdate' => $transdate,
-                    'customer_id' => $data['customer_id'],
-                    'reference' => $invoiceNo,
-                    'invoiceno' => $invoiceNo,
-                    'debitamount' => $amtToInvoice,
-                    'creditamount' => 0,    
-                    'yearpart' => $yearpart,
-                    'monthpart' => $monthpart,               
-                    'transtype' => InvoiceTransTypes::NewInvoice->value,
-                    'transdescription' => $TransDescription1 , 
-                    'user_id' => Auth::id(),
-                ]);
-
-                 // Update the invoice log if a receipt exists
-                if ($receiptNo) {
-                    // Create the invoice log record
-                    $invoiceLog = BILInvoiceLog::create([
-                        'transdate' => $transdate,
-                        'customer_id' => $data['customer_id'],
-                        'reference' => $receiptNo,
-                        'invoiceno' => $invoiceNo,
-                        'debitamount' => 0,
-                        'creditamount' => $data['paid_amount'], 
-                        'yearpart' => $yearpart,
-                        'monthpart' => $monthpart,                   
-                        'transtype' => InvoiceTransTypes::Payment->value,
-                        'transdescription' => $TransDescription2, 
-                        'user_id' => Auth::id(),
-                    ]);
-                }
-
-                // Insert associated sale items
-                foreach ($data['orderitems'] as $item) {
-                    $invoice->items()->create($item);
-                }
-           
-
-                // Check if the debtor record exists
-                $debtor = BILDebtor::where('customer_id', $data['customer_id'])
-                ->where('debtortype', $DebtorType)
-                ->first();
-
-                if ($debtor) {
-                    // Update existing debtor balance
-                    $debtor->increment('balance', $amtToInvoice);
-                } else {
-                    // Create a new debtor record
-                    $debtor = BILDebtor::create([
-                        'transdate' => $transdate,
-                        'customer_id' => $data['customer_id'],
-                        'debtortype' => $DebtorType,
-                        'balance' => $amtToInvoice,
-                        'user_id' => auth()->id(), // Set the current authenticated user
-                    ]);
-                }
-
-                // If a receipt exists, reduce the debtor's balance
-                if ($receiptNo) {
-                    $debtor->decrement('balance', $data['paid_amount']);
-                }
-
-                // Insert a debit transaction into the debtor logs
-                BILDebtorLog::create([
-                'transdate' => $transdate,    
-                'debtor_id' => $debtor->id,
-                'reference' => $invoiceNo,
-                'debtortype' => $DebtorType,
-                'debitamount' => $amtToInvoice,
-                'creditamount' => 0,
-                'yearpart' => $yearpart,
-                'monthpart' => $monthpart,   
-                'transtype' => BillingTransTypes::Invoice->value,
-                'transdescription' => $TransDescription1 , 
-                'transdate' => now(), // Current timestamp
-                'user_id' => auth()->id(), // Set the current authenticated user
-                ]);
-
-                // If a receipt exists, insert a credit transaction
-                if ($receiptNo) {
-                    BILDebtorLog::create([
-                        'transdate' => $transdate,
-                        'debtor_id' => $debtor->id,
-                        'reference' => $receiptNo,
-                        'debtortype' => $DebtorType,
-                        'debitamount' => 0,
-                        'creditamount' => $data['paid_amount'],
-                        'yearpart' => $yearpart,
-                        'monthpart' => $monthpart,   
-                        'transtype' => BillingTransTypes::Payment->value, // For Payments
-                        'transdescription' => $TransDescription2, 
-                        'user_id' => auth()->id(),
-                    ]);
-                }
-
-            }
-
-            //invoice payment if any
-            if ($invoiceNo && $receiptNo) {     
-            
-               // Insert into BILInvoicePayment
-                BILInvoicePayment::create([
-                    'transdate' => $transdate,
-                    'receiptno' => $receiptNo,
-                    'customer_id' => $data['customer_id'],
-                    'totalpaid' => $data['paid_amount'],
-                    'yearpart' => $yearpart,
-                    'monthpart' => $monthpart, 
-                    'user_id' => auth()->id(), // Assuming the authenticated user is creating this record
-                ]);
-
-                // Insert into BILInvoicePaymentDetail
-                BILInvoicePaymentDetail::create([
-                    'receiptno' => $receiptNo,
-                    'invoiceno' => $invoiceNo,
-                    'totaldue' => $amtToInvoice,
-                    'totalpaid' => $data['paid_amount'],
-                ]);              
-
-            }
-
-            //receipt if any
-            if ($receiptNo && !$invoiceNo) {
-               
-                // Create the sale record
-                $sale = BILReceipt::create([
-                    'transdate' => $transdate,
-                    'customer_id' => $data['customer_id'],                    
-                    'receiptno' => $receiptNo,
-                    'totaldue' => $amtToInvoice,
-                    'totalpaid' => $data['paid_amount'],
-                    'changeamount' => max(0, $data['paid_amount'] - $amtToInvoice),
-                    'yearpart' => $yearpart,
-                    'monthpart' => $monthpart,   
-                    'user_id' => Auth::id(),
-                ]);
-
-                // Insert associated sale items
-                foreach ($data['orderitems'] as $item) {
-                    $sale->items()->create($item);
-                }
-
-            }
-
-            if ($receiptNo) {
-                // 1. Dynamically create the correct 'paytypeXXXXXX' column name.
-                //    This assumes $data['payment_method'] holds the ID (e.g., 1, 2) from the frontend form.
-                //    str_pad() ensures it's formatted correctly (e.g., "000001").
-                $paymentMethodColumn = 'paytype' . str_pad($data['payment_method'], 6, '0', STR_PAD_LEFT);
-
-                // 2. Create the collection record directly with the dynamic column.
-                BILCollection::create([
-                    'transdate'     => $transdate,
-                    'receiptno'     => $receiptNo,
-                    'paymentsource' => $paymentSource, // Uses the $paymentSource calculated earlier in the method
-                    'customer_id'   => $data['customer_id'],
-                    'yearpart'      => $yearpart,
-                    'monthpart'     => $monthpart,
-                    'transtype'     => BillingTransTypes::Payment->value,
-                    'user_id'       => Auth::id(),
-
-                    // 3. Add the dynamic column and its value directly.
-                    //    The value is the total amount paid for this entire transaction.
-                    $paymentMethodColumn => $data['paid_amount'] ?? 0,
-                ]);
-            }
-            
-         });
+        // 5. Create Invoice Payment Details
+        if ($receiptNo) {
+            BILInvoicePayment::create([
+                'transdate' => $transdate, 'receiptno' => $receiptNo, 'customer_id' => $data['customer_id'],
+                'totalpaid' => $paidAmount, 'yearpart' => $transdate->year, 'monthpart' => $transdate->month, 'user_id' => $userId,
+            ]);
+            BILInvoicePaymentDetail::create([
+                'receiptno' => $receiptNo, 'invoiceno' => $invoiceNo, 'totaldue' => $totalDue, 'totalpaid' => $paidAmount,
+            ]);
+        }
     }
 
-    private function generateUniqueNumber($prefix, $column)
+    /**
+     * Creates a receipt record for a fully paid cash sale.
+     */
+    private function createReceiptRecord(array $data, Carbon $transdate, string $receiptNo): void
     {
-        do {
-            $number = $prefix . time() . rand(100, 999); // Add randomness to avoid collisions
-        } while (BILSale::where($column, $number)->exists());
-
-        return $number;
+        $receipt = BILReceipt::create([
+            'transdate' => $transdate,
+            'customer_id' => $data['customer_id'],
+            'receiptno' => $receiptNo,
+            'totaldue' => $data['total'],
+            'totalpaid' => $data['paid_amount'] ?? 0,
+            'changeamount' => max(0, ($data['paid_amount'] ?? 0) - $data['total']),
+            'yearpart' => $transdate->year,
+            'monthpart' => $transdate->month,
+            'user_id' => Auth::id(),
+        ]);
+        $receipt->items()->createMany($data['orderitems']);
     }
-    
 
+    /**
+     * Creates a collection record for any payment received.
+     */
+    private function createCollectionRecord(array $data, Carbon $transdate, string $receiptNo, string $paymentSource): void
+    {
+        if (empty($data['payment_method']) || empty($data['paid_amount'])) {
+            return;
+        }
+
+        $paymentMethodColumn = 'paytype' . str_pad($data['payment_method'], 6, '0', STR_PAD_LEFT);
+
+        BILCollection::create([
+            'transdate' => $transdate,
+            'receiptno' => $receiptNo,
+            'paymentsource' => $paymentSource,
+            'customer_id' => $data['customer_id'],
+            'yearpart' => $transdate->year,
+            'monthpart' => $transdate->month,
+            'transtype' => BillingTransTypes::Payment->value,
+            'user_id' => Auth::id(),
+            $paymentMethodColumn => $data['paid_amount'],
+        ]);
+    }
 }

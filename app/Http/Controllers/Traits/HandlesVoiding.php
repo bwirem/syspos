@@ -38,7 +38,10 @@ trait HandlesVoiding
     {
         $yearpart = Carbon::parse($transdate)->year;
         $monthpart = Carbon::parse($transdate)->month;
-        $voidno = $this->generateUniqueNumber('VOD', 'voidno');
+
+       
+        $voidno = $this->generateUniqueNumber(BILVoidedSale::class, 'voidno', 'VOD');
+
         $receipt = BILReceipt::where('receiptno', $receiptno)->firstOrFail();
 
         DB::transaction(function () use ($receipt, $transdate, $voidno, $reasons, $yearpart, $monthpart) {
@@ -114,7 +117,7 @@ trait HandlesVoiding
     {               
         $yearpart = $transdate->year;
         $monthpart = $transdate->month;
-        $voidno = $this->generateUniqueNumber('VOD', 'voidno');
+        $voidno = $this->generateUniqueNumber(BILVoidedSale::class, 'voidno', 'VOD');
         
         // Get the invoice number from the sale object
         $invoiceno = $sale->invoiceno;
@@ -226,7 +229,7 @@ trait HandlesVoiding
     {               
         $yearpart = $transdate->year;
         $monthpart = $transdate->month;
-        $voidno = $this->generateUniqueNumber('VOD', 'voidno');
+        $voidno = $this->generateUniqueNumber(BILVoidedSale::class, 'voidno', 'VOD');
     
         // Step 1: Void the main BILInvoicePayment record.
         $payment->update([              
