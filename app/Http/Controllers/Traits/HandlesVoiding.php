@@ -278,5 +278,11 @@ trait HandlesVoiding
                 'transdescription' => "Payment Reversal #{$payment->receiptno}", 'user_id' => auth()->id(),
             ]);
         }
+
+        $sale = BILSale::where('receiptno', $payment->receiptno)->where('voided', 0)->first();
+        if ($sale) {
+            // Decrease the total amount paid on the sale record.
+            $sale->decrement('totalpaid', $payment->totalpaid);    
+        }
     }
 }
