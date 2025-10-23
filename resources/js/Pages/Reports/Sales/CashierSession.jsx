@@ -2,10 +2,9 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, useForm } from '@inertiajs/react';
 import React from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faUser, faStore, faCalendarAlt, faFilter, faPrint } from '@fortawesome/free-solid-svg-icons';
+import { faUser, faStore, faCalendarAlt, faFilter, faPrint, faRedo } from '@fortawesome/free-solid-svg-icons';
 
 const formatCurrency = (amount, currencyCode = 'TZS') => {
-    // ... (same as your daily report)
     const parsedAmount = parseFloat(amount);
     if (isNaN(parsedAmount)) return `${currencyCode} 0.00`;
     const locale = typeof navigator !== 'undefined' ? navigator.language : 'en-US';
@@ -13,7 +12,7 @@ const formatCurrency = (amount, currencyCode = 'TZS') => {
 };
 
 export default function CashierSessionReport({ auth, reportData, users, stores, filters }) {
-    const { data, setData, get, processing } = useForm({
+    const { data, setData, get, processing, reset } = useForm({
         user_id: filters.user_id || '',
         store_id: filters.store_id || '',
         start_date: filters.start_date || new Date().toISOString().slice(0, 10),
@@ -27,13 +26,19 @@ export default function CashierSessionReport({ auth, reportData, users, stores, 
     const handleSubmit = (e) => {
         e.preventDefault();
         if (!data.user_id) {
-            alert('Please select a cashier.'); // Simple validation
+            alert('Please select a cashier.');
             return;
         }
         get(route('reports.sales.cashiersession'), {
             preserveState: true,
             preserveScroll: true,
         });
+    };
+
+    const handleReset = () => {
+        reset();
+        // Optionally, you can also trigger a GET request to reload the page with default (empty) state
+        // get(route('reports.sales.cashiersession'), { preserveState: false });
     };
 
     return (
@@ -69,17 +74,22 @@ export default function CashierSessionReport({ auth, reportData, users, stores, 
                                 <label htmlFor="end_date" className="block text-sm font-medium text-gray-700 dark:text-gray-300">End Date</label>
                                 <input type="date" name="end_date" id="end_date" value={data.end_date} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600" />
                             </div>
-                            <button type="submit" disabled={processing || !data.user_id} className="inline-flex items-center justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50">
-                                <FontAwesomeIcon icon={faFilter} className="mr-2" />
-                                {processing ? 'Generating...' : 'Generate Report'}
-                            </button>
+                            <div className="flex items-end space-x-2">
+                                <button type="submit" disabled={processing || !data.user_id} className="inline-flex items-center justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50 w-full">
+                                    <FontAwesomeIcon icon={faFilter} className="mr-2" />
+                                    {processing ? 'Generating...' : 'Generate'}
+                                </button>
+                                <button type="button" onClick={handleReset} className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500 dark:border-gray-500">
+                                    <FontAwesomeIcon icon={faRedo} />
+                                </button>
+                            </div>
                         </form>
 
-                        {reportData && data.user_id && ( // Only show if reportData exists and a user is selected
+                        {reportData && data.user_id ? (
                             <div className="space-y-8">
                                 <div className="text-center p-4 border-b dark:border-gray-700">
                                     <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-100">
-                                        {reportData.report_title}
+                                        {reportData.report_title || "Cashier Session Report"}
                                     </h3>
                                     <p className="text-md text-gray-600 dark:text-gray-400">
                                         Cashier: <span className="font-medium">{reportData.cashier_name}</span>
@@ -90,17 +100,15 @@ export default function CashierSessionReport({ auth, reportData, users, stores, 
                                     </p>
                                 </div>
 
-                                {/* Overall Summary Cards */}
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-                                    {/* ... Summary Cards for Gross Sales, Discounts, Net Sales, Paid Amount, Transactions ... */}
                                     <SummaryCard title="Gross Sales" value={formatCurrency(reportData.total_gross_sales)} />
                                     <SummaryCard title="Discounts" value={formatCurrency(reportData.total_discounts)} />
                                     <SummaryCard title="Net Sales" value={formatCurrency(reportData.total_net_sales)} />
-                                    <SummaryCard title="Total Paid" value={formatCurrency(reportData.total_paid_amount)} />
+                                    {/* --- THIS IS THE CORRECTED LINE --- */}
+                                    <SummaryCard title="Total Paid" value={formatCurrency(reportData.total_paid_by_sale_record)} />
                                     <SummaryCard title="Transactions" value={reportData.number_of_transactions} />
                                 </div>
 
-                                {/* Payments by Type */}
                                 {reportData.payments_by_type && reportData.payments_by_type.length > 0 && (
                                     <ReportSection title="Payments by Type">
                                         <ReportTable
@@ -115,8 +123,6 @@ export default function CashierSessionReport({ auth, reportData, users, stores, 
                                     </ReportSection>
                                 )}
 
-
-                                {/* Aggregated Items Sold */}
                                 {reportData.aggregated_items_sold && reportData.aggregated_items_sold.length > 0 && (
                                      <ReportSection title="Summary of Items Sold">
                                         <ReportTable
@@ -132,13 +138,12 @@ export default function CashierSessionReport({ auth, reportData, users, stores, 
                                     </ReportSection>
                                 )}
 
-                                {/* Detailed Transactions */}
-                                {reportData.detailed_transactions && reportData.detailed_transactions.length > 0 && (
+                                {reportData.detailed_transactions?.length > 0 ? (
                                     <ReportSection title="Detailed Transactions">
                                         <ReportTable
                                             headers={["Time", "Receipt #", "Customer", "Items Qty", "Total Due", "Discount", "Total Paid"]}
                                             rows={reportData.detailed_transactions.map(tx => [
-                                                tx.transdate, // Already formatted time
+                                                tx.transdate,
                                                 tx.receipt_no,
                                                 tx.customer_name,
                                                 tx.items_count,
@@ -149,14 +154,11 @@ export default function CashierSessionReport({ auth, reportData, users, stores, 
                                             columnAlignments={['left', 'left', 'left', 'right', 'right', 'right', 'right']}
                                         />
                                     </ReportSection>
+                                ) : (
+                                    !processing && <p className="text-center text-gray-500 dark:text-gray-400 mt-8">No sales data found for this cashier in the selected period.</p>
                                 )}
-
-                                {!reportData.detailed_transactions?.length && !processing && data.user_id &&
-                                    <p className="text-center text-gray-500 dark:text-gray-400 mt-8">No sales data found for this cashier in the selected period/store.</p>
-                                }
                             </div>
-                        )}
-                        {!data.user_id && !processing && (
+                        ) : !processing && (
                             <p className="text-center text-gray-500 dark:text-gray-400 mt-8">
                                 Please select a cashier to generate the session report.
                             </p>
@@ -168,7 +170,7 @@ export default function CashierSessionReport({ auth, reportData, users, stores, 
     );
 }
 
-// Helper components for cleaner report structure (optional)
+// Helper components for cleaner report structure
 const ReportSection = ({ title, children }) => (
     <section className="pt-6 mt-6 border-t dark:border-gray-700">
         <h4 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-3">{title}</h4>
