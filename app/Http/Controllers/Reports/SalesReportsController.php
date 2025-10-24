@@ -480,8 +480,113 @@ class SalesReportsController extends Controller
      */
     public function customBuilder(Request $request): InertiaResponse
     {
-        // This advanced, dynamic method is preserved from the original.
-        return Inertia::render('Reports/Sales/CustomBuilder', [ /* as before */ ]);
+        // --- Define Whitelisted Options ---
+        $availableSaleColumns = ['id', 'transdate', 'receiptno', 'invoiceno', 'totaldue', 'discount', 'totalpaid', 'user_id', 'customer_id'];
+        $availableSaleItemColumns = ['quantity', 'price'];
+        $availableItemColumns = ['name AS item_name'];
+        $availableCustomerColumns = ['first_name AS customer_first_name', 'company_name AS customer_company_name'];
+        $availableUserColumns = ['name AS user_name'];
+
+        $availableFilters = ['customer_id', 'user_id', 'store_id', 'item_id', 'itemgroup_id'];
+        $availableGroupings = ['bil_sales.user_id', 'bil_sales.customer_id', 'bls_items.itemgroup_id', 'bil_saleitems.item_id', 'date_group'];
+        $groupingAliases = [
+            'bil_sales.user_id' => 'Cashier', 'bil_sales.customer_id' => 'Customer', 'bls_items.itemgroup_id' => 'Item Category',
+            'bil_saleitems.item_id' => 'Product/Service', 'date_group' => 'Date'
+        ];
+        $availableAggregations = ['SUM(bil_saleitems.quantity*bil_saleitems.price) as total_revenue', 'SUM(bil_saleitems.quantity) as total_quantity', 'COUNT(DISTINCT bil_sales.id) as transaction_count', 'SUM(bil_sales.totalpaid) as total_paid_sum'];
+
+        $validated = $request->validate([
+            'start_date' => 'nullable|date_format:Y-m-d', 'end_date' => 'nullable|date_format:Y-m-d|after_or_equal:start_date',
+            'columns_sale' => ['nullable', 'array'], 'columns_sale.*' => ['string', Rule::in($availableSaleColumns)],
+            'columns_sale_item' => ['nullable', 'array'], 'columns_sale_item.*' => ['string', Rule::in($availableSaleItemColumns)],
+            'columns_item' => ['nullable', 'array'], 'columns_item.*' => ['string', Rule::in($availableItemColumns)],
+            'filters' => 'nullable|array',
+            'filters.*.field' => ['required_with:filters', 'string', Rule::in($availableFilters)],
+            'filters.*.operator' => ['required_with:filters', 'string', Rule::in(['=', '!=', '>', '<', '>=', '<=', 'like', 'in', 'not_in'])],
+            'filters.*.value' => 'required_with:filters',
+            'group_by' => ['nullable', 'array'], 'group_by.*' => ['string', Rule::in($availableGroupings)],
+            'aggregations' => ['nullable', 'array'], 'aggregations.*' => ['string', Rule::in($availableAggregations)],
+            'report_title' => 'nullable|string|max:255',
+        ]);
+
+        $reportData = null;
+        $queryResults = collect();
+
+        if ($request->has('columns_sale') || $request->has('start_date')) {
+            $startDate = Carbon::parse($validated['start_date'] ?? Carbon::now()->startOfMonth())->startOfDay();
+            $endDate   = Carbon::parse($validated['end_date']   ?? Carbon::now()->endOfMonth())->endOfDay();
+            
+            $salesColumns = $this->getSafeColumnListing('bil_sales');
+
+            $query = DB::table('bil_saleitems')
+                ->join('bil_sales', 'bil_saleitems.sale_id', '=', 'bil_sales.id')
+                ->join('bls_items', 'bil_saleitems.item_id', '=', 'bls_items.id')
+                ->leftJoin('bls_itemgroups', 'bls_items.itemgroup_id', '=', 'bls_itemgroups.id')
+                ->leftJoin('users', 'bil_sales.user_id', '=', 'users.id')
+                ->leftJoin('bls_customers', 'bil_sales.customer_id', '=', 'bls_customers.id')
+                ->whereBetween('bil_sales.transdate', [$startDate, $endDate])
+                ->where('bil_sales.voided', '!=', 1);
+
+            $selects = [];
+            if (!empty($validated['columns_sale'])) foreach ($validated['columns_sale'] as $col) $selects[] = 'bil_sales.' . $col;
+            if (!empty($validated['columns_sale_item'])) foreach ($validated['columns_sale_item'] as $col) $selects[] = 'bil_saleitems.' . $col;
+            if (!empty($validated['columns_item'])) foreach ($validated['columns_item'] as $col) $selects[] = 'bls_items.' . str_replace(' AS ', ' as ', $col);
+            
+            if (!empty($validated['filters'])) {
+                foreach ($validated['filters'] as $filter) {
+                    $field = $filter['field']; $operator = $filter['operator']; $value = $filter['value'];
+                    $dbField = match ($field) {
+                        'customer_id', 'user_id' => 'bil_sales.' . $field,
+                        'store_id' => in_array('store_id', $salesColumns) ? 'bil_sales.store_id' : null,
+                        'item_id' => 'bil_saleitems.item_id',
+                        'itemgroup_id' => 'bls_items.itemgroup_id',
+                        default => null,
+                    };
+
+                    if ($dbField) {
+                        if (in_array($operator, ['in', 'not_in'])) $query->whereIn($dbField, is_array($value) ? $value : explode(',', $value));
+                        elseif ($operator === 'like') $query->where($dbField, 'like', '%' . $value . '%');
+                        else $query->where($dbField, $operator, $value);
+                    }
+                }
+            }
+
+            if (!empty($validated['group_by'])) {
+                foreach ($validated['group_by'] as $groupCol) {
+                    $groupExpression = ($groupCol === 'date_group') ? DB::raw('DATE(bil_sales.transdate)') : $groupCol;
+                    $query->groupBy($groupExpression);
+                    if(!in_array($groupExpression, $selects)) $selects[] = $groupCol === 'date_group' ? DB::raw('DATE(bil_sales.transdate) as date_group') : $groupCol;
+                }
+                if (!empty($validated['aggregations'])) {
+                    foreach ($validated['aggregations'] as $agg) $selects[] = DB::raw($agg);
+                } else {
+                    $selects[] = DB::raw('COUNT(*) as count_records');
+                }
+            }
+            
+            if (empty($selects)) $selects = ['bil_sales.id as sale_id', 'bil_sales.transdate', 'bls_items.name as item_name', 'bil_saleitems.quantity', 'bil_saleitems.price'];
+            
+            $query->select($selects);
+            $queryResults = $query->get();
+
+            $reportData = [
+                'report_title' => $validated['report_title'] ?? 'Custom Generated Report',
+                'start_date_formatted' => $startDate->format('F d, Y'), 'end_date_formatted' => $endDate->format('F d, Y'),
+                'results' => $queryResults,
+                'headers' => $this->determineHeaders($queryResults, $selects),
+            ];
+        }
+
+        return Inertia::render('Reports/Sales/CustomBuilder', [
+            'reportData' => $reportData,
+            'availableSaleColumns' => $availableSaleColumns, 'availableSaleItemColumns' => $availableSaleItemColumns,
+            'availableItemColumns' => $availableItemColumns, 'availableFilters' => $availableFilters,
+            'availableGroupings' => $groupingAliases, 'availableAggregations' => $availableAggregations,
+            'customers' => BLSCustomer::orderBy('company_name')->orderBy('first_name')->get(),
+            'users' => User::orderBy('name')->get(['id', 'name']), 'stores' => SIV_Store::orderBy('name')->get(['id', 'name']),
+            'items' => BLSItem::orderBy('name')->get(['id', 'name']), 'itemGroups' => BLSItemGroup::orderBy('name')->get(['id', 'name']),
+            'filters' => $request->all()
+        ]);
     }
 
     //--------------------------------------------------------------------------

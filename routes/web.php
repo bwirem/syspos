@@ -33,7 +33,9 @@ use App\Http\Controllers\PROPurchaseController;
 use App\Http\Controllers\IVRequistionController;
 use App\Http\Controllers\IVIssueController;
 use App\Http\Controllers\IVReceiveController;
+
 use App\Http\Controllers\IVReconciliationController;
+use App\Http\Controllers\IVNormalAdjustmentController;
 
 use App\Http\Controllers\ACCMakePaymentController;
 use App\Http\Controllers\ACCReceivePaymentController;
@@ -261,11 +263,11 @@ Route::middleware('auth')->group(function () {
 
         // --- Normal Adjustment Routes ---
         Route::prefix('normal-adjustment')->name('normal-adjustment.')->group(function () {
-            Route::get('/', [IVReconciliationController::class, 'normalAdjustment'])->name('index'); // or .list, .view, .show, etc. depending on what normalAdjustment() does. I used 'index' to be consistent.
-            Route::get('/create', [IVReconciliationController::class, 'createNormalAdjustment'])->name('create');
-            Route::post('/', [IVReconciliationController::class, 'storeNormalAdjustment'])->name('store'); // Corrected typo: 'srore' to 'store'
-            Route::get('/{normaladjustment}/edit', [IVReconciliationController::class, 'editNormalAdjustment'])->name('edit');
-            Route::put('/{normaladjustment}', [IVReconciliationController::class, 'updateNormalAdjustment'])->name('update');  //Simplified route definition
+            Route::get('/', [IVNormalAdjustmentController::class, 'index'])->name('index'); // or .list, .view, .show, etc. depending on what normalAdjustment() does. I used 'index' to be consistent.
+            Route::get('/create', [IVNormalAdjustmentController::class, 'create'])->name('create');
+            Route::post('/', [IVNormalAdjustmentController::class, 'store'])->name('store'); // Corrected typo: 'srore' to 'store'
+            Route::get('/{normaladjustment}/edit', [IVNormalAdjustmentController::class, 'edit'])->name('edit');
+            Route::put('/{normaladjustment}', [IVNormalAdjustmentController::class, 'update'])->name('update');  //Simplified route definition
         });
 
 

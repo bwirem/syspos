@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Traits\ManagesItems;
 use App\Models\IVRequistion;
 use App\Models\IVRequistionItem;
 
@@ -20,6 +21,8 @@ use Illuminate\Support\Facades\Log;
 
 class IVRequistionController extends Controller
 {
+
+    use ManagesItems; // Use the trait
     /**
      * Display a listing of requistions.
      */
@@ -108,10 +111,9 @@ class IVRequistionController extends Controller
      * Store a newly created requistion in storage.
      */
     
-     public function store(Request $request)
-     {
-         // Validate input
-         $validated = $request->validate([             
+    public function store(Request $request)
+    {       
+        $validated = $request->validate([             
               'to_store_id' => 'required|exists:siv_stores,id', //validate customer id             
               'from_store_id' => 'required|exists:siv_stores,id', //validate store id       
               'stage' => 'required|integer|min:1',
@@ -119,45 +121,36 @@ class IVRequistionController extends Controller
               'requistionitems.*.item_id' => 'required|exists:siv_products,id',  
               'requistionitems.*.quantity' => 'required|numeric|min:0',
               'requistionitems.*.price' => 'required|numeric|min:0', 
-         ]);
+         ]);    
 
-     
-         // Begin database transaction
-         DB::transaction(function () use ($validated) {
-             // Create the requistion without a total initially
+        DB::transaction(function () use ($validated) {
+            $requistion = IVRequistion::create([
+                'transdate' => now(),
+                'tostore_id' => $validated['to_store_id'],
+                'tostore_type' => StoreType::Store->value,
+                'fromstore_id' => $validated['from_store_id'],
+                'stage' => $validated['stage'],
+                'total' => 0, // Will be updated below
+                'user_id' => Auth::id(),
+            ]);
 
-             $transdate = Carbon::now(); 
-             $requistion = IVRequistion::create([
-                 'transdate' => $transdate,
-                 'tostore_id' => $validated['to_store_id'],
-                 'tostore_type' => StoreType::Store->value, // Assuming this is a store
-                 'fromstore_id' => $validated['from_store_id'],                 
-                 'stage' => $validated['stage'],
-                 'total' => 0, // Set an initial total (will update later)
-                 'user_id' => Auth::id(),
-             ]);    
-     
-             // Create associated requistion items
-             foreach ($validated['requistionitems'] as $item) {
-                 $requistion->requistionitems()->create([
-                     'product_id' => $item['item_id'],
-                     'quantity' => $item['quantity'],
-                     'price' => $item['price'],
-                 ]);
-             }
-     
-             // Reload the relationship to ensure all items are fetched
-             $requistion->load('requistionitems');
-     
-             // Compute the total based on updated requistion items
-             $calculatedTotal = $requistion->requistionitems->sum(fn($item) => $item->quantity * $item->price);
-     
-             // Update requistion with the correct total
-             $requistion->update(['total' => $calculatedTotal]);
-         });
-     
-         return redirect()->route('inventory0.index')->with('success', 'Requistion created successfully.');
-     }     
+            // Create associated items
+            $requistion->requistionitems()->createMany(
+                collect($validated['requistionitems'])->map(fn($item) => [
+                    'product_id' => $item['item_id'],
+                    'quantity' => $item['quantity'],
+                    'price' => $item['price'],
+                ])->all()
+            );
+
+            // Recalculate and update total
+            $requistion->load('requistionitems'); // Reload to get fresh data
+            $calculatedTotal = $requistion->requistionitems->sum(fn($item) => $item->quantity * $item->price);
+            $requistion->update(['total' => $calculatedTotal]);
+        });
+
+        return redirect()->route('inventory0.index')->with('success', 'Requisition created successfully.');
+    }   
 
     /**
      * Show the form for editing the specified requistion.
@@ -195,9 +188,10 @@ class IVRequistionController extends Controller
      * Update the specified requistion in storage.
      */
 
-     public function update(Request $request, IVRequistion $requistion)
-     {
-         // Validate input
+   
+    public function update(Request $request, IVRequistion $requistion)
+    {        
+        // Validate input
          $validated = $request->validate([             
              'to_store_id' => 'required|exists:siv_stores,id', //validate customer id             
              'from_store_id' => 'required|exists:siv_stores,id', //validate store id       
@@ -210,67 +204,27 @@ class IVRequistionController extends Controller
              'requistionitems.*.price' => 'required|numeric|min:0',
          ]);
      
-         // Update the requistion within a transaction
-         DB::transaction(function () use ($validated, $requistion) {
-             // Retrieve existing item IDs before the update
-             $oldItemIds = $requistion->requistionitems()->pluck('id')->toArray();
-             
-             $existingItemIds = [];
-             $newItems = [];
-     
-             foreach ($validated['requistionitems'] as $item) {
-                 if (!empty($item['id'])) {
-                     $existingItemIds[] = $item['id'];
-                 } else {
-                     $newItems[] = $item;
-                 }
-             }
-     
-             // Identify and delete removed items
-             $itemsToDelete = array_diff($oldItemIds, $existingItemIds);
-             $requistion->requistionitems()->whereIn('id', $itemsToDelete)->delete();
-     
-             // Add new items
-             foreach ($newItems as $item) {
-                 $requistion->requistionitems()->create([
-                     'product_id' => $item['item_id'],
-                     'quantity' => $item['quantity'],
-                     'price' => $item['price'],
-                 ]);
-             }
-     
-             // Update existing items
-             foreach ($validated['requistionitems'] as $item) {
-                 if (!empty($item['id'])) {
-                     $requistionItem = IVRequistionItem::find($item['id']);
-     
-                     if ($requistionItem) {
-                         $requistionItem->update([
-                             'product_id' => $item['item_id'],
-                             'quantity' => $item['quantity'],
-                             'price' => $item['price'],
-                         ]);
-                     }
-                 }
-             }
-     
-             // Compute the total based on updated requistion items
-             $calculatedTotal = $requistion->requistionitems->sum(fn($item) => $item->quantity * $item->price);
-     
-             // Update the requistion details
-             $requistion->update([                 
-                 'tostore_id' => $validated['to_store_id'],
-                 'tostore_type' => StoreType::Store->value, // Assuming this is a store
-                 'fromstore_id' => $validated['from_store_id'],
-                 'stage' => $validated['stage'],
-                 'total' => $calculatedTotal,
-                 'user_id' => Auth::id(),
-             ]);
-         });
-     
-         return redirect()->route('inventory0.index')->with('success', 'Requistion updated successfully.');
-     }
-     
+
+        DB::transaction(function () use ($validated, $requistion) {
+            // Use the trait to handle item CUD
+            $this->syncItems($requistion, $validated['requistionitems'], 'requistionitems');
+
+            // Recalculate total
+            $requistion->load('requistionitems'); // Reload to get fresh data
+            $calculatedTotal = $requistion->requistionitems->sum(fn($item) => $item->quantity * $item->price);
+
+            // Update the main requisition record
+            $requistion->update([
+                'tostore_id' => $validated['to_store_id'],
+                'fromstore_id' => $validated['from_store_id'],
+                'stage' => $validated['stage'],
+                'total' => $calculatedTotal,
+                'user_id' => Auth::id(),
+            ]);
+        });
+
+        return redirect()->route('inventory0.index')->with('success', 'Requisition updated successfully.');
+    }
      
     
     /**

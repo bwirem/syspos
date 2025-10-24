@@ -184,8 +184,7 @@ export default function Index({ auth, requisitions = { data: [] }, filters = {},
                                         <tr>
                                             <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">From Store</th>
                                             <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">To Store</th>
-                                            <th scope="col" className="px-4 py-3.5 text-right text-sm font-semibold text-gray-900">Total Value</th>
-                                            <th scope="col" className="px-4 py-3.5 text-center text-sm font-semibold text-gray-900">Status</th>
+                                            <th scope="col" className="px-4 py-3.5 text-right text-sm font-semibold text-gray-900">Total Value</th>                                            
                                             <th scope="col" className="px-4 py-3.5 text-center text-sm font-semibold text-gray-900">Actions</th>
                                         </tr>
                                     </thead>
@@ -201,17 +200,7 @@ export default function Index({ auth, requisitions = { data: [] }, filters = {},
                                                     </td>
                                                     <td className="whitespace-nowrap px-4 py-4 text-right text-sm text-gray-700">
                                                         {formatCurrency(requisition.total, requisition.currency_code)}
-                                                    </td>
-                                                    <td className="whitespace-nowrap px-4 py-4 text-center text-sm text-gray-700">
-                                                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                                                            requisition.status === 'approved' ? 'bg-green-100 text-green-800' :
-                                                            requisition.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                                            requisition.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                                                            'bg-gray-100 text-gray-800'
-                                                        }`}>
-                                                            {requisition.status ? requisition.status.charAt(0).toUpperCase() + requisition.status.slice(1) : 'N/A'}
-                                                        </span>
-                                                    </td>
+                                                    </td>                                                    
                                                     <td className="whitespace-nowrap px-4 py-4 text-sm text-center">
                                                         <div className="flex items-center justify-center space-x-2">
                                                             <Link

@@ -2,6 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\InventoryService;
+use App\Http\Controllers\Traits\ManagesItems;
+
+
 use App\Models\IVReceive;
 use App\Models\IVIssue;
 
@@ -30,10 +34,8 @@ use Throwable;
 
 class IVReceiveController extends Controller
 {
-    // Constants for transaction types.  MUCH better than hardcoding strings.
-    const TRANSACTION_TYPE_ISSUE = 'Issue';
-    const TRANSACTION_TYPE_RECEIVE = 'Receive';
-
+    use ManagesItems;
+    
     /**
      * Display a listing of receives.
      */
@@ -80,9 +82,9 @@ class IVReceiveController extends Controller
      
         if ($request->filled('stage')) {
             $query->where('stage', $request->stage);
+        } else {
+            $query->whereIn('stage', [1, 2]);
         }
-
-        $query->whereBetween('stage', [1, 2]);
      
          $receives = $query->orderBy('created_at', 'desc')->paginate(10);
      
@@ -127,33 +129,23 @@ class IVReceiveController extends Controller
      */
          
    
-    public function store(Request $request)
+    public function store(Request $request, InventoryService $inventoryService) // Inject the service
     {
-
-
-        // 1. Validate input
-
-        $request->validate([
-            'fromstore_type' => ['required', new Enum(StoreType::class)], // Ensure fromstore_type is valid
-        ]);
-            
+        // 1. Validation logic remains exactly the same.
         $rules = [
             'fromstore_type' => ['required', new Enum(StoreType::class)],      
             'to_store_id'   => 'required|exists:siv_stores,id',          
-            'stage'         => 'required|integer|in:1', // Expecting stage 1 (Draft) from Create form
-            'remarks'       => 'nullable|string|max:1000', // Added validation for remarks
-            'receiveitems'  => 'required|array|min:1',    // Must have at least one item
-            'receiveitems.*.item_id' => 'required|exists:siv_products,id', // Ensure item_id maps to siv_products
-            'receiveitems.*.quantity'=> 'required|numeric|min:0.01', // Or min:1 for whole units
-            'receiveitems.*.price'   => 'required|numeric|min:0',    // Price can be 0, but usually > 0
+            'stage'         => 'required|integer|in:1',
+            'remarks'       => 'nullable|string|max:1000',
+            'receiveitems'  => 'required|array|min:1',
+            'receiveitems.*.item_id' => 'required|exists:siv_products,id',
+            'receiveitems.*.quantity'=> 'required|numeric|min:0.01',
+            'receiveitems.*.price'   => 'required|numeric|min:0',
         ];
 
-
-        // Conditionally apply validation depending on fromstore_type
-        switch ($request->fromstore_type) {
+        switch ($request->input('fromstore_type')) {
             case StoreType::Store->value:
                 $rules['from_store_id'] = 'required|exists:siv_stores,id';
-                $StoreToStore = true;
                 break;
             case StoreType::Supplier->value:
                 $rules['from_store_id'] = 'required|exists:siv_suppliers,id';
@@ -162,58 +154,26 @@ class IVReceiveController extends Controller
         
         $validated = $request->validate($rules);
 
-        $receive = null; // Initialize $receive outside transaction scope
-
         try {
-            // 2. Begin database transaction
-            DB::transaction(function () use ($validated, &$receive) { // Pass $receive by reference
-                // a. Calculate total from validated items *before* creating the main record
-                $calculatedTotal = 0;
-                foreach ($validated['receiveitems'] as $item) {
-                    $calculatedTotal += (float) $item['quantity'] * (float) $item['price'];
-                }
+            // 2. Call the new service method to do all the work
+            $receive = $inventoryService->createReceiveRecord(
+                $validated['to_store_id'],
+                $validated['from_store_id'],
+                $validated['fromstore_type'],
+                $validated['receiveitems'],
+                $validated['stage'], // This will be 1
+                $validated['remarks'] ?? null
+            );
 
-                // b. Create the main IVReceive record
-                $receive = IVReceive::create([
-                    'transdate'      => Carbon::now(),
-                    'tostore_id'     => $validated['to_store_id'],
-                    'fromstore_type' => StoreType::Supplier->value, // Ensure StoreType::Store is defined
-                    'fromstore_id'   => $validated['from_store_id'],
-                    'stage'          => $validated['stage'], // This will be 1 (Draft)
-                    'total'          => $calculatedTotal,   // Use pre-calculated total
-                    'remarks'        => $validated['remarks'] ?? null, // Store remarks
-                    'user_id'        => Auth::id(),
-                ]);
+            // 3. Redirect to the edit page using the ID from the returned model
+            return redirect()->route('inventory2.edit', $receive->id)
+                             ->with('success', 'Receive created successfully and saved as draft.');
 
-                // c. Create associated receive items (efficiently)
-                $itemsToCreate = [];
-                foreach ($validated['receiveitems'] as $itemData) {
-                    $itemsToCreate[] = [
-                        'product_id' => $itemData['item_id'], // Ensure this matches DB column name
-                        'quantity'   => $itemData['quantity'],
-                        'price'      => $itemData['price'],
-                        // 'iv_receive_id' will be set automatically by createMany if relationship is defined
-                    ];
-                }
-                $receive->receiveitems()->createMany($itemsToCreate); // Assumes `receiveitems` relationship exists
-            });
-
-            // 3. If transaction was successful and $receive is populated
-            if ($receive) {
-                return redirect()->route('inventory2.edit', $receive->id)
-                                 ->with('success', 'Receive created successfully and saved as draft. You can now review or submit it.');
-            } else {
-                // This fallback is less likely with the improved structure but kept for safety.
-                return back()->withInput()->with('error', 'Failed to create receive due to an unexpected issue after transaction.');
-            }
-
-        } catch (Throwable $e) { // Catch any exception/error
-            // 4. Log the error and redirect back with input and error message
-            \Log::error('Receive creation failed: ' . $e->getMessage() . ' Stack: ' . $e->getTraceAsString());
-            return back()->withInput()->with('error', 'Failed to create receive. Please check your input and try again. Details: ' . $e->getMessage());
+        } catch (Throwable $e) {
+            Log::error('Receive creation failed: ' . $e->getMessage() . ' Stack: ' . $e->getTraceAsString());
+            return back()->withInput()->with('error', 'Failed to create receive. Please check your input and try again.');
         }
     }
-
    
     /**
      * Show the form for editing the specified receive.
@@ -255,201 +215,136 @@ class IVReceiveController extends Controller
     /**
      * Update the specified receive in storage.
      */
-    public function update(Request $request, IVReceive $receive)
+    public function update(Request $request, IVReceive $receive, InventoryService $inventoryService)
     {
-        $request->validate([
-            'fromstore_type' => ['required', new Enum(StoreType::class)], // Ensure fromstore_type is valid
-        ]);
-
+        // --- VALIDATION (Updated to include remarks) ---
         $rules = [
-            'fromstore_type' => ['required', new Enum(StoreType::class)],    
-            'to_store_id' => 'required|exists:siv_stores,id',           
-            'total' => 'required|numeric|min:0',
-            'stage' => 'required|integer|min:1',
-            'receiveitems' => 'required|array',
+            'fromstore_type' => ['required', new Enum(StoreType::class)],
+            'to_store_id' => 'required|exists:siv_stores,id',
+            'stage' => 'required|integer|in:1,2,3',
+            'remarks' => 'nullable|string|max:1000', // Add validation for remarks
+            'receiveitems' => 'required|array|min:1',
             'receiveitems.*.id' => 'nullable|exists:iv_receiveitems,id',
             'receiveitems.*.item_id' => 'required|exists:siv_products,id',
-            'receiveitems.*.quantity' => 'required|numeric|min:0',
+            'receiveitems.*.quantity' => 'required|numeric|min:0.01',
             'receiveitems.*.price' => 'required|numeric|min:0',
-            
+            'delivery_no' => 'nullable|string',
+            'expiry_date' => 'nullable|date',
         ];
 
-         // Conditionally apply validation depending on fromstore_type
-        switch ($request->fromstore_type) {
+        // Your conditional validation for from_store_id is correct.
+        switch ($request->input('fromstore_type')) {
             case StoreType::Store->value:
                 $rules['from_store_id'] = 'required|exists:siv_stores,id';
-                $StoreToStore = true;
                 break;
             case StoreType::Supplier->value:
+                // Ensure your suppliers table is named `siv_suppliers` or change this line
                 $rules['from_store_id'] = 'required|exists:siv_suppliers,id';
                 break;
         }
-        
+
         $validated = $request->validate($rules);
         
+        $newStage = (int) $validated['stage'];
+        $originalStage = $receive->stage;
+
         DB::beginTransaction();
 
         try {
+            // STEP 1: Save the data (always happens)
+            $this->processReceiveUpdate($receive, $validated);
 
-            $this->processeReceive($validated, $receive);  
-            if($receive->stage == 3) {
-                $this->performReception($validated); // Pass $validated directly
-            }     
+            // STEP 2: Conditionally perform the stock reception
+            if ($newStage === 3 && $originalStage < 3) {
+                
+                // Reload items after potential changes from syncItems
+                $receive->load('receiveitems');
+                $items = $receive->receiveitems->map(fn($item) => [
+                    'product_id' => $item->product_id,
+                    'quantity' => $item->quantity,
+                    'price' => $item->price,
+                ])->all();
+
+                $inventoryService->receive(
+                    $validated['to_store_id'],
+                    $validated['from_store_id'],
+                    $validated['fromstore_type'],
+                    $this->getFromStoreName($validated['from_store_id'], $validated['fromstore_type']),
+                    $items,
+                    $validated['delivery_no'] ?? null,
+                    $validated['expiry_date'] ?? null
+                );
+            }
 
             DB::commit();
 
-            //if($receive->stage == 3){
-                return redirect()->route('inventory2.index')->with('success', 'Receive updated successfully.');
-            // }else{
-            //       return redirect()->route('inventory2.edit', $receive->id)
-            //                        ->with('success', 'Receive created successfully and saved as draft. You can now review or submit it.');
-            // }
+            $message = 'Draft saved successfully.';
+            if ($newStage === 2) $message = 'Receipt submitted for processing.';
+            if ($newStage === 3) $message = 'Receipt posted and stock updated successfully.';
 
-        } catch (ModelNotFoundException $e) {
-            DB::rollBack();
-            return response()->json(['message' => 'Record not found: ' . $e->getMessage()], 404);
+            return redirect()->route('inventory2.index')->with('success', $message);
+
         } catch (Throwable $e) {
             DB::rollBack();
-            Log::error('Stock transaction failed: ' . $e->getMessage() . ' in ' . $e->getFile() . ' on line ' . $e->getLine());
-            return response()->json(['message' => 'An error occurred while processing the stock transaction.'], 500);
+            Log::error('Stock reception failed: ' . $e->getMessage() . ' in ' . $e->getFile() . ' on line ' . $e->getLine());
+            return back()->with('error', 'An error occurred while processing the reception.');
         }
     }
 
-
-
-    private function processeReceive($validated, $receive): void
+    /**
+     * Helper method to process the saving of a receive record and its items.
+     * (Updated to include remarks)
+     */
+    private function processReceiveUpdate(IVReceive $receive, array $validatedData): void
     {
-        // Retrieve existing item IDs
-        $oldItemIds = $receive->receiveitems()->pluck('id')->toArray();
-        $existingItemIds = [];
-        $newItems = [];
+        $this->syncItems($receive, $validatedData['receiveitems'], 'receiveitems');
+        
+        $receive->load('receiveitems');
+        $calculatedTotal = $receive->receiveitems->sum(fn($item) => $item->quantity * $item->price);
 
-        foreach ($validated['receiveitems'] as $item) {
-            $existingItemIds[] = $item['id'] ?? null;  // Use null coalescing operator
-            if (empty($item['id'])) {
-                $newItems[] = $item;
-            }
-        }
+        $receive->update([
+            'fromstore_type' => $validatedData['fromstore_type'],
+            'fromstore_id' => $validatedData['from_store_id'],
+            'tostore_id' => $validatedData['to_store_id'],
+            'stage' => $validatedData['stage'],
+            'total' => $calculatedTotal,
+            'remarks' => $validatedData['remarks'] ?? $receive->remarks, // Save remarks
+            'user_id' => Auth::id(),
+        ]);
+        // Use the trait to handle item create, update, and delete operations.
+        $this->syncItems($receive, $validatedData['receiveitems'], 'receiveitems');
+        
+        // Reload the relationship to ensure the total is calculated accurately.
+        $receive->load('receiveitems');
+        $calculatedTotal = $receive->receiveitems->sum(fn($item) => $item->quantity * $item->price);
 
-        // Delete removed items
-        $itemsToDelete = array_diff($oldItemIds, array_filter($existingItemIds)); // Filter out null values
-        $receive->receiveitems()->whereIn('id', $itemsToDelete)->delete();
-
-        // Add new items
-        foreach ($newItems as $item) {
-            $receive->receiveitems()->create([
-                'product_id' => $item['item_id'],
-                'quantity' => $item['quantity'],
-                'price' => $item['price'],
-            ]);
-        }
-
-        // Update existing items.  Use firstOrFail() for better error handling
-        foreach ($validated['receiveitems'] as $item) {
-            if (!empty($item['id'])) {
-                $receiveItem = IVReceiveItem::where('id', $item['id'])->where('receive_id', $receive->id)->firstOrFail();
-                $receiveItem->update([
-                    'product_id' => $item['item_id'],
-                    'quantity' => $item['quantity'],
-                    'price' => $item['price'],
-                ]);
-            }
-        }
-
-        // Calculate total and update receive
-        $calculatedTotal = $receive->receiveitems()->sum(DB::raw('quantity * price'));  // More robust calculation
-        $receive->update([           
-            'fromstore_type' => $validated['fromstore_type'],
-            'fromstore_id' => $validated['from_store_id'],
-            'tostore_id' => $validated['to_store_id'],
-            'stage' => $validated['stage'],
+        // Update the main receive record.
+        $receive->update([
+            'fromstore_type' => $validatedData['fromstore_type'],
+            'fromstore_id' => $validatedData['from_store_id'],
+            'tostore_id' => $validatedData['to_store_id'],
+            'stage' => $validatedData['stage'],
             'total' => $calculatedTotal,
             'user_id' => Auth::id(),
         ]);
     }
 
-    private function performReception($validated): void
+    /**
+     * Helper method to get the name of the source (Supplier or Store).
+     */
+    private function getFromStoreName(int $id, string|int $type): string
     {
-        $fromstore_type = $validated['fromstore_type']; 
-        $fromstore_id = $validated['from_store_id'];        
-        $tostore_id = $validated['to_store_id'];
-        $expiryDate = $validated['expiry_date'] ?? null;
-        $transDate = Carbon::now();
-        $deliveryNo = $validated['delivery_no'] ?? '';
-
-        $fromStore = null;
-        $fromStoreName = 'Unknown';
-        
-        if($fromstore_type == StoreType::Store->value ){
-           
-            $fromStore = SIV_Store::find($fromstore_id);
-            $fromStoreName = $fromStore ? $fromStore->name : 'Unknown Store';
-
-        }else{
-          
-            $fromStore = SPR_Supplier::find($fromstore_id);
-         
-            if ($fromStore) {
-                if ($fromStore->supplier_type === 'individual') {
-                    $fromStoreName = trim("{$fromStore->first_name} " . ($fromStore->other_names ? $fromStore->other_names . ' ' : '') . "{$fromStore->surname}");
-                } elseif ($fromStore->supplier_type === 'company') {
-                    $fromStoreName = $fromStore->company_name;
-                } 
-            } else {
-                $fromStoreName = 'Unknown Supplier';
-            }
+        if ($type == StoreType::Store->value) {
+            return SIV_Store::find($id)->name ?? 'Unknown Store';
         }
-           
-        foreach ($validated['receiveitems'] as $item) {
-
-            if($expiryDate != null){
-            
-                // --- Update/Insert Product Expiry Dates ---
-                $productExpiry = BILProductExpiryDates::where('store_id', $tostore_id)
-                    ->where('product_id', $item['item_id'])
-                    ->where('expirydate', $expiryDate)
-                    ->first();
-                    
-
-                if ($productExpiry) {
-                    $productExpiry->increment('quantity', $item['quantity']);
-                } else {
-                    BILProductExpiryDates::create([
-                        'store_id' => $tostore_id,
-                        'product_id' => $item['item_id'],
-                        'expirydate' => $expiryDate,
-                        'quantity' => $item['quantity'],
-                        // 'butchno' => $item['batch_no'] ?? null,         // Add if you have batch info
-                        // 'butchbarcode' => $item['batch_barcode'] ?? null,  // Add if you have batch info
-                    ]);
-                }
-            }
-
-            // --- Update/Insert Product Control ---
-            $productControl = BILProductControl::firstOrCreate(
-                ['product_id' => $item['item_id']],
-                ['qty_' . $tostore_id => 0]
-            );
-            $column = 'qty_' . $tostore_id;
-            $productControl->increment($column, $item['quantity']);
-
-            // --- Insert Product Transaction (Reception) ---
-            BILProductTransactions::create([
-                'transdate' => $transDate,
-                'sourcecode' => $fromstore_id,
-                'sourcedescription' => $fromStoreName,
-                'product_id' => $item['item_id'],
-                'expirydate' => $expiryDate,
-                'reference' => $deliveryNo,
-                'transprice' => $item['price'],
-                'transtype' => self::TRANSACTION_TYPE_RECEIVE, // Use the constant
-                'transdescription' => 'Received from Store: ' . $fromStoreName,
-                'qtyin_' . $tostore_id => $item['quantity'],
-                'user_id' => Auth::id(),
-            ]);           
-            
+    
+        if ($type == StoreType::Supplier->value) {
+            $supplier = SPR_Supplier::find($id);
+            return $supplier ? ($supplier->company_name ?? trim("{$supplier->first_name} {$supplier->surname}")) : 'Unknown Supplier';
         }
-
-     
+    
+        return 'Unknown';
     }
+
+    
 }
