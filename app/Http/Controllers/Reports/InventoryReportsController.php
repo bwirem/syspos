@@ -3,40 +3,24 @@
 namespace App\Http\Controllers\Reports;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
+use App\Models\BILProductControl;
+use App\Models\BILProductExpiryDates;
+use App\Models\BILProductTransactions;
+use App\Models\BILSale;
 use App\Models\SIV_Product;
+use App\Models\SIV_ProductCategory;
 use App\Models\SIV_Store;
-use App\Models\SIV_ProductCategory; // Assuming SIV_Product has category_id
-use App\Models\BILProductControl; // For stock quantities per store (qty_1, qty_2 etc.)
-use App\Models\BILProductTransactions; // For movement history
-use App\Models\BILProductExpiryDates; // For expiry dates
-use App\Models\BILSaleItem; // For calculating sales to determine slow-moving
-
-use App\Models\BILPhysicalStockBalance; // Assuming this is the source for current stock
-
-use App\Models\BILSale; // For joining BILSaleItem
-use App\Models\BLSItem; // Crucial for linking to product_id
-
 use Carbon\Carbon;
-use Inertia\Inertia;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
-
+use Inertia\Inertia;
 
 class InventoryReportsController extends Controller
 {
     /**
      * Stock on Hand Report
-     * Shows current quantities for items, optionally filtered by store, category, or product.
-     * This report relies heavily on how BILProductControl stores quantities for different stores.
-     * The columns qty_1, qty_2 etc. in BILProductControl are problematic for direct store filtering
-     * unless you have a clear mapping of which qty_X column corresponds to which store_id.
-     *
-     * For a more robust SOH, a dedicated 'stock_levels' table with (store_id, product_id, quantity) is better.
-     * Given BILProductControl, we might have to assume qty_1 is for store 1, qty_2 for store 2, etc.
-     * Or, if your product control is simpler and you have another table like `iv_physicalstockbalances`.
-     * I will assume `iv_physicalstockbalances` is the primary source for SOH for simplicity.
+     * REFACTORED: Uses BILProductControl as the single source of truth for current stock.
      */
     public function stockOnHand(Request $request)
     {
@@ -47,87 +31,79 @@ class InventoryReportsController extends Controller
         ]);
 
         $storeId = $validated['store_id'] ?? null;
-        $categoryId = $validated['category_id'] ?? null;
-        $productId = $validated['product_id'] ?? null;
 
-        // Using BILPhysicalStockBalance as the source of truth for current stock
-        // This assumes it's regularly updated (e.g., after every transaction).
-        $stockQuery = DB::table('iv_physicalstockbalances as psb')
-            ->join('siv_products as p', 'psb.product_id', '=', 'p.id')
-            ->join('siv_stores as s', 'psb.store_id', '=', 's.id')
-            ->leftJoin('siv_productcategories as pc', 'p.category_id', '=', 'pc.id')
+        // The core of the new query is unpivoting BILProductControl.
+        // We select a store and dynamically choose the correct 'qty_X' column.
+        if (!$storeId) {
+            // If no store is selected, showing "all" is complex.
+            // It's better to prompt the user to select a store.
+            // For this example, we'll default to the first store if none is selected.
+            $storeId = SIV_Store::first()->id ?? 0;
+            $validated['store_id'] = $storeId;
+        }
+
+        $qtyColumn = 'pc.qty_' . $storeId;
+
+        $stockQuery = DB::table('iv_productcontrol as pc')
+            ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
+            ->leftJoin('siv_productcategories as cat', 'p.category_id', '=', 'cat.id')
             ->select(
                 'p.id as product_id',
                 'p.name as product_name',
-                'p.costprice', // For valuation later
-                'pc.name as category_name',
-                's.name as store_name',
-                'psb.quantity as current_quantity'
+                'p.costprice',
+                'cat.name as category_name',
+                DB::raw("$qtyColumn as current_quantity")
             )
-            ->where('psb.quantity', '>', 0); // Typically only show items with stock
+            ->where($qtyColumn, '>', 0); // Only show items with stock in the selected store
 
-        if ($storeId) {
-            $stockQuery->where('psb.store_id', $storeId);
+        if ($request->filled('category_id')) {
+            $stockQuery->where('p.category_id', $request->category_id);
         }
-        if ($categoryId) {
-            $stockQuery->where('p.category_id', $categoryId);
-        }
-        if ($productId) {
-            $stockQuery->where('psb.product_id', $productId);
+        if ($request->filled('product_id')) {
+            $stockQuery->where('p.id', $request->product_id);
         }
 
-        $stockOnHand = $stockQuery->orderBy('s.name')->orderBy('pc.name')->orderBy('p.name')->get();
+        $stockOnHand = $stockQuery->orderBy('cat.name')->orderBy('p.name')->get();
 
-        // Calculate total value for the SOH report based on current selection
         $totalValueSOH = $stockOnHand->sum(function ($item) {
             return (float)$item->current_quantity * (float)$item->costprice;
         });
 
-
         return Inertia::render('Reports/Inventory/StockOnHand', [
             'stockOnHand' => $stockOnHand,
             'totalValueSOH' => $totalValueSOH,
+            'selectedStoreName' => SIV_Store::find($storeId)->name ?? 'N/A',
             'stores' => SIV_Store::orderBy('name')->get(['id', 'name']),
             'categories' => SIV_ProductCategory::orderBy('name')->get(['id', 'name']),
-            'productsList' => SIV_Product::orderBy('name')->get(['id', 'name']), // For product dropdown
+            'productsList' => SIV_Product::orderBy('name')->get(['id', 'name']),
             'filters' => $validated,
         ]);
     }
 
     /**
      * Inventory Valuation Report
-     * Calculates total value of stock, usually based on cost price.
+     * REFACTORED: Also uses BILProductControl for current valuation.
      */
     public function valuation(Request $request)
     {
         $validated = $request->validate([
             'store_id' => 'nullable|exists:siv_stores,id',
-            'valuation_date' => 'nullable|date_format:Y-m-d', // Value as of this date (more complex)
         ]);
 
-        $storeId = $validated['store_id'] ?? null;
-        // Valuing as of a specific past date is complex and requires historical stock levels.
-        // For simplicity, this will be current valuation.
-        $valuationDate = Carbon::parse($validated['valuation_date'] ?? Carbon::today())->endOfDay();
+        $storeId = $validated['store_id'] ?? SIV_Store::first()->id ?? 0;
+        $validated['store_id'] = $storeId;
 
+        $qtyColumn = 'pc.qty_' . $storeId;
 
-        // Using BILPhysicalStockBalance again for current stock
-        $valuationQuery = DB::table('iv_physicalstockbalances as psb')
-            ->join('siv_products as p', 'psb.product_id', '=', 'p.id')
+        $valuationQuery = DB::table('iv_productcontrol as pc')
+            ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
             ->select(
                 'p.name as product_name',
                 'p.costprice',
-                'psb.quantity',
-                DB::raw('psb.quantity * p.costprice as item_total_value')
+                DB::raw("$qtyColumn as quantity"),
+                DB::raw("$qtyColumn * p.costprice as item_total_value")
             )
-             // If you want valuation as of a specific date, you'd need to reconstruct stock
-             // levels at that point using transactions, which is much harder.
-             // This example is for *current* valuation.
-            ->where('psb.quantity', '>', 0); // Only value items with stock
-
-        if ($storeId) {
-            $valuationQuery->where('psb.store_id', $storeId);
-        }
+            ->where($qtyColumn, '>', 0);
 
         $valuedItems = $valuationQuery->orderBy('p.name')->get();
         $totalInventoryValue = $valuedItems->sum('item_total_value');
@@ -135,78 +111,65 @@ class InventoryReportsController extends Controller
         return Inertia::render('Reports/Inventory/Valuation', [
             'valuedItems' => $valuedItems,
             'totalInventoryValue' => $totalInventoryValue,
+            'selectedStoreName' => SIV_Store::find($storeId)->name ?? 'N/A',
             'stores' => SIV_Store::orderBy('name')->get(['id', 'name']),
-            'filters' => $validated + ['valuation_date' => $valuationDate->format('Y-m-d')],
-        ]);
-    }
-
-    /**
-     * Stock Movement History / Audit Trail
-     */
-    public function movementHistory(Request $request)
-    {
-        $validated = $request->validate([
-            'product_id' => 'nullable|exists:siv_products,id',
-            'start_date' => 'nullable|date_format:Y-m-d',
-            'end_date'   => 'nullable|date_format:Y-m-d|after_or_equal:start_date',
-            'transtype'  => 'nullable|string', // e.g., SALE, RECEIVE, ADJUST, TRANSFER_OUT, TRANSFER_IN
-            // 'store_id' is missing from BILProductTransactions, so cannot filter by store directly here
-            // unless sourcecode or reference implies a store.
-        ]);
-
-        $productId  = $validated['product_id'] ?? null;
-        $startDate  = Carbon::parse($validated['start_date'] ?? Carbon::now()->subMonth())->startOfDay();
-        $endDate    = Carbon::parse($validated['end_date']   ?? Carbon::now())->endOfDay();
-        $transType  = $validated['transtype'] ?? null;
-
-        $movementsQuery = BILProductTransactions::with('product:id,name') // Select specific columns from product
-            ->whereBetween('transdate', [$startDate, $endDate]);
-
-        if ($productId) {
-            $movementsQuery->where('product_id', $productId);
-        }
-        if ($transType) {
-            $movementsQuery->where('transtype', $transType);
-        }
-
-        $movements = $movementsQuery->orderBy('transdate', 'desc')->orderBy('id', 'desc')->paginate(50)->withQueryString();
-
-        // Get distinct transaction types for filter dropdown
-        $transactionTypes = BILProductTransactions::select('transtype')->distinct()->pluck('transtype');
-
-
-        return Inertia::render('Reports/Inventory/MovementHistory', [
-            'movements' => $movements,
-            'productsList' => SIV_Product::orderBy('name')->get(['id', 'name']),
-            'transactionTypes' => $transactionTypes,
             'filters' => $validated,
         ]);
     }
 
     /**
-     * Inventory Ageing Report (Conceptual - More complex)
-     * This requires knowing when stock batches were received.
-     * BILProductExpiryDates might be useful if it also tracks received_date or if butch_no links to GRNs.
-     * A simple version might just look at last_received_date vs current_date.
-     * A true ageing needs FIFO/LIFO costing and batch tracking.
+     * Stock Movement History / Audit Trail
+     * REFACTORED: Updated to use the correct transaction types from our new system.
      */
-    public function ageing(Request $request)
+    public function movementHistory(Request $request)
     {
-        // This is a complex report. A simplified version:
-        // 1. Get current stock (from BILPhysicalStockBalance).
-        // 2. For each stock item, try to find its oldest 'receive' transaction date.
-        //    This requires BILProductTransactions to accurately log receives with quantities.
-        // This is highly dependent on detailed transaction logging with batch/lot info.
-        // For now, returning a placeholder.
-        Log::warning('Inventory Ageing Report: Not fully implemented due to complexity. Placeholder data.');
-        return Inertia::render('Reports/Inventory/Ageing', [
-            'reportData' => ['message' => 'Inventory Ageing Report is conceptual and requires detailed batch/lot tracking for accurate implementation.'],
-            'filters' => $request->all(),
+        $validated = $request->validate([
+            'store_id'   => 'nullable|exists:siv_stores,id',
+            'product_id' => 'nullable|exists:siv_products,id',
+            'start_date' => 'nullable|date_format:Y-m-d',
+            'end_date'   => 'nullable|date_format:Y-m-d|after_or_equal:start_date',
+            'transtype'  => 'nullable|string',
+        ]);
+
+        $storeId = $validated['store_id'] ?? null;
+        $qtyInColumn = $storeId ? 'qtyin_' . $storeId : null;
+        $qtyOutColumn = $storeId ? 'qtyout_' . $storeId : null;
+
+        $movementsQuery = BILProductTransactions::with('product:id,name')
+            ->whereBetween('transdate', [
+                Carbon::parse($request->start_date ?? '30 days ago')->startOfDay(),
+                Carbon::parse($request->end_date ?? 'today')->endOfDay(),
+            ]);
+
+        if ($storeId) {
+            // This clause finds any transaction where either the in or out column for the store is not zero.
+            $movementsQuery->where(function ($query) use ($qtyInColumn, $qtyOutColumn) {
+                $query->where($qtyInColumn, '>', 0)
+                      ->orWhere($qtyOutColumn, '>', 0);
+            });
+        }
+
+        if ($request->filled('product_id')) {
+            $movementsQuery->where('product_id', $request->product_id);
+        }
+        if ($request->filled('transtype')) {
+            $movementsQuery->where('transtype', $request->transtype);
+        }
+
+        $movements = $movementsQuery->orderBy('transdate', 'desc')->orderBy('id', 'desc')->paginate(50)->withQueryString();
+
+        return Inertia::render('Reports/Inventory/MovementHistory', [
+            'movements' => $movements,
+            'stores' => SIV_Store::orderBy('name')->get(['id', 'name']),
+            'productsList' => SIV_Product::orderBy('name')->get(['id', 'name']),
+            'transactionTypes' => BILProductTransactions::select('transtype')->distinct()->pluck('transtype'),
+            'filters' => $validated,
         ]);
     }
 
     /**
      * Reorder Level Report
+     * REFACTORED: Uses BILProductControl and a selected store.
      */
     public function reorderLevel(Request $request)
     {
@@ -214,36 +177,33 @@ class InventoryReportsController extends Controller
             'store_id' => 'nullable|exists:siv_stores,id',
             'category_id' => 'nullable|exists:siv_productcategories,id',
         ]);
-        $storeId = $validated['store_id'] ?? null;
-        $categoryId = $validated['category_id'] ?? null;
 
-        // Using BILPhysicalStockBalance for current quantities
-        $lowStockQuery = DB::table('siv_products as p')
-            ->join('iv_physicalstockbalances as psb', 'p.id', '=', 'psb.product_id')
-            ->leftJoin('siv_productcategories as pc', 'p.category_id', '=', 'pc.id')
+        $storeId = $validated['store_id'] ?? SIV_Store::first()->id ?? 0;
+        $validated['store_id'] = $storeId;
+        
+        $qtyColumn = 'pc.qty_' . $storeId;
+
+        $lowStockQuery = DB::table('iv_productcontrol as pc')
+            ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
+            ->leftJoin('siv_productcategories as cat', 'p.category_id', '=', 'cat.id')
             ->select(
-                'p.id', 'p.name as product_name', 'pc.name as category_name',
-                'psb.quantity as current_quantity', 'p.reorderlevel as reorder_level', // SIV_Product needs reorderlevel
-                'psb.store_id' // Needed if SIV_Store is not joined directly but want to show store context
+                'p.id', 'p.name as product_name', 'cat.name as category_name',
+                DB::raw("$qtyColumn as current_quantity"),
+                'p.reorderlevel as reorder_level'
             )
-            ->whereNotNull('p.reorderlevel') // Only products with a reorder level
-            ->whereColumn('psb.quantity', '<=', 'p.reorderlevel'); // Core logic
+            ->whereNotNull('p.reorderlevel')
+            ->where($qtyColumn, '<=', DB::raw('p.reorderlevel'))
+            ->where($qtyColumn, '>', 0); // Optionally, only show items that are not yet out of stock
 
-        if ($storeId) {
-            $lowStockQuery->where('psb.store_id', $storeId);
+        if ($request->filled('category_id')) {
+            $lowStockQuery->where('p.category_id', $request->category_id);
         }
-        if ($categoryId) {
-            $lowStockQuery->where('p.category_id', $categoryId);
-        }
-        // If you want to show store names, join with siv_stores
-        $lowStockQuery->join('siv_stores as s', 'psb.store_id', '=', 's.id')
-                      ->addSelect('s.name as store_name');
-
 
         $lowStockItems = $lowStockQuery->orderBy('p.name')->get();
 
         return Inertia::render('Reports/Inventory/ReorderLevel', [
             'lowStockItems' => $lowStockItems,
+            'selectedStoreName' => SIV_Store::find($storeId)->name ?? 'N/A',
             'stores' => SIV_Store::orderBy('name')->get(['id', 'name']),
             'categories' => SIV_ProductCategory::orderBy('name')->get(['id', 'name']),
             'filters' => $validated,
@@ -252,6 +212,7 @@ class InventoryReportsController extends Controller
 
     /**
      * Expiring Items Report
+     * This was already well-structured and needs no major changes.
      */
     public function expiringItems(Request $request)
     {
@@ -289,12 +250,12 @@ class InventoryReportsController extends Controller
         ]);
     }
 
+
+
     /**
      * Slow Moving Stock Report
-     * This requires analyzing sales data for products over a period.
+     * REFACTORED: Uses BILProductControl for current stock and simplifies the sales query.
      */
-         
-
     public function slowMoving(Request $request)
     {
         $validated = $request->validate([
@@ -302,112 +263,97 @@ class InventoryReportsController extends Controller
             'period_days' => 'nullable|integer|min:7',
             'max_sales_qty' => 'nullable|integer|min:0',
         ]);
-        Log::info('SlowMoving Report - Validated Data:', $validated);
 
-        $storeId = $validated['store_id'] ?? null;
-        $periodDays = $validated['period_days'] ?? 90;
-        $maxSalesQty = $validated['max_sales_qty'] ?? 5;
-
+        $storeId = $validated['store_id'] ?? SIV_Store::first()->id ?? 0;
+        $validated['store_id'] = $storeId;
+        
+        $periodDays = $request->input('period_days', 90);
+        $maxSalesQty = $request->input('max_sales_qty', 5);
         $dateLimit = Carbon::today()->subDays($periodDays)->startOfDay();
-        Log::info('SlowMoving Report - Effective Filters:', [
-            'storeId' => $storeId, 'periodDays' => $periodDays, 'maxSalesQty' => $maxSalesQty, 'dateLimit' => $dateLimit->toDateString()
-        ]);
 
-        // 1. Get all products with current stock (using BILPhysicalStockBalance)
-        $productsWithStockQuery = DB::table('iv_physicalstockbalances as psb')
-            ->join('siv_products as p', 'psb.product_id', '=', 'p.id') // siv_products has the name
-            ->where('psb.quantity', '>', 0)
-            ->select('psb.product_id', 'p.name as product_name', 'psb.quantity as current_stock');
+        // 1. Get all products with current stock in the selected store
+        $qtyColumn = 'pc.qty_' . $storeId;
+        $productsWithStock = DB::table('iv_productcontrol as pc')
+            ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
+            ->where($qtyColumn, '>', 0)
+            ->select('p.id as product_id', 'p.name as product_name', DB::raw("$qtyColumn as current_stock"))
+            ->get()->keyBy('product_id');
 
-        if ($storeId) {
-            $productsWithStockQuery->where('psb.store_id', $storeId);
+        if ($productsWithStock->isEmpty()) {
+            // No need to query sales if there's no stock
+            return Inertia::render('Reports/Inventory/SlowMoving', [
+                'slowMovingItems' => [],
+                'stores' => SIV_Store::orderBy('name')->get(['id', 'name']),
+                'filters' => $validated,
+            ]);
         }
-        $productsWithStock = $productsWithStockQuery->get()->keyBy('product_id');
-        Log::info('SlowMoving Report - Products with Stock:', ['count' => $productsWithStock->count()]);
 
+        // 2. Get sales quantities for these products in the period
+        $salesData = BILSale::where('transdate', '>=', $dateLimit)
+            ->where('store_id', $storeId)
+            ->where('voided', '!=', 1)
+            ->join('bil_saleitems', 'bil_sales.id', '=', 'bil_saleitems.sale_id')
+            ->join('bls_items', 'bil_saleitems.item_id', '=', 'bls_items.id')
+            ->whereIn('bls_items.product_id', $productsWithStock->keys())
+            ->select('bls_items.product_id', DB::raw('SUM(bil_saleitems.quantity) as total_sold'))
+            ->groupBy('bls_items.product_id')
+            ->pluck('total_sold', 'bls_items.product_id');
 
-        // 2. Get sales quantities for products in the period
-        // We need to join BILSaleItem with BLSItem to get to the siv_products.id
-        $salesDataQuery = BILSaleItem::query()
-            ->join('bil_sales', 'bil_saleitems.sale_id', '=', 'bil_sales.id')
-            ->join('bls_items', 'bil_saleitems.item_id', '=', 'bls_items.id') // Join with bls_items
-            ->where('bil_sales.transdate', '>=', $dateLimit)
-            ->where('bil_sales.voided', '!=', 1)
-            ->select(
-                'bls_items.product_id as actual_product_id', // Select product_id from bls_items
-                DB::raw('SUM(bil_saleitems.quantity) as total_sold')
-            );
-
-        if ($storeId) {
-            // Assuming BILSale has store_id for filtering sales by store
-            // If BILSaleItem has store_id, use that: ->where('bil_saleitems.store_id', $storeId)
-            if (Schema::hasColumn('bil_sales', 'store_id')) {
-                $salesDataQuery->where('bil_sales.store_id', $storeId);
-            } else {
-                Log::warning('SlowMoving Report: Store filter provided, but BILSale has no store_id. Sales data will not be store-specific.');
-            }
-        }
-        $salesData = $salesDataQuery->groupBy('bls_items.product_id') // Group by product_id from bls_items
-                                     ->pluck('total_sold', 'actual_product_id'); // Pluck using the aliased actual_product_id
-        Log::info('SlowMoving Report - Sales Data in Period:', $salesData->toArray());
-
-
-        // 3. Determine slow-moving items
-        $slowMovingItems = [];
-        foreach ($productsWithStock as $productId => $stockInfo) {
-            $soldQty = $salesData->get($productId, 0); // Get sold quantity for this SIV_Product ID
-
-            if ($soldQty <= $maxSalesQty) {
-                // Fetch the last sale date for this specific product_id
-                $lastSaleDate = BILSaleItem::join('bil_sales', 'bil_saleitems.sale_id', '=', 'bil_sales.id')
-                                        ->join('bls_items', 'bil_saleitems.item_id', '=', 'bls_items.id')
-                                        ->where('bls_items.product_id', $productId) // Filter by product_id from bls_items
-                                        ->where('bil_sales.voided', '!=', 1)
-                                        ->where('bil_sales.transdate', '>=', $dateLimit); // Consider sales within the period for last sale date too
-
-                if ($storeId && Schema::hasColumn('bil_sales', 'store_id')) {
-                    $lastSaleDate->where('bil_sales.store_id', $storeId);
-                }
-
-                $lastSaleDateFormatted = $lastSaleDate->orderBy('bil_sales.transdate', 'desc')
-                                                      ->value('bil_sales.transdate');
-
-                $slowMovingItems[] = [
-                    'product_id' => $productId,
-                    'product_name' => $stockInfo->product_name, // Name from siv_products via physical stock balance query
-                    'current_stock' => $stockInfo->current_stock,
-                    'quantity_sold_in_period' => (int) $soldQty,
-                    'last_sale_date' => $lastSaleDateFormatted ? Carbon::parse($lastSaleDateFormatted)->toDateString() : null,
-                ];
-            }
-        }
-        Log::info('SlowMoving Report - Identified Slow Moving Items:', ['count' => count($slowMovingItems)]);
+        // 3. Determine slow-moving items by filtering the stocked items
+        $slowMovingItems = $productsWithStock->filter(function ($stockInfo, $productId) use ($salesData, $maxSalesQty) {
+            $soldQty = $salesData->get($productId, 0);
+            return $soldQty <= $maxSalesQty;
+        })->map(function ($stockInfo, $productId) use ($salesData, $storeId) {
+            // Sub-query to get the last sale date for this item
+            $lastSaleDate = BILSale::where('store_id', $storeId)
+                ->where('voided', '!=', 1)
+                ->whereHas('items.item', function ($q) use ($productId) {
+                    $q->where('product_id', $productId);
+                })
+                ->latest('transdate')->value('transdate');
+            
+            return [
+                'product_id' => $productId,
+                'product_name' => $stockInfo->product_name,
+                'current_stock' => $stockInfo->current_stock,
+                'quantity_sold_in_period' => (int) $salesData->get($productId, 0),
+                'last_sale_date' => $lastSaleDate ? Carbon::parse($lastSaleDate)->toDateString() : null,
+            ];
+        })->values(); // Convert back to a simple array for the frontend
 
         return Inertia::render('Reports/Inventory/SlowMoving', [
             'slowMovingItems' => $slowMovingItems,
             'stores' => SIV_Store::orderBy('name')->get(['id', 'name']),
-            'filters' => $validated + ['period_days_applied' => $periodDays, 'max_sales_qty_applied' => $maxSalesQty],
+            'filters' => $validated,
         ]);
     }
-   
+
     /**
-     * Custom Inventory Report (Placeholder)
-     * Similar to custom sales report, but focused on inventory tables.
+     * Inventory Ageing Report (Placeholder)
+     * A true ageing report requires detailed batch/lot tracking from goods reception.
+     * This method serves as a placeholder to prevent errors until it's fully implemented.
      */
+    public function ageing(Request $request)
+    {
+        // This is a complex report. For now, we return a view with a message
+        // explaining that the feature is conceptual.
+        return Inertia::render('Reports/Inventory/Ageing', [
+            'reportData' => [
+                'message' => 'Inventory Ageing Report is a complex feature that requires detailed batch/lot tracking for accurate implementation. This feature is not yet available.'
+            ],
+            'filters' => $request->all(),
+        ]);
+    }
+
+    // You can also add back the custom report placeholder if you have a route for it
+    /*
     public function customInventoryReport(Request $request)
     {
-        // This would be a complex builder allowing selection of fields from:
-        // siv_products, iv_physicalstockbalances, bil_productexpirydates, iv_productcontrol, etc.
-        // With filters on various attributes.
-        Log::info('Custom Inventory Report - Incoming Request:', $request->all());
-
-        // For now, return a placeholder view or a very simplified version
         return Inertia::render('Reports/Inventory/CustomBuilder', [
             'reportData' => ['message' => 'Custom Inventory Report Builder is a complex feature. This is a placeholder.'],
             'filters' => $request->all(),
-            // Pass available columns/filters for inventory tables
-            'availableProductColumns' => SIV_Product::first() ? array_keys(SIV_Product::first()->getAttributes()) : [],
-            'availableStockBalanceColumns' => BILPhysicalStockBalance::first() ? array_keys(BILPhysicalStockBalance::first()->getAttributes()) : [],
         ]);
     }
+     */
+
 }
