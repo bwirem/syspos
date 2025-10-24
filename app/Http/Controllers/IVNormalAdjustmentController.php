@@ -192,7 +192,7 @@ class IVNormalAdjustmentController extends Controller
      */
     
 
-     private function processStockAdjustment(IVNormalAdjustment $adjustment, InventoryService $inventoryService): void
+    private function processStockAdjustment(IVNormalAdjustment $adjustment, InventoryService $inventoryService): void
     {
         $adjustment->load(['adjustmentreason', 'normaladjustmentitems']);
 
@@ -206,37 +206,29 @@ class IVNormalAdjustmentController extends Controller
         ])->all();
 
         if ($reason->action === "Add") {
-            // Let's be explicit with parameters
-            $toStoreId = $storeId;
-            $fromEntityId = $reason->id;
-            $fromEntityDescription = $reason->name; // This must be a string.
-
-            // Add a log to see exactly what is being passed
-            Log::info('Calling InventoryService->receive', [
-                'toStoreId' => $toStoreId,
-                'fromEntityId' => $fromEntityId,
-                'fromEntityDescription' => $fromEntityDescription,
-                'fromEntityDescription_type' => gettype($fromEntityDescription),
-                'items_count' => count($items)
-            ]);
-
+            // --- USE THE ENUM FOR CONSISTENCY ---
             $inventoryService->receive(
-                $toStoreId,
-                $fromEntityId,
-                $fromEntityDescription,
+                $storeId,
+                $reason->id,
+                // BEFORE: SIV_AdjustmentReason::class
+                // AFTER:
+                StoreType::AdjustmentReason->value, // Provides the integer 4
+                $reason->name,
                 $items
             );
         } elseif ($reason->action === "Deduct") {
+            // --- USE THE ENUM FOR CONSISTENCY ---
             $inventoryService->issue(
                 $storeId,
                 $reason->id,
-                SIV_AdjustmentReason::class,
+                // BEFORE: SIV_AdjustmentReason::class
+                // AFTER:
+                StoreType::AdjustmentReason->value, // Provides the integer 4
                 $reason->name,
                 $items
             );
         }
     }
-
 
     /**
      * Remove the specified normaladjustment from storage.

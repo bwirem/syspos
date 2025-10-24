@@ -36,6 +36,7 @@ use App\Http\Controllers\IVReceiveController;
 
 use App\Http\Controllers\IVReconciliationController;
 use App\Http\Controllers\IVNormalAdjustmentController;
+use App\Http\Controllers\IVPhysicalInventoryController;
 
 use App\Http\Controllers\ACCMakePaymentController;
 use App\Http\Controllers\ACCReceivePaymentController;
@@ -274,12 +275,12 @@ Route::middleware('auth')->group(function () {
 
         // --- Physical Inventory Routes ---
         Route::prefix('physical-inventory')->name('physical-inventory.')->group(function () {
-            Route::get('/', [IVReconciliationController::class, 'physicalInventory'])->name('index');  // Consistent naming
-            Route::get('/create', [IVReconciliationController::class, 'createPhysicalInventory'])->name('create');
-            Route::post('/', [IVReconciliationController::class, 'storePhysicalInventory'])->name('store'); // Commented out, as in the original
-            Route::get('/{physicalinventory}/edit', [IVReconciliationController::class, 'editPhysicalInventory'])->name('edit');
-            Route::put('/{physicalinventory}', [IVReconciliationController::class, 'updatePhysicalInventory'])->name('update');  //Simplified route definition
-            Route::put('/{physicalinventory}/commit', [IVReconciliationController::class, 'commitPhysicalInventory'])->name('commit'); // Added destroy route
+            Route::get('/', [IVPhysicalInventoryController::class, 'index'])->name('index');  // Consistent naming
+            Route::get('/create', [IVPhysicalInventoryController::class, 'create'])->name('create');
+            Route::post('/', [IVPhysicalInventoryController::class, 'store'])->name('store'); // Commented out, as in the original
+            Route::get('/{physicalinventory}/edit', [IVPhysicalInventoryController::class, 'edit'])->name('edit');
+            Route::put('/{physicalinventory}', [IVPhysicalInventoryController::class, 'update'])->name('update');  //Simplified route definition
+            Route::put('/{physicalinventory}/commit', [IVPhysicalInventoryController::class, 'commit'])->name('commit'); // Added destroy route
        
         });
 

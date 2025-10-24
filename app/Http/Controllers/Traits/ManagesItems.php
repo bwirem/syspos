@@ -8,10 +8,6 @@ trait ManagesItems
 {
     /**
      * Synchronizes related items for a parent model (Create, Update, Delete).
-     *
-     * @param Model $parent The parent model (e.g., Requisition, Receive).
-     * @param array $itemsData The array of item data from the request.
-     * @param string $relationshipName The name of the items relationship on the parent model.
      */
     protected function syncItems(Model $parent, array $itemsData, string $relationshipName): void
     {
@@ -32,27 +28,44 @@ trait ManagesItems
         // 2. Update existing items
         foreach ($itemsData as $item) {
             if (!empty($item['id'])) {
-                $parent->$relationshipName()->find($item['id'])->update([
-                    'product_id' => $item['item_id'] ?? $item['product_id'],
-                    'quantity' => $item['quantity'],
-                    'price' => $item['price'],
-                    // Add other fields like 'countedqty' if they exist, using null coalesce
-                    'countedqty' => $item['countedqty'] ?? null,
-                    'expectedqty' => $item['expectedqty'] ?? null,
-                ]);
+                // CHANGE: Use the new helper method
+                $parent->$relationshipName()->find($item['id'])->update(
+                    $this->mapItemData($item)
+                );
             }
         }
         
         // 3. Create new items
         foreach ($newItemsData as $item) {
-            $parent->$relationshipName()->create([
-                'product_id' => $item['item_id'] ?? $item['product_id'],
-                'quantity' => $item['quantity'],
-                'price' => $item['price'],
-                // Add other fields
-                'countedqty' => $item['countedqty'] ?? null,
-                'expectedqty' => $item['expectedqty'] ?? null,
-            ]);
+            // CHANGE: Use the new helper method
+            $parent->$relationshipName()->create(
+                $this->mapItemData($item)
+            );
         }
+    }
+
+    /**
+     * Maps incoming item data to the correct database columns.
+     */
+    private function mapItemData(array $item): array
+    {
+        $mappedData = [
+            'product_id' => $item['item_id'] ?? $item['product_id'],
+            'price' => $item['price'] ?? 0,
+        ];
+
+        if (array_key_exists('quantity', $item)) {
+            $mappedData['quantity'] = $item['quantity'];
+        }
+
+        if (array_key_exists('countedqty', $item)) {
+            $mappedData['countedqty'] = $item['countedqty'];
+        }
+        
+        if (array_key_exists('expectedqty', $item)) {
+            $mappedData['expectedqty'] = $item['expectedqty'];
+        }
+
+        return $mappedData;
     }
 }
