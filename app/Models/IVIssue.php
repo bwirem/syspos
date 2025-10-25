@@ -17,10 +17,10 @@ class IVIssue extends Model
     protected $table = 'iv_issue';
   
 
-    protected $fillable = ['transdate', 'fromstore_id','tostore_id','tostore_type','stage','total', 'user_id'];
+    protected $fillable = ['transdate', 'delivery_no', 'fromstore_id','tostore_id','tostore_type','stage','total', 'user_id'];
 
     protected $casts = [
-        'tostore_type' => StoreType::class,
+        'tostore_type' => StoreType::class,        
     ];
 
     public function items()

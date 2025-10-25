@@ -33,6 +33,7 @@ class InventoryService
         // Create the main IVIssue record
         $issue = IVIssue::create([
             'transdate' => $transDate,
+            'delivery_no' => $deliveryNo,
             'fromstore_id' => $fromStoreId,
             'tostore_id' => $toEntityId,
             'tostore_type' => $toEntityType,
@@ -174,16 +175,18 @@ class InventoryService
         int $fromEntityId,
         string $fromEntityType,
         array $items,
+        string $deliveryNo,
         int $stage, // This parameter makes the method flexible
         ?string $remarks = null // Optional remarks
     ): IVReceive {
         $receive = null; // Initialize to be accessible outside the transaction closure
 
-        DB::transaction(function () use (&$receive, $toStoreId, $fromEntityId, $fromEntityType, $items, $stage, $remarks) {
+        DB::transaction(function () use (&$receive, $toStoreId, $fromEntityId, $fromEntityType, $items,$deliveryNo, $stage, $remarks) {
             $calculatedTotal = collect($items)->sum(fn($item) => $item['quantity'] * $item['price']);
 
             // 1. Create the main IVReceive record
             $receive = IVReceive::create([
+                'delivery_no'   => $deliveryNo,
                 'transdate'      => Carbon::now(),
                 'tostore_id'     => $toStoreId,
                 'fromstore_id'   => $fromEntityId,

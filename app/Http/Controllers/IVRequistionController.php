@@ -112,18 +112,21 @@ class IVRequistionController extends Controller
      */
     
     public function store(Request $request)
-    {       
-        $validated = $request->validate([             
-              'to_store_id' => 'required|exists:siv_stores,id', //validate customer id             
-              'from_store_id' => 'required|exists:siv_stores,id', //validate store id       
-              'stage' => 'required|integer|min:1',
-              'requistionitems' => 'required|array',
-              'requistionitems.*.item_id' => 'required|exists:siv_products,id',  
-              'requistionitems.*.quantity' => 'required|numeric|min:0',
-              'requistionitems.*.price' => 'required|numeric|min:0', 
-         ]);    
+    {
+        $validated = $request->validate([
+            'to_store_id' => 'required|exists:siv_stores,id',
+            'from_store_id' => 'required|exists:siv_stores,id',
+            'stage' => 'required|integer|min:1',
+            // Remarks are still validated from the request, but not stored on the main table
+            'remarks' => 'nullable|string|required_if:stage,2',
+            'requistionitems' => 'required|array',
+            'requistionitems.*.item_id' => 'required|exists:siv_products,id',
+            'requistionitems.*.quantity' => 'required|numeric|min:1',
+            'requistionitems.*.price' => 'required|numeric|min:0',
+        ]);
 
-        DB::transaction(function () use ($validated) {
+        $requistion = DB::transaction(function () use ($validated) {
+            // 1. Create the main requisition record (WITHOUT remarks)
             $requistion = IVRequistion::create([
                 'transdate' => now(),
                 'tostore_id' => $validated['to_store_id'],
@@ -134,7 +137,7 @@ class IVRequistionController extends Controller
                 'user_id' => Auth::id(),
             ]);
 
-            // Create associated items
+            // 2. Create associated items
             $requistion->requistionitems()->createMany(
                 collect($validated['requistionitems'])->map(fn($item) => [
                     'product_id' => $item['item_id'],
@@ -143,14 +146,25 @@ class IVRequistionController extends Controller
                 ])->all()
             );
 
-            // Recalculate and update total
-            $requistion->load('requistionitems'); // Reload to get fresh data
+            // 3. Recalculate and update total
+            $requistion->load('requistionitems');
             $calculatedTotal = $requistion->requistionitems->sum(fn($item) => $item->quantity * $item->price);
             $requistion->update(['total' => $calculatedTotal]);
+
+            // 4. If submitted, create a history record
+            if ($validated['stage'] == 2 && !empty($validated['remarks'])) {
+                $requistion->history()->create([
+                    'stage' => 2,
+                    'remarks' => $validated['remarks'],
+                    'user_id' => Auth::id(),
+                ]);
+            }
+
+            return $requistion;
         });
 
         return redirect()->route('inventory0.index')->with('success', 'Requisition created successfully.');
-    }   
+    }
 
     /**
      * Show the form for editing the specified requistion.
@@ -190,37 +204,45 @@ class IVRequistionController extends Controller
 
    
     public function update(Request $request, IVRequistion $requistion)
-    {        
-        // Validate input
-         $validated = $request->validate([             
-             'to_store_id' => 'required|exists:siv_stores,id', //validate customer id             
-             'from_store_id' => 'required|exists:siv_stores,id', //validate store id       
-             'total' => 'required|numeric|min:0',
-             'stage' => 'required|integer|min:1',
-             'requistionitems' => 'required|array',
-             'requistionitems.*.id' => 'nullable|exists:iv_requistionitems,id',
-             'requistionitems.*.item_id' => 'required|exists:siv_products,id',
-             'requistionitems.*.quantity' => 'required|numeric|min:0',
-             'requistionitems.*.price' => 'required|numeric|min:0',
-         ]);
-     
+    {
+        $validated = $request->validate([
+            'to_store_id' => 'required|exists:siv_stores,id',
+            'from_store_id' => 'required|exists:siv_stores,id',
+            'stage' => 'required|integer|min:1',
+             // Remarks are still validated from the request
+            'remarks' => 'nullable|string|required_if:stage,2',
+            'requistionitems' => 'required|array',
+            'requistionitems.*.id' => 'nullable|exists:iv_requistionitems,id',
+            'requistionitems.*.item_id' => 'required|exists:siv_products,id',
+            'requistionitems.*.quantity' => 'required|numeric|min:1',
+            'requistionitems.*.price' => 'required|numeric|min:0',
+        ]);
 
         DB::transaction(function () use ($validated, $requistion) {
-            // Use the trait to handle item CUD
+            // 1. Sync items
             $this->syncItems($requistion, $validated['requistionitems'], 'requistionitems');
 
-            // Recalculate total
-            $requistion->load('requistionitems'); // Reload to get fresh data
+            // 2. Recalculate total
+            $requistion->load('requistionitems');
             $calculatedTotal = $requistion->requistionitems->sum(fn($item) => $item->quantity * $item->price);
 
-            // Update the main requisition record
+            // 3. Update the main requisition record (WITHOUT remarks)
             $requistion->update([
                 'tostore_id' => $validated['to_store_id'],
                 'fromstore_id' => $validated['from_store_id'],
                 'stage' => $validated['stage'],
                 'total' => $calculatedTotal,
-                'user_id' => Auth::id(),
+                // user_id is typically not updated, but depends on your business logic
             ]);
+
+            // 4. If being submitted, create a NEW history record
+            if ($validated['stage'] == 2 && !empty($validated['remarks'])) {
+                $requistion->history()->create([
+                    'stage' => 2,
+                    'remarks' => $validated['remarks'],
+                    'user_id' => Auth::id(),
+                ]);
+            }
         });
 
         return redirect()->route('inventory0.index')->with('success', 'Requisition updated successfully.');

@@ -45,12 +45,13 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
     const [isItemSearchLoading, setIsItemSearchLoading] = useState(false);
     const itemDropdownRef = useRef(null);
     const itemSearchInputRef = useRef(null);
+    const isInitialMount = useRef(true); // +++ ADDED +++ To track initial render
 
     const [uiFeedbackModal, setUiFeedbackModal] = useState({
         isOpen: false,
         message: '',
         isAlert: true,
-        itemIndexToRemove: null, // Can still be used for display purposes in the modal message if needed
+        itemIndexToRemove: null,
         onConfirmAction: null,
         title: 'Alert',
         confirmText: 'OK'
@@ -61,33 +62,88 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
         isLoading: false,
         isSuccess: false
     });
+    
+    const showGeneralAlert = (title, message) => {
+        setUiFeedbackModal({
+            isOpen: true,
+            title: title,
+            message: message,
+            isAlert: true,
+            confirmText: 'OK',
+            onConfirmAction: () => setUiFeedbackModal(prev => ({ ...prev, isOpen: false, itemIndexToRemove: null, onConfirmAction: null })),
+            itemIndexToRemove: null
+        });
+    };
 
-    const fetchItems = useCallback(async (query) => {
+    // --- MODIFIED ---: Replaced the old fetchItems with the more robust fetchData pattern
+    const fetchData = useCallback(async (endpoint, query, setLoading, setResults, setShowDropdown, entityName) => {
         if (!query.trim()) {
-            setItemSearchResults([]);
-            setShowItemDropdown(false);
+            setResults([]);
+            setShowDropdown(false);
             return;
         }
-        setIsItemSearchLoading(true);
-        try {
-            const response = await axios.get(route('systemconfiguration2.products.search'), { params: { query } });
-            setItemSearchResults(response.data.products?.slice(0, 10) || []);
-            setShowItemDropdown(true);
-        } catch (error) {
-            console.error('Error fetching products:', error);
-            setItemSearchResults([]);
-            setShowItemDropdown(false);
-            showGeneralAlert('Fetch Error', 'Failed to fetch products. Please try again later.');
-        } finally {
-            setIsItemSearchLoading(false);
+        setLoading(true);
+
+        const params = { query };
+
+        // This is the key change: conditionally add the from_store_id to the request
+        if (data.from_store_id) {
+            params.store_id = data.from_store_id;
+        } else {
+            // Prevent search if no store is selected
+            showGeneralAlert("Selection Required", "Please select a 'From Store' before searching for items.");
+            setLoading(false);
+            setResults([]);
+            setShowDropdown(false);
+            return;
         }
-    }, []); // Empty dependency array as showGeneralAlert is stable if defined outside or properly memoized
+
+        try {
+            const response = await axios.get(route(endpoint), { params });
+            setResults(response.data[entityName]?.slice(0, 10) || []);
+            setShowDropdown(true);
+        } catch (error) {
+            console.error(`Error fetching ${entityName}:`, error);
+            showGeneralAlert('Fetch Error', `Failed to fetch ${entityName}.`);
+            setResults([]);
+            setShowDropdown(false);
+        } finally {
+            setLoading(false);
+        }
+    }, [data.from_store_id]); // Dependency on from_store_id is crucial
+
+    // --- MODIFIED ---: Simplified fetchItems to use the new generic fetchData
+    const fetchItems = useCallback((query) => fetchData('systemconfiguration2.products.search', query, setIsItemSearchLoading, setItemSearchResults, setShowItemDropdown, 'products'), [fetchData]);
 
     const debouncedItemSearch = useMemo(() => debounce(fetchItems, 350), [fetchItems]);
 
+    // +++ ADDED +++: Effect to clear items when the source store changes to ensure data accuracy.
     useEffect(() => {
-        debouncedItemSearch(itemSearchQuery);
+        // We use a ref to prevent this from running on the initial component mount
+        if (isInitialMount.current) {
+            isInitialMount.current = false;
+            return;
+        }
+        
+        // If the store is changed and there are items in the list, clear them.
+        if (data.requistionitems.length > 0) {
+            setData('requistionitems', []);
+            showGeneralAlert(
+                'Store Changed',
+                'The "From Store" has been changed. To ensure stock accuracy, the item list has been cleared. Please re-add any necessary items.'
+            );
+        }
+    }, [data.from_store_id]);
+
+
+    useEffect(() => {
+        if (itemSearchQuery.trim()) {
+            debouncedItemSearch(itemSearchQuery);
+        } else {
+            setShowItemDropdown(false);
+        }
     }, [itemSearchQuery, debouncedItemSearch]);
+
 
     useEffect(() => {
         const calculatedTotal = data.requistionitems.reduce(
@@ -131,9 +187,7 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
     };
 
     const addRequistionItemFromSelection = (selectedItem) => {
-        console.log("Adding item from selection:", selectedItem);
         if (!selectedItem || !selectedItem.id) {
-            console.warn("Add item: Invalid selected item provided.");
             return;
         }
 
@@ -162,27 +216,16 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
         itemSearchInputRef.current?.focus();
     };
 
-    // MODIFIED: handleRemoveItemConfirmed now accepts indexToRemove
     const handleRemoveItemConfirmed = (indexToRemove) => {
-        console.log('[handleRemoveItemConfirmed] Called with index:', indexToRemove);
-
         if (indexToRemove !== null && typeof indexToRemove === 'number') {
-            console.log('[handleRemoveItemConfirmed] Valid index to remove:', indexToRemove);
             setData(prevData => {
-                console.log('[handleRemoveItemConfirmed] prevData.requistionitems (before filter):', JSON.parse(JSON.stringify(prevData.requistionitems)));
                 const itemBeingRemoved = prevData.requistionitems[indexToRemove];
                 if (!itemBeingRemoved) {
-                    console.error(`[handleRemoveItemConfirmed] No item found at index ${indexToRemove} in prevData.requistionitems!`);
                     return prevData;
                 }
-                console.log('[handleRemoveItemConfirmed] Item detail being removed:', JSON.parse(JSON.stringify(itemBeingRemoved)));
                 const updatedItems = prevData.requistionitems.filter((_, idx) => idx !== indexToRemove);
-                console.log('[handleRemoveItemConfirmed] updatedItems (after filter):', JSON.parse(JSON.stringify(updatedItems)));
                 return { ...prevData, requistionitems: updatedItems };
             });
-            console.log('[handleRemoveItemConfirmed] setData call initiated.');
-        } else {
-            console.warn('[handleRemoveItemConfirmed] indexToRemove was invalid. Value:', indexToRemove);
         }
 
         setUiFeedbackModal(prev => ({
@@ -195,36 +238,20 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
             title: 'Alert',
             confirmText: 'OK'
         }));
-        console.log('[handleRemoveItemConfirmed] uiFeedbackModal state after action and reset.');
     };
 
-    // MODIFIED: confirmRemoveRequistionItem now passes index via closure to onConfirmAction
     const confirmRemoveRequistionItem = (index) => {
-        console.log('[confirmRemoveRequistionItem] Index to confirm removal for:', index);
-        console.log('[confirmRemoveRequistionItem] Item object:', data.requistionitems[index]);
         setUiFeedbackModal({
             isOpen: true,
             message: `Are you sure you want to remove "${data.requistionitems[index]?.item_name || 'this item'}"?`,
             isAlert: false,
-            itemIndexToRemove: index, // Still useful for the message, but not primary for action
-            onConfirmAction: () => handleRemoveItemConfirmed(index), // Pass index here
+            itemIndexToRemove: index,
+            onConfirmAction: () => handleRemoveItemConfirmed(index),
             title: 'Confirm Removal',
             confirmText: 'Yes, Remove'
         });
     };
-
-    const showGeneralAlert = (title, message) => {
-        setUiFeedbackModal({
-            isOpen: true,
-            title: title,
-            message: message,
-            isAlert: true,
-            confirmText: 'OK',
-            onConfirmAction: () => setUiFeedbackModal(prev => ({ ...prev, isOpen: false, itemIndexToRemove: null, onConfirmAction: null })),
-            itemIndexToRemove: null
-        });
-    };
-
+    
     const handleSaveChanges = (e) => {
         e.preventDefault();
         clearErrors();

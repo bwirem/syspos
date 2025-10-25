@@ -38,6 +38,7 @@ export default function Edit({ auth, receive, fromstore: initialFromStore, tosto
             quantity: parseInt(item.quantity) || 1,
             price: parseFloat(item.price) || 0,
         })) || [],
+        delivery_no: receive.delivery_no, 
     });
 
     const [itemSearchQuery, setItemSearchQuery] = useState('');

@@ -17,10 +17,11 @@ class IVReceive extends Model
     protected $table = 'iv_receive';
   
 
-    protected $fillable = ['transdate', 'fromstore_id','fromstore_type','tostore_id','stage','total', 'user_id'];
+    protected $fillable = ['transdate','delivery_no','fromstore_id','fromstore_type','tostore_id','stage','total', 'user_id'];
 
     protected $casts = [
         'fromstore_type' => StoreType::class,
+        'transdate' => 'datetime', // Good practice to cast date fields
     ];
 
 

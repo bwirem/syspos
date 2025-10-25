@@ -228,7 +228,7 @@ class IVReceiveController extends Controller
             'receiveitems.*.item_id' => 'required|exists:siv_products,id',
             'receiveitems.*.quantity' => 'required|numeric|min:0.01',
             'receiveitems.*.price' => 'required|numeric|min:0',
-            'delivery_no' => 'nullable|string',
+            'delivery_no' => 'required|string',
             'expiry_date' => 'nullable|date',
         ];
 
@@ -244,6 +244,8 @@ class IVReceiveController extends Controller
         }
 
         $validated = $request->validate($rules);
+
+        log::info('Update receive with data: ', $validated);
         
         $newStage = (int) $validated['stage'];
         $originalStage = $receive->stage;

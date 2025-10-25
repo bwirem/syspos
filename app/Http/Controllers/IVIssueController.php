@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Traits\GeneratesUniqueNumbers; // +++ IMPORT THE TRAIT
+use App\Models\FacilityOption;                           // +++ IMPORT FacilityOptio
+
 use App\Models\IVRequistion;
 use App\Services\InventoryService; // Import the service
 
@@ -25,6 +28,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Validation\Rules\Enum;
+use Illuminate\Validation\Rule;
 
 use Carbon\Carbon;
 use Exception;
@@ -32,6 +36,8 @@ use Throwable;
 
 class IVIssueController extends Controller
 {
+    use GeneratesUniqueNumbers; // +++ USE THE TRAIT
+
     // Constants for transaction types.  MUCH better than hardcoding strings.
     const TRANSACTION_TYPE_ISSUE = 'Issue';
     const TRANSACTION_TYPE_RECEIVE = 'Receive';
@@ -120,100 +126,238 @@ class IVIssueController extends Controller
      */
     public function edit(IVRequistion $requistion)
     {
-       
-        $requistion->load(['fromstore', 'requistionitems.item']); // Eager load necessary relationships
+        // --- MODIFIED: Eager load the history relationship ---
+        $requistion->load(['fromstore', 'requistionitems.item', 'history']);
+
         $tostoreData = [];
-        
-        // Ensure to access the value of the enum when comparing
-        $tostoreTypeValue = $requistion->tostore_type->value; // Get the value of the enum       
-       
-        
+        $tostoreTypeValue = $requistion->tostore_type->value;
+
         switch ($tostoreTypeValue) {
             case StoreType::Store->value:
-                // Find the store based on tostore_id
                 $store = SIV_Store::find($requistion->tostore_id);
-                
-                // Set the tostore relation for the requistion model
                 $requistion->setRelation('tostore', $store);
-                
-                
-                // Load all SIV stores for the store type
                 $tostoreData = SIV_Store::all();
                 break;
-        
             case StoreType::Customer->value:
-                // Find the customer based on tostore_id
-                $store = BLSCustomer::find($requistion->tostore_id);                
-                
-                // Set the tostore relation for the requistion model
-                $requistion->setRelation('tostore', $store);   
-        
-               
-                // Load all BLS customers for the customer type
-                $tostoreData = BLSCustomer::all();           
-                break;          
-        
+                $customer = BLSCustomer::find($requistion->tostore_id);
+                $requistion->setRelation('tostore', $customer);
+                $tostoreData = BLSCustomer::all();
+                break;
             default:
-                // Set null if the tostore_type doesn't match any case
-                $requistion->setRelation('tostore', null);   
+                $requistion->setRelation('tostore', null);
                 break;
         }
-        
-        
-        // Return the view with the requisition and the correct store data
 
-        if($requistion->stage ==2){
-
-            return inertia('IvIssue/Approve', [           
+        if ($requistion->stage == 2) {
+            return inertia('IvIssue/Approve', [
                 'requistion' => $requistion,
-                'fromstore' => SIV_Store::all(), // Pass the correct data to the view
-                'tostore' => $tostoreData, // Pass the correct data to the view
+                'fromstore' => SIV_Store::all(),
+                'tostore' => $tostoreData,
             ]);
-
-        }else{
-
+        } else {
             return inertia('IvIssue/Issue', [
                 'requistion' => $requistion,
-                'fromstore' => SIV_Store::all(), // Pass the correct data to the view
-                'tostore' => $tostoreData, // Pass the correct data to the view
+                'fromstore' => SIV_Store::all(),
+                'tostore' => $tostoreData,
             ]);
-
-        }    
-                
+        }
     }
 
     /**
      * Update the specified requistion in storage.
      */ 
 
+    // public function update(Request $request, IVRequistion $requistion, InventoryService $inventoryService)
+    // {
+    //     if ($requistion->stage == 1) {
+    //         return redirect()->route('inventory1.index')->with('success', 'Requisition returned to draft.');
+    //     }elseif ($requistion->stage == 2) {
+    //         $requistion->update(['stage' => 3]);
+    //         return redirect()->route('inventory1.edit', ['requistion' => $requistion->id])->with('success', 'Requisition approved successfully.');
+    //     }
+        
+    //     // --- START: MODIFIED VALIDATION LOGIC ---
+
+    //     // 1. Define the base validation rules
+    //     $rules = [
+    //         'tostore_type' => ['required', new Enum(StoreType::class)],
+    //         'from_store_id' => 'required|exists:siv_stores,id',
+    //         'total' => 'required|numeric|min:0',
+    //         'stage' => 'required|integer|min:1',
+    //         'requistionitems' => 'required|array',
+    //         'requistionitems.*.id' => 'nullable|exists:iv_requistionitems,id',
+    //         'requistionitems.*.item_id' => 'required|exists:siv_products,id',
+    //         'requistionitems.*.quantity' => 'required|numeric|min:0',
+    //         'requistionitems.*.price' => 'required|numeric|min:0',
+    //         'delivery_no' => 'nullable|string',
+    //         'expiry_date' => 'nullable|date',
+    //         'double_entry' => 'boolean',
+    //     ];
+
+    //     // 2. Conditionally add the rule for `to_store_id` based on the input from the request
+    //     switch ($request->input('tostore_type')) {
+    //         case StoreType::Store->value:
+    //             $rules['to_store_id'] = 'required|exists:siv_stores,id';
+    //             break;
+    //         case StoreType::Customer->value:
+    //             $rules['to_store_id'] = 'required|exists:bls_customers,id';
+    //             break;
+    //     }
+        
+    //     // 3. Now validate the request with the complete set of rules
+    //     $validated = $request->validate($rules);
+
+    //     // --- END: MODIFIED VALIDATION LOGIC ---
+
+    //     $StoreToStore = $validated['tostore_type'] === StoreType::Store->value;
+    //     $doubleEntry = $validated['double_entry'] ?? true;
+
+    //     DB::beginTransaction();
+    //     try {
+    //         $items = collect($validated['requistionitems'])->map(fn($item) => [
+    //             'product_id' => $item['item_id'],
+    //             'quantity' => $item['quantity'],
+    //             'price' => $item['price'],
+    //         ])->all();
+
+    //         // Perform the issuance. This happens in all cases.
+    //         $inventoryService->issue(
+    //             $validated['from_store_id'],
+    //             $validated['to_store_id'],
+    //             $validated['tostore_type'],
+    //             $this->getToStoreName($validated['to_store_id'], $validated['tostore_type']),
+    //             $items,
+    //             $validated['delivery_no'] ?? null,
+    //             $validated['expiry_date'] ?? null
+    //         );
+
+    //         // --- MODIFIED LOGIC FOR RECEPTION ---
+
+    //         // Scenario 1: Store-to-store transfer WITH double entry.
+    //         // This automatically receives the stock.
+    //         if ($StoreToStore) {
+    //             if ($doubleEntry) {
+
+    //                 $inventoryService->createReceiveRecord(
+    //                     $validated['to_store_id'],
+    //                     $validated['from_store_id'],
+    //                     StoreType::Store->value,
+    //                     $items,
+    //                     4, // Stage 4: Posted/Completed
+    //                     'Auto-created from double-entry issue.' // System-generated remark
+    //                 );
+
+    //                 $inventoryService->receive(
+    //                     $validated['to_store_id'],
+    //                     $validated['from_store_id'],
+    //                     StoreType::Store->value,
+    //                     SIV_Store::find($validated['from_store_id'])->name,
+    //                     $items,
+    //                     $validated['delivery_no'] ?? null,
+    //                     $validated['expiry_date'] ?? null
+    //                 );
+
+    //             }else {
+    //             // Scenario 2: Store-to-store transfer WITHOUT double entry.
+    //             // This creates a pending reception record for manual processing later.
+                   
+    //                 $inventoryService->createReceiveRecord(
+    //                     $validated['to_store_id'],
+    //                     $validated['from_store_id'],
+    //                     StoreType::Store->value,
+    //                     $items,
+    //                     2, // Explicitly set the stage to 2 (Pending)
+    //                     'Pending reception from store-to-store transfer.' // Optional remark
+    //                 );
+                   
+    //             }
+    //         }
+            
+    //         // --- END MODIFIED LOGIC ---
+
+    //         $requistion->update(['stage' => 4]); // Mark requisition as completed
+
+    //         DB::commit();
+    //         return redirect()->route('inventory1.index')->with('success', 'Items issued successfully.');
+
+    //     } catch (\Throwable $e) {
+    //         DB::rollBack();
+    //         Log::error('Stock transaction failed: ' . $e->getMessage() . ' in ' . $e->getFile() . ' on line ' . $e->getLine());
+    //         return back()->with('error', 'An error occurred while processing the stock transaction.');
+    //     }
+    // }
+
     public function update(Request $request, IVRequistion $requistion, InventoryService $inventoryService)
     {
-        if ($requistion->stage == 1) {
-            return redirect()->route('inventory1.index')->with('success', 'Requisition returned to draft.');
-        }elseif ($requistion->stage == 2) {
-            $requistion->update(['stage' => 3]);
-            return redirect()->route('inventory1.edit', ['requistion' => $requistion->id])->with('success', 'Requisition approved successfully.');
-        }
-        
-        // --- START: MODIFIED VALIDATION LOGIC ---
+        // --- START: REFACTORED LOGIC ---
 
-        // 1. Define the base validation rules
+        // Action: Handle Approval or Return to Draft (from Stage 2)
+        if ($requistion->stage == 2) {
+            return $this->handleApprovalAction($request, $requistion);
+        }
+
+        // Action: Handle Stock Issuance (from Stage 3)
+        if ($requistion->stage == 3) {
+            return $this->handleIssuanceAction($request, $requistion, $inventoryService);
+        }
+
+        // Fallback for any other stage
+        return back()->with('error', 'Invalid action for the current requisition stage.');
+
+        // --- END: REFACTORED LOGIC ---
+    }
+    
+    /**
+     * Handles the 'Approve' or 'Return' action for a requisition awaiting approval.
+     */
+    private function handleApprovalAction(Request $request, IVRequistion $requistion)
+    {
+        $validated = $request->validate([
+            'action_type' => ['required', Rule::in(['approve', 'return'])],
+            'remarks' => 'required|string|min:5',
+        ]);
+
+        $action = $validated['action_type'];
+        $newStage = ($action === 'approve') ? 3 : 1; // 3 for Approved, 1 for Draft
+
+        DB::transaction(function () use ($requistion, $validated, $newStage) {
+            // 1. Update the requisition's stage
+            $requistion->update(['stage' => $newStage]);
+
+            // 2. Create a new history record for this action
+            $requistion->history()->create([
+                'stage'   => $newStage,
+                'remarks' => $validated['remarks'],
+                'user_id' => Auth::id(),
+            ]);
+        });
+        
+        $message = ($action === 'approve') ? 'Requisition approved successfully.' : 'Requisition has been returned to drafts.';
+        return redirect()->route('inventory1.index')->with('success', $message);
+    }
+
+    /**
+     * Handles the stock issuance process for an approved requisition.
+     */
+    private function handleIssuanceAction(Request $request, IVRequistion $requistion, InventoryService $inventoryService)
+    {      
+
+        // 1. Define and run validation
         $rules = [
             'tostore_type' => ['required', new Enum(StoreType::class)],
             'from_store_id' => 'required|exists:siv_stores,id',
             'total' => 'required|numeric|min:0',
             'stage' => 'required|integer|min:1',
+            'remarks' => 'required|string|min:5',
             'requistionitems' => 'required|array',
             'requistionitems.*.id' => 'nullable|exists:iv_requistionitems,id',
-            'requistionitems.*.item_id' => 'required|exists:siv_products,id',
+            // --- THIS IS THE FIX ---
+            'requistionitems.*.product_id' => 'required|exists:siv_products,id', // Changed from item_id
+            // --- END OF FIX ---
             'requistionitems.*.quantity' => 'required|numeric|min:0',
-            'requistionitems.*.price' => 'required|numeric|min:0',
-            'delivery_no' => 'nullable|string',
-            'expiry_date' => 'nullable|date',
-            'double_entry' => 'boolean',
+            'requistionitems.*.price' => 'required|numeric|min:0',            
         ];
 
-        // 2. Conditionally add the rule for `to_store_id` based on the input from the request
         switch ($request->input('tostore_type')) {
             case StoreType::Store->value:
                 $rules['to_store_id'] = 'required|exists:siv_stores,id';
@@ -222,48 +366,53 @@ class IVIssueController extends Controller
                 $rules['to_store_id'] = 'required|exists:bls_customers,id';
                 break;
         }
-        
-        // 3. Now validate the request with the complete set of rules
+
+        // This will now pass
         $validated = $request->validate($rules);
 
-        // --- END: MODIFIED VALIDATION LOGIC ---
+        
+        // Get the global double entry setting
+        $facilityOptions = FacilityOption::first();
+        $doubleEntry = $facilityOptions?->doubleentryissuing ?? true;
+
+        // Generate a unique delivery number
+        $deliveryNo = $this->generateUniqueNumber(IVIssue::class, 'delivery_no', 'ISS');
 
         $StoreToStore = $validated['tostore_type'] === StoreType::Store->value;
-        $doubleEntry = $validated['double_entry'] ?? true;
 
         DB::beginTransaction();
         try {
+            // --- ANOTHER IMPORTANT FIX ---
+            // Make sure the map function uses the correct key ('product_id')
             $items = collect($validated['requistionitems'])->map(fn($item) => [
-                'product_id' => $item['item_id'],
+                'product_id' => $item['product_id'], // Use product_id here as well
                 'quantity' => $item['quantity'],
                 'price' => $item['price'],
             ])->all();
 
-            // Perform the issuance. This happens in all cases.
+            // Perform the issuance
             $inventoryService->issue(
                 $validated['from_store_id'],
                 $validated['to_store_id'],
                 $validated['tostore_type'],
                 $this->getToStoreName($validated['to_store_id'], $validated['tostore_type']),
                 $items,
-                $validated['delivery_no'] ?? null,
-                $validated['expiry_date'] ?? null
+                $deliveryNo,
+                null // Expiry date is not handled in this part of the form
             );
 
-            // --- MODIFIED LOGIC FOR RECEPTION ---
-
-            // Scenario 1: Store-to-store transfer WITH double entry.
-            // This automatically receives the stock.
+            // ... (rest of your logic for double entry, etc.)
             if ($StoreToStore) {
                 if ($doubleEntry) {
-
                     $inventoryService->createReceiveRecord(
+
                         $validated['to_store_id'],
                         $validated['from_store_id'],
                         StoreType::Store->value,
                         $items,
-                        4, // Stage 4: Posted/Completed
-                        'Auto-created from double-entry issue.' // System-generated remark
+                        $deliveryNo,
+                        4,                        
+                        'Auto-created from double-entry issue.'
                     );
 
                     $inventoryService->receive(
@@ -272,32 +421,33 @@ class IVIssueController extends Controller
                         StoreType::Store->value,
                         SIV_Store::find($validated['from_store_id'])->name,
                         $items,
-                        $validated['delivery_no'] ?? null,
-                        $validated['expiry_date'] ?? null
+                        $deliveryNo,
+                        null
                     );
-
-                }else {
-                // Scenario 2: Store-to-store transfer WITHOUT double entry.
-                // This creates a pending reception record for manual processing later.
-                   
+                } else {
                     $inventoryService->createReceiveRecord(
                         $validated['to_store_id'],
                         $validated['from_store_id'],
                         StoreType::Store->value,
                         $items,
-                        2, // Explicitly set the stage to 2 (Pending)
-                        'Pending reception from store-to-store transfer.' // Optional remark
+                        $deliveryNo,
+                        2,
+                        'Pending reception from store-to-store transfer.'
                     );
-                   
                 }
             }
-            
-            // --- END MODIFIED LOGIC ---
 
-            $requistion->update(['stage' => 4]); // Mark requisition as completed
+
+            $requistion->update(['stage' => 4, 'delivery_no' => $deliveryNo]);
+
+            $requistion->history()->create([
+                'stage'   => 4,
+                'remarks' => $validated['remarks'],
+                'user_id' => Auth::id(),
+            ]);
 
             DB::commit();
-            return redirect()->route('inventory1.index')->with('success', 'Items issued successfully.');
+            return redirect()->route('inventory1.index')->with('success', "Items issued successfully under Delivery No: {$deliveryNo}.");
 
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -305,7 +455,8 @@ class IVIssueController extends Controller
             return back()->with('error', 'An error occurred while processing the stock transaction.');
         }
     }
-        
+
+            
     private function getToStoreName(int $id, string|int $type): string
     {
         // Use strict comparison as we confirmed the types match.
@@ -329,21 +480,7 @@ class IVIssueController extends Controller
 
         // Default fallback if the type doesn't match any case.
         return 'Unknown';
-    }
+    }   
     
-    public function return(IVRequistion $requistion)
-    { 
-        // // Check if the current stage is greater than 0
-        // if ($requistion->stage > 1) {
-        //     // Decrease the requistion stage by 1
-        //     $requistion->update(['stage' => $requistion->stage - 1]);
-        // } else {
-        //     // Optionally, you can log or handle the case where the stage is already 0
-        //     // Log::warning('Attempted to decrease requistion stage below zero for requistion ID: ' . $requistion->id);
-        // }
-    
-        // // Redirect to the 'edit' route for the current requistion
-        // return redirect()->route('inventory1.edit', ['requistion' => $requistion->id]);
-    }    
 
 }

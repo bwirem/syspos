@@ -17,7 +17,7 @@ class IVRequistion extends Model
     protected $table = 'iv_requistion';
   
 
-    protected $fillable = ['transdate', 'fromstore_id','tostore_id','tostore_type','stage','total', 'user_id'];
+    protected $fillable = ['transdate', 'delivery_no', 'sale_id', 'fromstore_id','tostore_id','tostore_type','stage','total', 'user_id'];
 
     protected $casts = [
         'tostore_type' => StoreType::class,
@@ -74,6 +74,11 @@ class IVRequistion extends Model
     public function sale()
     {    
         return $this->belongsTo(BILSale::class, 'sale_id');
+    }
+
+    public function history()
+    {
+        return $this->hasMany(IVRequistionHistory::class, 'requistion_id', 'id')->orderBy('created_at');
     }
    
 }
