@@ -279,9 +279,11 @@ class BilPostController extends Controller
         // Generate unique numbers only if they are needed
         $receiptNo = $hasPayment ? $this->generateUniqueNumber(BILReceipt::class, 'receiptno', 'REC') : null;
         $invoiceNo = $isCreditSale ? $this->generateUniqueNumber(BILInvoice::class, 'invoiceno', 'INV') : null;
+        
 
-        $this->createSaleRecord($data, $transdate, $receiptNo, $invoiceNo);
-        $this->createInventoryRequisition($data, $transdate, $order->orderitems);
+       
+        $sale = $this->createSaleRecord($data, $transdate, $receiptNo, $invoiceNo);
+        $this->createInventoryRequisition($data, $transdate, $order->orderitems, $sale);
 
         if ($isCreditSale) {
             $this->handleInvoicingAndDebtors($data, $transdate, $invoiceNo, $receiptNo);
@@ -300,7 +302,7 @@ class BilPostController extends Controller
     /**
      * Creates the primary sale record.
      */
-    private function createSaleRecord(array $data, Carbon $transdate, ?string $receiptNo, ?string $invoiceNo): void
+    private function createSaleRecord(array $data, Carbon $transdate, ?string $receiptNo, ?string $invoiceNo):BILSale
     {
         $sale = BILSale::create([
             'transdate' => $transdate,
@@ -316,14 +318,16 @@ class BilPostController extends Controller
             'user_id' => Auth::id(),
         ]);
         $sale->items()->createMany($data['orderitems']);
+        return $sale;
     }
 
     /**
      * Creates an inventory requisition to be processed by the stores department.
      */
-    private function createInventoryRequisition(array $data, Carbon $transdate, $orderItems): void
+    private function createInventoryRequisition(array $data, Carbon $transdate, $orderItems, BILSale $sale): void
     {
         $requisition = IVRequistion::create([
+            'sale_id' => $sale->id, 
             'transdate' => $transdate,
             'tostore_id' => $data['customer_id'],
             'tostore_type' => StoreType::Customer->value,

@@ -43,6 +43,11 @@ class BILSale extends Model
             'item_id'       // Foreign key on bil_saleitems that links to bls_items
         )->join('bls_items', 'bls_items.id', '=', 'bil_saleitems.item_id')
          ->whereColumn('bls_items.product_id', 'siv_products.id');
+    }   
+
+    public function inventoryRequisition()
+    {       
+        return $this->hasOne(IVRequistion::class, 'sale_id');
     }
     
 }

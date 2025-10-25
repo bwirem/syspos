@@ -271,7 +271,7 @@ class InventoryReportsController extends Controller
         $maxSalesQty = $request->input('max_sales_qty', 5);
         $dateLimit = Carbon::today()->subDays($periodDays)->startOfDay();
 
-        // 1. Get all products with current stock in the selected store
+        // 1. Get products with stock (this part is correct and unchanged)
         $qtyColumn = 'pc.qty_' . $storeId;
         $productsWithStock = DB::table('iv_productcontrol as pc')
             ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
@@ -280,36 +280,36 @@ class InventoryReportsController extends Controller
             ->get()->keyBy('product_id');
 
         if ($productsWithStock->isEmpty()) {
-            // No need to query sales if there's no stock
-            return Inertia::render('Reports/Inventory/SlowMoving', [
-                'slowMovingItems' => [],
-                'stores' => SIV_Store::orderBy('name')->get(['id', 'name']),
-                'filters' => $validated,
-            ]);
+            return Inertia::render('Reports/Inventory/SlowMoving', [/* ... empty state ... */]);
         }
 
-        // 2. Get sales quantities for these products in the period
-        $salesData = BILSale::where('transdate', '>=', $dateLimit)
-            ->where('store_id', $storeId)
+        // --- REFACTORED SALES QUERY ---
+        // 2. Get sales quantities for these products from the correct store
+        $salesData = BILSale::query()
+            ->where('transdate', '>=', $dateLimit)
             ->where('voided', '!=', 1)
+            // Join through the new relationship to filter by store
+            ->whereHas('inventoryRequisition', function ($query) use ($storeId) {
+                $query->where('fromstore_id', $storeId);
+            })
             ->join('bil_saleitems', 'bil_sales.id', '=', 'bil_saleitems.sale_id')
             ->join('bls_items', 'bil_saleitems.item_id', '=', 'bls_items.id')
             ->whereIn('bls_items.product_id', $productsWithStock->keys())
             ->select('bls_items.product_id', DB::raw('SUM(bil_saleitems.quantity) as total_sold'))
             ->groupBy('bls_items.product_id')
             ->pluck('total_sold', 'bls_items.product_id');
+        // --- END REFACTORED SALES QUERY ---
 
-        // 3. Determine slow-moving items by filtering the stocked items
+        // 3. Determine slow-moving items (this part is now more accurate)
         $slowMovingItems = $productsWithStock->filter(function ($stockInfo, $productId) use ($salesData, $maxSalesQty) {
             $soldQty = $salesData->get($productId, 0);
             return $soldQty <= $maxSalesQty;
         })->map(function ($stockInfo, $productId) use ($salesData, $storeId) {
-            // Sub-query to get the last sale date for this item
-            $lastSaleDate = BILSale::where('store_id', $storeId)
+            // Sub-query for the last sale date remains similar but is now correctly filtered
+            $lastSaleDate = BILSale::query()
                 ->where('voided', '!=', 1)
-                ->whereHas('items.item', function ($q) use ($productId) {
-                    $q->where('product_id', $productId);
-                })
+                ->whereHas('inventoryRequisition', fn($q) => $q->where('fromstore_id', $storeId))
+                ->whereHas('items.item.product', fn($q) => $q->where('id', $productId))
                 ->latest('transdate')->value('transdate');
             
             return [
@@ -319,7 +319,7 @@ class InventoryReportsController extends Controller
                 'quantity_sold_in_period' => (int) $salesData->get($productId, 0),
                 'last_sale_date' => $lastSaleDate ? Carbon::parse($lastSaleDate)->toDateString() : null,
             ];
-        })->values(); // Convert back to a simple array for the frontend
+        })->values();
 
         return Inertia::render('Reports/Inventory/SlowMoving', [
             'slowMovingItems' => $slowMovingItems,

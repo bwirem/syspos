@@ -71,6 +71,9 @@ class IVRequistion extends Model
         });
     }
     
-    
+    public function sale()
+    {    
+        return $this->belongsTo(BILSale::class, 'sale_id');
+    }
    
 }
