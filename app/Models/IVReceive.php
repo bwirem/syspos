@@ -17,7 +17,7 @@ class IVReceive extends Model
     protected $table = 'iv_receive';
   
 
-    protected $fillable = ['transdate','delivery_no','fromstore_id','fromstore_type','tostore_id','stage','total', 'user_id'];
+    protected $fillable = ['transdate','purchase_id','delivery_no','fromstore_id','fromstore_type','tostore_id','stage','total','remarks','user_id'];
 
     protected $casts = [
         'fromstore_type' => StoreType::class,

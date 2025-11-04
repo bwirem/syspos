@@ -671,6 +671,7 @@ class PROPurchaseController extends Controller
                     'total'           => $grnTotalValue,
                     'remarks'         => $validatedData['receive_remarks'] ?? null,
                     'grn_reference'   => $validatedData['grn_number'] ?? null, // Field for GRN on IVReceive table
+                    'delivery_no'   => $validatedData['grn_number'] ?? null, // Field for GRN on IVReceive table
                     'purchase_id' => $purchase->id, // Link GRN to PO
                     'user_id'         => Auth::id(),
                     'facility_id'     => $purchase->facility_id ?? $purchase->facilityoption_id, // Use facility from PO

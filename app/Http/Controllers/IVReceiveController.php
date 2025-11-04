@@ -136,6 +136,7 @@ class IVReceiveController extends Controller
             'fromstore_type' => ['required', new Enum(StoreType::class)],      
             'to_store_id'   => 'required|exists:siv_stores,id',          
             'stage'         => 'required|integer|in:1',
+            'delivery_no'   => 'required|string|max:255',
             'remarks'       => 'nullable|string|max:1000',
             'receiveitems'  => 'required|array|min:1',
             'receiveitems.*.item_id' => 'required|exists:siv_products,id',
@@ -161,6 +162,7 @@ class IVReceiveController extends Controller
                 $validated['from_store_id'],
                 $validated['fromstore_type'],
                 $validated['receiveitems'],
+                $validated['delivery_no'],
                 $validated['stage'], // This will be 1
                 $validated['remarks'] ?? null
             );
@@ -310,6 +312,7 @@ class IVReceiveController extends Controller
             'tostore_id' => $validatedData['to_store_id'],
             'stage' => $validatedData['stage'],
             'total' => $calculatedTotal,
+            'delivery_no' => $validatedData['delivery_no'],
             'remarks' => $validatedData['remarks'] ?? $receive->remarks, // Save remarks
             'user_id' => Auth::id(),
         ]);

@@ -464,9 +464,7 @@ export default function Edit({ auth, tender, flash, errors: serverErrors }) { //
                                                         {currentTenderItems.map((item, index) => (
                                                             <tr key={item.id || item.item_id || `new-${index}`}> {/* Use existing item ID if available */}
                                                                 <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 dark:text-gray-100 sm:pl-6">
-                                                                    {item.item_name}
-                                                                    <div className="text-xs text-gray-500 dark:text-gray-400">Item ID: {item.item_id}</div>
-                                                                    {item.id && <div className="text-xs text-gray-400 dark:text-gray-500">Tender Item ID: {item.id}</div>}
+                                                                    {item.item_name}                                                                    
                                                                 </td>
                                                                 <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-300">
                                                                     <input

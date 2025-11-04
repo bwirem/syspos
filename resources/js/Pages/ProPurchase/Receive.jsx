@@ -321,9 +321,7 @@ export default function Receive({ auth, purchase, stores, flash, errors: pageErr
                                                     return (
                                                         <tr key={item.id || `item-${item.item_id}-${index}`}>
                                                             <td className="py-4 pl-4 pr-3 text-sm font-medium text-gray-900 dark:text-gray-100 sm:pl-6">
-                                                                {item.item_name}
-                                                                <div className="text-xs text-gray-500 dark:text-gray-400">Product ID: {item.item_id}</div>
-                                                                {item.id && <div className="text-xs text-gray-400 dark:text-gray-500">PO Item ID: {item.id}</div>}
+                                                                {item.item_name}                                                                
                                                             </td>
                                                             <td className="px-3 py-4 text-sm text-center text-gray-500 dark:text-gray-300">{item.quantity_ordered.toLocaleString()}</td>
                                                             <td className="px-3 py-4 text-sm text-center text-gray-500 dark:text-gray-300">{item.quantity_previously_received.toLocaleString()}</td>

@@ -29,6 +29,7 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
         to_store_id: '',        
         total: 0,
         stage: 1, // Always defaults to 1 (Draft) on create
+        delivery_no: '',
         remarks: '',
         receiveitems: [],
     });
@@ -201,6 +202,7 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
         // (though stage isn't typically validated by frontend here for save draft)
         if (!data.from_store_id) { showGeneralAlert("Validation Error", "Please select 'From Store'.", 'error'); return; }
         if (!data.to_store_id) { showGeneralAlert("Validation Error", "Please select 'To Store'.", 'error'); return; }
+        if (!data.delivery_no) { showGeneralAlert("Validation Error", "Please enter 'Delivery Note Number'.", 'error'); return; }
         if (data.receiveitems.length === 0) { showGeneralAlert("Validation Error", "Please add at least one item.", 'error'); return; }
 
         // The `post` method from `useForm` will use the current `data` state,
@@ -300,26 +302,48 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
                                 </div>
                             </div>
 
-                             {/* Remarks for Draft */}
-                             <div>
-                                <label htmlFor="remarks" className="block text-sm font-medium leading-6 text-gray-900">
-                                    Remarks (Optional)
-                                </label>
-                                <div className="mt-2">
-                                    <textarea
-                                        id="remarks"
-                                        name="remarks"
-                                        rows="3"
-                                        value={data.remarks}
-                                        onChange={(e) => setData('remarks', e.target.value)}
-                                        className={`block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 ${errors.remarks ? "ring-red-500" : ""}`}
-                                        placeholder="Enter any notes for this draft..."
-                                    />
-                                    {errors.remarks && <p className="mt-1 text-sm text-red-600">{errors.remarks}</p>}
+                            {/* Delivery Note & Remarks */}
+                            <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+
+                                {/* delivery_no Textbox */}
+                                <div className="relative flex-1">
+                                    <label htmlFor="delivery_no" className="block text-sm font-medium leading-6 text-gray-900">
+                                        Delivery Note Number<span className="text-red-500">*</span>
+                                    </label>
+                                    <div className="mt-2">
+                                        <input
+                                            id="delivery_no"
+                                            type="text"
+                                            placeholder="Enter delivery_no..."
+                                            value={data.delivery_no}
+                                            onChange={(e) => setData('delivery_no', e.target.value)}
+                                            className={`block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 ${errors.delivery_no ? "ring-red-500" : ""}`}
+                                        />
+                                        {errors.delivery_no && <p className="mt-1 text-sm text-red-600">{errors.delivery_no}</p>}
+                                    </div>
+                                </div> 
+
+                                {/* Remarks for Draft */}
+                                <div className="relative flex-1">
+                                    <label htmlFor="remarks" className="block text-sm font-medium leading-6 text-gray-900">
+                                        Remarks (Optional)
+                                    </label>
+                                    <div className="mt-2">
+                                        <textarea
+                                            id="remarks"
+                                            name="remarks"
+                                            rows="3"
+                                            value={data.remarks}
+                                            onChange={(e) => setData('remarks', e.target.value)}
+                                            className={`block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 ${errors.remarks ? "ring-red-500" : ""}`}
+                                            placeholder="Enter any notes for this draft..."
+                                        />
+                                        {errors.remarks && <p className="mt-1 text-sm text-red-600">{errors.remarks}</p>}
+                                    </div>
                                 </div>
-                            </div>
 
-
+                            </div>   
+                            
                             {/* Item Search & Add */}
                             <div className="border-t border-gray-200 pt-6">
                                 <label htmlFor="item-search" className="block text-sm font-medium leading-6 text-gray-900">

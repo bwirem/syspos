@@ -364,6 +364,90 @@ Route::middleware('auth')->group(function () {
         Route::get('/search/accounts', [ACCJournalEntryController::class, 'searchAccounts'])->name('search.accounts');
     });
 
+
+    //********************************************************************************************* */
+    // Routes for Sales and Bill (Version 3)
+    Route::prefix('billing')->name('billing.')->group(function () {
+
+        // Main index route
+        Route::get('/', function () {
+            return Inertia::render('ModulesHub/Sales/Index');
+        })->name('index'); // Added a proper route name for the index.
+    }); 
+
+    // Routes for Sales and Bill (Version 3)
+    Route::prefix('procurement')->name('procurement.')->group(function () {
+
+        // Main index route
+        Route::get('/', function () {
+            return Inertia::render('ModulesHub/Procurement/Index');
+        })->name('index'); // Added a proper route name for the index.
+
+    }); 
+
+
+    // Routes for Sales and Bill (Version 3)
+    Route::prefix('inventory')->name('inventory.')->group(function () {
+
+        // Main index route
+        Route::get('/', function () {
+            return Inertia::render('ModulesHub/Inventory/Index');
+        })->name('index'); // Added a proper route name for the index.
+
+    }); 
+
+
+     // Routes for Sales and Bill (Version 3)
+    Route::prefix('materialconversion')->name('materialconversion.')->group(function () {
+
+        // Main index route
+        Route::get('/', function () {
+            return Inertia::render('ModulesHub/MaterialConversion/Index');
+        })->name('index'); // Added a proper route name for the index.
+
+    }); 
+
+
+    // Routes for Sales and Bill (Version 3)
+    Route::prefix('expenses')->name('expenses.')->group(function () {
+
+        // Main index route
+        Route::get('/', function () {
+            return Inertia::render('ModulesHub/Expenses/Index');
+        })->name('index'); // Added a proper route name for the index.
+
+    }); 
+
+    // Routes for Sales and Bill (Version 3)
+    Route::prefix('humanresource')->name('humanresource.')->group(function () {
+
+        // Main index route
+        Route::get('/', function () {
+            return Inertia::render('ModulesHub/HumanResource/Index');
+        })->name('index'); // Added a proper route name for the index.
+
+    }); 
+
+    // Routes for Sales and Bill (Version 3)
+    Route::prefix('fixedassets')->name('fixedassets.')->group(function () {
+
+        // Main index route
+        Route::get('/', function () {
+            return Inertia::render('ModulesHub/FixedAssets/Index');
+        })->name('index'); // Added a proper route name for the index.
+
+    }); 
+
+     // Routes for Sales and Bill (Version 3)
+     Route::prefix('accounting')->name('accounting.')->group(function () {
+
+        // Main index route
+        Route::get('/', function () {
+            return Inertia::render('ModulesHub/Accounting/Index');
+        })->name('index'); // Added a proper route name for the index.
+
+    }); 
+
     
     // ********************************************************************************************** */
 

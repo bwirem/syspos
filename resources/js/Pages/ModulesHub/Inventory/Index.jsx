@@ -104,7 +104,7 @@ export default function InventoryDashboard({
                 <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 
                     {/* Section 1: Core Actions / Overview */}
-                    {/* <section className="mb-10">
+                    <section className="mb-10">
                         <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-4 uppercase tracking-wider">
                             Quick Actions & Overview
                         </h3>
@@ -145,10 +145,10 @@ export default function InventoryDashboard({
                                 linkText="Manage Locations"
                             />
                         </div>
-                    </section> */}
+                    </section>
 
                     {/* Section 2: Key Inventory Operations */}
-                     {/* <section className="mb-10">
+                     <section className="mb-10">
                         <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-4 uppercase tracking-wider">
                             Inventory Operations
                         </h3>
@@ -203,80 +203,8 @@ export default function InventoryDashboard({
                                 linkText="Add Item"
                             />
                         </div>
-                    </section> */}
-
-                    {/* Section 3: Inventory Reports */}
-                    <section>
-                        <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-4 uppercase tracking-wider">
-                            Inventory Reports
-                        </h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8">
-                            <ActionOrReportCard
-                                title="Stock on Hand Report"
-                                description="Detailed list of current inventory levels by item/location."
-                                icon={faBoxes}
-                                iconBgColor="bg-cyan-600"
-                                linkHref={urls.reportsInventoryStockOnHand}
-                                linkText="View SOH"
-                            />
-                            <ActionOrReportCard
-                                title="Inventory Valuation"
-                                description="Calculate the total value of current stock (e.g., FIFO, Weighted Avg)."
-                                icon={faBalanceScale}
-                                iconBgColor="bg-green-600"
-                                linkHref={urls.reportsInventoryValuation}
-                                linkText="View Valuation"
-                            />
-                            <ActionOrReportCard
-                                title="Stock Movement History"
-                                description="Audit trail of all inventory transactions."
-                                icon={faHistory}
-                                iconBgColor="bg-amber-600"
-                                linkHref={urls.reportsInventoryMovementHistory}
-                                linkText="Track Movements"
-                            />
-                            {/* <ActionOrReportCard
-                                title="Inventory Ageing Report"
-                                description="Analyze how long stock has been held."
-                                icon={faChartLine}
-                                iconBgColor="bg-pink-600"
-                                linkHref={urls.reportsInventoryAgeing}
-                                linkText="Analyze Ageing"
-                            /> */}
-                            <ActionOrReportCard
-                                title="Reorder Level Report"
-                                description="Identify items needing replenishment."
-                                icon={faExclamationTriangle}
-                                iconBgColor="bg-red-600"
-                                linkHref={urls.reportsInventoryReorder}
-                                linkText="View Reorder List"
-                            />
-                            <ActionOrReportCard
-                                title="Expiring Items Report"
-                                description="Track items nearing their expiry dates (if applicable)."
-                                icon={faCalendarTimes}
-                                iconBgColor="bg-yellow-600"
-                                linkHref={urls.reportsInventoryExpiringItems}
-                                linkText="Track Expiry"
-                            />
-                            <ActionOrReportCard
-                                title="Slow Moving Stock"
-                                description="Identify items with low sales or movement."
-                                icon={faWarehouse}
-                                iconBgColor="bg-slate-500"
-                                linkHref={urls.reportsInventorySlowMoving}
-                                linkText="Identify Slow Stock"
-                            />
-                            {/* <ActionOrReportCard
-                                title="Custom Inventory Report"
-                                description="Build reports with specific inventory data filters."
-                                icon={faFilter}
-                                iconBgColor="bg-gray-600"
-                                linkHref={urls.reportsInventoryCustom}
-                                linkText="Build Report"
-                            /> */}
-                        </div>
                     </section>
+                                       
                 </div>
             </div>
         </AuthenticatedLayout>

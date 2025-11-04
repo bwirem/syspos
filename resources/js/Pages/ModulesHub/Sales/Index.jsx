@@ -91,7 +91,7 @@ export default function SalesAndBillingDashboard({
                 <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 
                     {/* Section 1: Core Actions / Overview (Example if you re-enable) */}
-                    {/*
+                    
                     <section className="mb-10">
                         <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-4 uppercase tracking-wider">
                             Quick Actions & Overview
@@ -124,81 +124,8 @@ export default function SalesAndBillingDashboard({
                                 linkText="Start New Sale"
                             />
                         </div>
-                    </section>
-                    */}
+                    </section>                  
 
-                    {/* Section 2: Reports */}
-                    <section>
-                        <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-4 uppercase tracking-wider">
-                            Reports Center
-                        </h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8">
-                            <ActionOrReportCard
-                                title="Daily Sales Report"
-                                description="Summary of sales for a selected day."
-                                icon={faCalendarAlt}
-                                iconBgColor="bg-sky-500"
-                                linkHref={urls.dailySales} // Use direct URL
-                                linkText="View Report"
-                            />
-                            <ActionOrReportCard
-                                title="Sales Summary Report"
-                                description="Aggregated sales data over a period (e.g., weekly, monthly)."
-                                icon={faChartBar}
-                                iconBgColor="bg-teal-500"
-                                linkHref={urls.salesSummary} // Use direct URL
-                                linkText="View Report"
-                            />
-                            <ActionOrReportCard
-                                title="Cashier Session Report"
-                                description="Detailed breakdown of a specific cashier session."
-                                icon={faFileContract}
-                                iconBgColor="bg-orange-500"
-                                linkHref={urls.cashierSession} // Use direct URL
-                                linkText="View Report"
-                            />
-                            <ActionOrReportCard
-                                title="Product/Service Sales"
-                                description="Report on sales by item or category."
-                                icon={faTags}
-                                iconBgColor="bg-rose-500"
-                                linkHref={urls.salesByItem} // Use direct URL
-                                linkText="View Report"
-                            />
-                            <ActionOrReportCard
-                                title="Payment Methods Report"
-                                description="Summary of payments by method (cash, card, etc.)."
-                                icon={faCreditCard}
-                                iconBgColor="bg-cyan-500"
-                                linkHref={urls.paymentMethods} // Use direct URL
-                                linkText="View Report"
-                            />
-                            <ActionOrReportCard
-                                title="Customer Sales History"
-                                description="View sales history for specific customers."
-                                icon={faUsers}
-                                iconBgColor="bg-lime-500"
-                                linkHref={urls.customerHistory} // Use direct URL
-                                linkText="View Report"
-                            />
-                             <ActionOrReportCard
-                                title="End of Day (EOD) Report"
-                                description="Consolidated report for end-of-day reconciliation."
-                                icon={faPrint}
-                                iconBgColor="bg-slate-500"
-                                linkHref={urls.eodSummary} // Use direct URL
-                                linkText="View EOD"
-                            />
-                             {/* <ActionOrReportCard
-                                title="Custom Report Builder"
-                                description="Generate reports with specific filters and fields."
-                                icon={faFilter}
-                                iconBgColor="bg-gray-600"
-                                linkHref={urls.customBuilder} // Use direct URL
-                                linkText="Build Report"
-                            /> */}
-                        </div>
-                    </section>
                 </div>
             </div>
         </AuthenticatedLayout>

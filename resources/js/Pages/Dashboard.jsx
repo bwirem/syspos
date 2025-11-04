@@ -86,27 +86,28 @@ export default function Dashboard({
 
         modules: route("usermanagement.userpermission.modulesAndItems"),
         // Sales
-        salesHub: '/sales-billing-hub',
+        salesHub: '/billing',
         newSale: route('billing1.index'), // Assuming this route exists for creating a new sale
         dailySalesReport: '/reports/sales/daily',
 
         // Procurement
-        procurementHub: '/procurement-hub',
+        procurementHub: '/procurement',
         newPurchaseOrder: '/procurement/purchase-orders/create',
         pendingPOs: '/procurement/purchase-orders/pending',
 
         // Inventory
-        inventoryHub: '/inventory-hub',
+        inventoryHub: '/inventory',
         stockLevels: '/inventory/stock/levels',
         lowStockAlerts: '/inventory/items/low-stock',
 
         // Expenses
-        expensesHub: '/expenses-hub', // Main expense dashboard
+        expensesHub: '/expenses', // Main expense dashboard
         pendingExpenses: '/expenses/pending', // List of expenses needing approval
         newExpense: '/expenses/create', // Form to create a new expense claim
 
          // --- NEW: Accounting URLs ---
-        accountingHub: route('accounting0.index'), // Main hub can be a list of received payments for now
+        accountingHub: '/accounting', // Main hub can be a list of received payments for now
+        
         makePayment: route('accounting1.index'),
         receivePayment: route('accounting0.index'),
         newJournalEntry: route('accounting2.create'),
