@@ -29,16 +29,26 @@ class DashboardController extends Controller
 
         $storeIds = SIV_Store::pluck('id'); // Get all store IDs
 
-        // Low stock still can be per store or across all stores
+        // // Low stock still can be per store or across all stores
+        // $lowStockItemCount = DB::table('iv_productcontrol as pc')
+        //     ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
+        //     ->whereNotNull('p.reorderlevel')
+        //     ->where(function($query) use ($storeIds) {
+        //         foreach ($storeIds as $id) {
+        //             $query->orWhereColumn("pc.qty_$id", '<=', 'p.reorderlevel');
+        //         }
+        //     })
+        //     ->count(DB::raw('DISTINCT p.id'));
+
+        // Create the part of the query that sums the quantity columns
+        $sumOfQuantities = $storeIds->map(fn($id) => "pc.qty_$id")->join(' + ');
+
         $lowStockItemCount = DB::table('iv_productcontrol as pc')
             ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
             ->whereNotNull('p.reorderlevel')
-            ->where(function($query) use ($storeIds) {
-                foreach ($storeIds as $id) {
-                    $query->orWhereColumn("pc.qty_$id", '<=', 'p.reorderlevel');
-                }
-            })
-            ->count(DB::raw('DISTINCT p.id'));
+            // Compare the sum of quantities across all stores to the product's reorder level
+            ->where(DB::raw("($sumOfQuantities)"), '<=', DB::raw('p.reorderlevel'))
+            ->count('p.id'); // DISTINCT is not strictly necessary here but is good practice
 
         // Total stock across all stores
         $sumColumns = $storeIds->map(fn($id) => "pc.qty_$id")->join(' + ');
