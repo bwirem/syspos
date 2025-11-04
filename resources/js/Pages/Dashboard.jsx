@@ -97,6 +97,7 @@ export default function Dashboard({
 
         // Inventory
         inventoryHub: '/inventory',
+        stockValuation: route('reports.inventory.valuation'),
         stockLevels: route('reports.inventory.stock_on_hand'),
         lowStockAlerts: route('reports.inventory.reorder'),
 
@@ -232,7 +233,7 @@ export default function Dashboard({
                                 value={formatAmount(totalStockValue)}
                                 icon={faBalanceScale}
                                 iconBgColor="bg-cyan-500"
-                                linkHref={urls.inventoryHub}
+                                linkHref={urls.stockValuation}
                                 linkText="View Valuation"
                             />
                             <SummaryCard
