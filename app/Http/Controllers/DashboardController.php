@@ -7,6 +7,7 @@ use Inertia\Inertia;
 use App\Models\BILSale;          // For Sales Data
 use App\Models\PROPurchase;       // For Procurement Data
 use App\Models\SPR_Supplier;      // For Procurement Data
+use App\Models\SIV_Store;         // For Inventory Data
 use App\Models\SIV_Product;       // For Inventory Data
 use App\Models\BILPhysicalStockBalance; // For Inventory Data
 use Carbon\Carbon;
@@ -26,19 +27,27 @@ class DashboardController extends Controller
         $pendingPOCount = PROPurchase::where('stage', 1)->count(); // Adjust stage logic as needed
         $activeSuppliersCount = SPR_Supplier::count(); // Or add an 'is_active' flag to your SPR_Supplier model
 
-        // --- Inventory Data ---
-        // This assumes BILPhysicalStockBalance is your current stock source
-        // If using SIV_Product.reorderlevel, and BILPhysicalStockBalance.quantity
-        $lowStockItemCountQuery = DB::table('siv_products as p')
-            ->join('iv_physicalstockbalances as psb', 'p.id', '=', 'psb.product_id')
+        $storeIds = SIV_Store::pluck('id'); // Get all store IDs
+
+        // Low stock still can be per store or across all stores
+        $lowStockItemCount = DB::table('iv_productcontrol as pc')
+            ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
             ->whereNotNull('p.reorderlevel')
-            ->whereColumn('psb.quantity', '<=', 'p.reorderlevel');
-        $lowStockItemCount = $lowStockItemCountQuery->count(DB::raw('DISTINCT p.id'));
+            ->where(function($query) use ($storeIds) {
+                foreach ($storeIds as $id) {
+                    $query->orWhereColumn("pc.qty_$id", '<=', 'p.reorderlevel');
+                }
+            })
+            ->count(DB::raw('DISTINCT p.id'));
 
+        // Total stock across all stores
+        $sumColumns = $storeIds->map(fn($id) => "pc.qty_$id")->join(' + ');
 
-        $totalStockValue = DB::table('iv_physicalstockbalances as psb')
-            ->join('siv_products as p', 'psb.product_id', '=', 'p.id')
-            ->sum(DB::raw('psb.quantity * p.costprice')); // Assuming SIV_Product has costprice
+        $totalStockValue = DB::table('iv_productcontrol as pc')
+            ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
+            ->select(DB::raw("SUM(($sumColumns) * p.costprice) as total_value"))
+            ->value('total_value');
+
 
         return Inertia::render('Dashboard', [
             'salesTodayCount' => $salesTodayCount,
