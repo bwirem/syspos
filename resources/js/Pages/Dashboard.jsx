@@ -97,8 +97,8 @@ export default function Dashboard({
 
         // Inventory
         inventoryHub: '/inventory',
-        stockLevels: '/inventory/stock/levels',
-        lowStockAlerts: '/inventory/items/low-stock',
+        stockLevels: route('reports.inventory.stock_on_hand'),
+        lowStockAlerts: route('reports.inventory.reorder'),
 
         // Expenses
         expensesHub: '/expenses', // Main expense dashboard
