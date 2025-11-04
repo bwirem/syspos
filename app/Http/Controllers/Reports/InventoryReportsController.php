@@ -32,29 +32,36 @@ class InventoryReportsController extends Controller
 
         $storeId = $validated['store_id'] ?? null;
 
-        // The core of the new query is unpivoting BILProductControl.
-        // We select a store and dynamically choose the correct 'qty_X' column.
         if (!$storeId) {
-            // If no store is selected, showing "all" is complex.
-            // It's better to prompt the user to select a store.
-            // For this example, we'll default to the first store if none is selected.
-            $storeId = SIV_Store::first()->id ?? 0;
-            $validated['store_id'] = $storeId;
+            $storeIds = SIV_Store::pluck('id');
+            $sumColumns = $storeIds->map(fn($id) => "pc.qty_$id")->join(' + ');
+
+            $stockQuery = DB::table('iv_productcontrol as pc')
+                ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
+                ->leftJoin('siv_productcategories as cat', 'p.category_id', '=', 'cat.id')
+                ->select(
+                    'p.id as product_id',
+                    'p.name as product_name',
+                    'p.costprice',
+                    'cat.name as category_name',
+                    DB::raw("($sumColumns) as current_quantity")
+                )
+                ->where(DB::raw($sumColumns), '>', 0);
+        } else {
+            $qtyColumn = 'pc.qty_' . $storeId;
+
+            $stockQuery = DB::table('iv_productcontrol as pc')
+                ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
+                ->leftJoin('siv_productcategories as cat', 'p.category_id', '=', 'cat.id')
+                ->select(
+                    'p.id as product_id',
+                    'p.name as product_name',
+                    'p.costprice',
+                    'cat.name as category_name',
+                    DB::raw("$qtyColumn as current_quantity")
+                )
+                ->where($qtyColumn, '>', 0); // Only show items with stock in the selected store
         }
-
-        $qtyColumn = 'pc.qty_' . $storeId;
-
-        $stockQuery = DB::table('iv_productcontrol as pc')
-            ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
-            ->leftJoin('siv_productcategories as cat', 'p.category_id', '=', 'cat.id')
-            ->select(
-                'p.id as product_id',
-                'p.name as product_name',
-                'p.costprice',
-                'cat.name as category_name',
-                DB::raw("$qtyColumn as current_quantity")
-            )
-            ->where($qtyColumn, '>', 0); // Only show items with stock in the selected store
 
         if ($request->filled('category_id')) {
             $stockQuery->where('p.category_id', $request->category_id);
@@ -72,7 +79,7 @@ class InventoryReportsController extends Controller
         return Inertia::render('Reports/Inventory/StockOnHand', [
             'stockOnHand' => $stockOnHand,
             'totalValueSOH' => $totalValueSOH,
-            'selectedStoreName' => SIV_Store::find($storeId)->name ?? 'N/A',
+            'selectedStoreName' => $storeId ? (SIV_Store::find($storeId)->name ?? 'N/A') : 'All Stores',
             'stores' => SIV_Store::orderBy('name')->get(['id', 'name']),
             'categories' => SIV_ProductCategory::orderBy('name')->get(['id', 'name']),
             'productsList' => SIV_Product::orderBy('name')->get(['id', 'name']),
@@ -90,20 +97,33 @@ class InventoryReportsController extends Controller
             'store_id' => 'nullable|exists:siv_stores,id',
         ]);
 
-        $storeId = $validated['store_id'] ?? SIV_Store::first()->id ?? 0;
-        $validated['store_id'] = $storeId;
+        $storeId = $validated['store_id'] ?? null;
 
-        $qtyColumn = 'pc.qty_' . $storeId;
-
-        $valuationQuery = DB::table('iv_productcontrol as pc')
-            ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
-            ->select(
-                'p.name as product_name',
-                'p.costprice',
-                DB::raw("$qtyColumn as quantity"),
-                DB::raw("$qtyColumn * p.costprice as item_total_value")
-            )
-            ->where($qtyColumn, '>', 0);
+        if (is_null($storeId)) {
+            $storeIds = SIV_Store::pluck('id');
+            $sumColumns = $storeIds->map(fn($id) => "pc.qty_$id")->join(' + ');
+            $valuationQuery = DB::table('iv_productcontrol as pc')
+                ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
+                ->select(
+                    'p.name as product_name',
+                    'p.costprice',
+                    DB::raw("($sumColumns) as quantity"),
+                    DB::raw("($sumColumns) * p.costprice as item_total_value")
+                )
+                ->where(DB::raw($sumColumns), '>', 0);
+        } else {
+            $validated['store_id'] = $storeId;
+            $qtyColumn = 'pc.qty_' . $storeId;
+            $valuationQuery = DB::table('iv_productcontrol as pc')
+                ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
+                ->select(
+                    'p.name as product_name',
+                    'p.costprice',
+                    DB::raw("$qtyColumn as quantity"),
+                    DB::raw("$qtyColumn * p.costprice as item_total_value")
+                )
+                ->where($qtyColumn, '>', 0);
+        }
 
         $valuedItems = $valuationQuery->orderBy('p.name')->get();
         $totalInventoryValue = $valuedItems->sum('item_total_value');
@@ -111,7 +131,7 @@ class InventoryReportsController extends Controller
         return Inertia::render('Reports/Inventory/Valuation', [
             'valuedItems' => $valuedItems,
             'totalInventoryValue' => $totalInventoryValue,
-            'selectedStoreName' => SIV_Store::find($storeId)->name ?? 'N/A',
+            'selectedStoreName' => $storeId ? (SIV_Store::find($storeId)->name ?? 'N/A') : 'All Stores',
             'stores' => SIV_Store::orderBy('name')->get(['id', 'name']),
             'filters' => $validated,
         ]);
@@ -132,8 +152,6 @@ class InventoryReportsController extends Controller
         ]);
 
         $storeId = $validated['store_id'] ?? null;
-        $qtyInColumn = $storeId ? 'qtyin_' . $storeId : null;
-        $qtyOutColumn = $storeId ? 'qtyout_' . $storeId : null;
 
         $movementsQuery = BILProductTransactions::with('product:id,name')
             ->whereBetween('transdate', [
@@ -142,6 +160,8 @@ class InventoryReportsController extends Controller
             ]);
 
         if ($storeId) {
+            $qtyInColumn = 'qtyin_' . $storeId;
+            $qtyOutColumn = 'qtyout_' . $storeId;
             // This clause finds any transaction where either the in or out column for the store is not zero.
             $movementsQuery->where(function ($query) use ($qtyInColumn, $qtyOutColumn) {
                 $query->where($qtyInColumn, '>', 0)
@@ -178,22 +198,39 @@ class InventoryReportsController extends Controller
             'category_id' => 'nullable|exists:siv_productcategories,id',
         ]);
 
-        $storeId = $validated['store_id'] ?? SIV_Store::first()->id ?? 0;
-        $validated['store_id'] = $storeId;
-        
-        $qtyColumn = 'pc.qty_' . $storeId;
+        $storeId = $validated['store_id'] ?? null;
 
-        $lowStockQuery = DB::table('iv_productcontrol as pc')
-            ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
-            ->leftJoin('siv_productcategories as cat', 'p.category_id', '=', 'cat.id')
-            ->select(
-                'p.id', 'p.name as product_name', 'cat.name as category_name',
-                DB::raw("$qtyColumn as current_quantity"),
-                'p.reorderlevel as reorder_level'
-            )
-            ->whereNotNull('p.reorderlevel')
-            ->where($qtyColumn, '<=', DB::raw('p.reorderlevel'))
-            ->where($qtyColumn, '>', 0); // Optionally, only show items that are not yet out of stock
+        if (is_null($storeId)) {
+            $storeIds = SIV_Store::pluck('id');
+            $sumColumns = $storeIds->map(fn($id) => "pc.qty_$id")->join(' + ');
+
+            $lowStockQuery = DB::table('iv_productcontrol as pc')
+                ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
+                ->leftJoin('siv_productcategories as cat', 'p.category_id', '=', 'cat.id')
+                ->select(
+                    'p.id', 'p.name as product_name', 'cat.name as category_name',
+                    DB::raw("($sumColumns) as current_quantity"),
+                    'p.reorderlevel as reorder_level'
+                )
+                ->whereNotNull('p.reorderlevel')
+                ->where(DB::raw($sumColumns), '<=', DB::raw('p.reorderlevel'))
+                ->where(DB::raw($sumColumns), '>', 0);
+        } else {
+            $validated['store_id'] = $storeId;
+            $qtyColumn = 'pc.qty_' . $storeId;
+            $lowStockQuery = DB::table('iv_productcontrol as pc')
+                ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
+                ->leftJoin('siv_productcategories as cat', 'p.category_id', '=', 'cat.id')
+                ->select(
+                    'p.id', 'p.name as product_name', 'cat.name as category_name',
+                    DB::raw("$qtyColumn as current_quantity"),
+                    'p.reorderlevel as reorder_level'
+                )
+                ->whereNotNull('p.reorderlevel')
+                ->where($qtyColumn, '<=', DB::raw('p.reorderlevel'))
+                ->where($qtyColumn, '>', 0); // Optionally, only show items that are not yet out of stock
+        }
+
 
         if ($request->filled('category_id')) {
             $lowStockQuery->where('p.category_id', $request->category_id);
@@ -203,7 +240,7 @@ class InventoryReportsController extends Controller
 
         return Inertia::render('Reports/Inventory/ReorderLevel', [
             'lowStockItems' => $lowStockItems,
-            'selectedStoreName' => SIV_Store::find($storeId)->name ?? 'N/A',
+            'selectedStoreName' => $storeId ? (SIV_Store::find($storeId)->name ?? 'N/A') : 'All Stores',
             'stores' => SIV_Store::orderBy('name')->get(['id', 'name']),
             'categories' => SIV_ProductCategory::orderBy('name')->get(['id', 'name']),
             'filters' => $validated,
@@ -223,7 +260,10 @@ class InventoryReportsController extends Controller
         ]);
 
         $storeId = $validated['store_id'] ?? null;
-        $daysToExpiry = $validated['days_to_expiry'] ?? 30; // Default to 30 days
+        
+        // --- FIX: Cast the input value to an integer ---
+        $daysToExpiry = (int)($validated['days_to_expiry'] ?? 30); // Default to 30 days
+        
         $productId = $validated['product_id'] ?? null;
 
         $expiryDateThreshold = Carbon::today()->addDays($daysToExpiry);
@@ -242,6 +282,9 @@ class InventoryReportsController extends Controller
 
         $expiringItems = $expiringQuery->orderBy('expirydate', 'asc')->get();
 
+        // Also ensure the value passed back to the view is the integer we used
+        $validated['days_to_expiry'] = $daysToExpiry;
+
         return Inertia::render('Reports/Inventory/ExpiringItems', [
             'expiringItems' => $expiringItems,
             'stores' => SIV_Store::orderBy('name')->get(['id', 'name']),
@@ -249,7 +292,6 @@ class InventoryReportsController extends Controller
             'filters' => $validated + ['days_to_expiry_applied' => $daysToExpiry],
         ]);
     }
-
 
 
     /**
@@ -264,20 +306,31 @@ class InventoryReportsController extends Controller
             'max_sales_qty' => 'nullable|integer|min:0',
         ]);
 
-        $storeId = $validated['store_id'] ?? SIV_Store::first()->id ?? 0;
-        $validated['store_id'] = $storeId;
+        $storeId = $validated['store_id'] ?? null;
         
         $periodDays = $request->input('period_days', 90);
         $maxSalesQty = $request->input('max_sales_qty', 5);
         $dateLimit = Carbon::today()->subDays($periodDays)->startOfDay();
 
-        // 1. Get products with stock (this part is correct and unchanged)
-        $qtyColumn = 'pc.qty_' . $storeId;
-        $productsWithStock = DB::table('iv_productcontrol as pc')
-            ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
-            ->where($qtyColumn, '>', 0)
-            ->select('p.id as product_id', 'p.name as product_name', DB::raw("$qtyColumn as current_stock"))
-            ->get()->keyBy('product_id');
+        // 1. Get products with stock
+        if (is_null($storeId)) {
+            $storeIds = SIV_Store::pluck('id');
+            $sumColumns = $storeIds->map(fn($id) => "pc.qty_$id")->join(' + ');
+
+            $productsWithStock = DB::table('iv_productcontrol as pc')
+                ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
+                ->where(DB::raw($sumColumns), '>', 0)
+                ->select('p.id as product_id', 'p.name as product_name', DB::raw("($sumColumns) as current_stock"))
+                ->get()->keyBy('product_id');
+        } else {
+            $validated['store_id'] = $storeId;
+            $qtyColumn = 'pc.qty_' . $storeId;
+            $productsWithStock = DB::table('iv_productcontrol as pc')
+                ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
+                ->where($qtyColumn, '>', 0)
+                ->select('p.id as product_id', 'p.name as product_name', DB::raw("$qtyColumn as current_stock"))
+                ->get()->keyBy('product_id');
+        }
 
         if ($productsWithStock->isEmpty()) {
             return Inertia::render('Reports/Inventory/SlowMoving', [/* ... empty state ... */]);
@@ -285,14 +338,17 @@ class InventoryReportsController extends Controller
 
         // --- REFACTORED SALES QUERY ---
         // 2. Get sales quantities for these products from the correct store
-        $salesData = BILSale::query()
+        $salesQuery = BILSale::query()
             ->where('transdate', '>=', $dateLimit)
-            ->where('voided', '!=', 1)
-            // Join through the new relationship to filter by store
-            ->whereHas('inventoryRequisition', function ($query) use ($storeId) {
+            ->where('voided', '!=', 1);
+
+        if ($storeId) {
+            $salesQuery->whereHas('inventoryRequisition', function ($query) use ($storeId) {
                 $query->where('fromstore_id', $storeId);
-            })
-            ->join('bil_saleitems', 'bil_sales.id', '=', 'bil_saleitems.sale_id')
+            });
+        }
+
+        $salesData = $salesQuery->join('bil_saleitems', 'bil_sales.id', '=', 'bil_saleitems.sale_id')
             ->join('bls_items', 'bil_saleitems.item_id', '=', 'bls_items.id')
             ->whereIn('bls_items.product_id', $productsWithStock->keys())
             ->select('bls_items.product_id', DB::raw('SUM(bil_saleitems.quantity) as total_sold'))
@@ -305,12 +361,16 @@ class InventoryReportsController extends Controller
             $soldQty = $salesData->get($productId, 0);
             return $soldQty <= $maxSalesQty;
         })->map(function ($stockInfo, $productId) use ($salesData, $storeId) {
-            // Sub-query for the last sale date remains similar but is now correctly filtered
-            $lastSaleDate = BILSale::query()
+            // Sub-query for the last sale date
+            $lastSaleQuery = BILSale::query()
                 ->where('voided', '!=', 1)
-                ->whereHas('inventoryRequisition', fn($q) => $q->where('fromstore_id', $storeId))
-                ->whereHas('items.item.product', fn($q) => $q->where('id', $productId))
-                ->latest('transdate')->value('transdate');
+                ->whereHas('items.item.product', fn($q) => $q->where('id', $productId));
+
+            if ($storeId) {
+                $lastSaleQuery->whereHas('inventoryRequisition', fn($q) => $q->where('fromstore_id', $storeId));
+            }
+            
+            $lastSaleDate = $lastSaleQuery->latest('transdate')->value('transdate');
             
             return [
                 'product_id' => $productId,
