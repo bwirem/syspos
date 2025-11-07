@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, useForm, Link, router } from '@inertiajs/react'; // router for actions
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlus, faTrash, faSave, faTimesCircle, faEye, faCheck, faSpinner, faSearch, faPaperclip, faInfoCircle, faBuilding } from '@fortawesome/free-solid-svg-icons';
+import { faPlus, faTrash, faSave, faTimesCircle, faEye, faCheck, faSpinner, faSearch, faPaperclip, faInfoCircle, faBuilding, faTimes} from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
 // No need to import Inertia directly, useForm and router handle it.
 // import axios from 'axios'; // Only if making direct API calls not handled by Inertia

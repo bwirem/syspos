@@ -21,9 +21,18 @@ class PROPurchase extends Model
         'facilityoption_id',
         'stage',
         'total',
+        
         'url',       // Add URL to the fillable array
         'filename',  // Add filename to the fillable array
         'remarks',  // Add remarks to the fillable array
+
+        'recipient_name',
+        'recipient_contact',
+        'dispatch_remarks',
+        'dispatch_document_url',
+        'dispatch_document_filename',
+        'dispatch_number',
+
         'user_id',
     ];
 

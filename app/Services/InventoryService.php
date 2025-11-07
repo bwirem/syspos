@@ -7,6 +7,7 @@ use App\Models\BILProductExpiryDates;
 use App\Models\BILProductTransactions;
 use App\Models\IVIssue;
 use App\Models\IVReceive;
+use App\Models\SIV_Store;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +16,36 @@ class InventoryService
 {
     const TRANSACTION_TYPE_ISSUE = 'Issue';
     const TRANSACTION_TYPE_RECEIVE = 'Receive';
+
+    /**
+     * Get the total stock quantity for a single product across all stores.
+     *
+     * @param int $productId The ID of the product.
+     * @return float The total quantity on hand.
+     */
+    public function getProductQuantity(int $productId): float
+    {
+        // Get an array of all store IDs, e.g., [1, 2, 5]
+        $storeIds = SIV_Store::pluck('id');
+
+        // If there are no stores, there's no stock.
+        if ($storeIds->isEmpty()) {
+            return 0.0;
+        }
+
+        // Create the sum expression for the raw DB query, e.g., "COALESCE(qty_1, 0) + COALESCE(qty_2, 0) + ..."
+        $sumColumns = $storeIds->map(fn($id) => "COALESCE(qty_{$id}, 0)")->join(' + ');
+
+        // Query the productcontrol table to get the sum
+        $stock = DB::table('iv_productcontrol')
+            ->where('product_id', $productId)
+            ->select(DB::raw($sumColumns . " as total_quantity"))
+            ->first();
+
+        // If a record is found, return its total_quantity, otherwise return 0.
+        return $stock ? (float)$stock->total_quantity : 0.0;
+    }
+
 
     /**
      * Handles the logic for issuing stock.
@@ -177,11 +208,12 @@ class InventoryService
         array $items,
         string $deliveryNo,
         int $stage, // This parameter makes the method flexible
-        ?string $remarks = null // Optional remarks
+        ?string $remarks = null, // Optional remarks
+        ?int $purchaseId = null // <-- 1. ADD THE NEW OPTIONAL PARAMETER 
     ): IVReceive {
         $receive = null; // Initialize to be accessible outside the transaction closure
 
-        DB::transaction(function () use (&$receive, $toStoreId, $fromEntityId, $fromEntityType, $items,$deliveryNo, $stage, $remarks) {
+        DB::transaction(function () use (&$receive, $toStoreId, $fromEntityId, $fromEntityType, $items,$deliveryNo, $stage, $remarks, $purchaseId) {
             $calculatedTotal = collect($items)->sum(fn($item) => $item['quantity'] * $item['price']);
 
             // 1. Create the main IVReceive record
@@ -194,6 +226,7 @@ class InventoryService
                 'total'          => $calculatedTotal,
                 'stage'          => $stage, // Use the stage passed into the method
                 'remarks'        => $remarks,
+                'purchase_id'    => $purchaseId, // <-- 2. SET THE PURCHASE ID IF PROVIDED
                 'user_id'        => Auth::id(),
             ]);
 
