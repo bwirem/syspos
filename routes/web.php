@@ -307,33 +307,31 @@ Route::middleware('auth')->group(function () {
         Route::get('/search/receivables', [ACCReceivePaymentController::class, 'searchReceivables'])->name('search.receivables');
     });
 
+   
     // Accounting Payment routes
     Route::prefix('accounting1')->name('accounting1.')->group(function () {
-        // Route to display a list of all payments
+        
+        // Standard CRUD routes
         Route::get('/', [ACCMakePaymentController::class, 'index'])->name('index');
-
-        // Route to show the form for creating a new payment
         Route::get('/create', [ACCMakePaymentController::class, 'create'])->name('create');
-
-        // Route to store a new payment in the database
         Route::post('/', [ACCMakePaymentController::class, 'store'])->name('store');
-
-        // Route to display a single, specific payment
-        // {payment} is a route parameter that will be passed to the controller
         Route::get('/{payment}', [ACCMakePaymentController::class, 'show'])->name('show');
-
-        // Route to show the form for editing an existing payment
         Route::get('/{payment}/edit', [ACCMakePaymentController::class, 'edit'])->name('edit');
-
-        // Route to update an existing payment in the database
-        // Using PUT for a full update
         Route::put('/{payment}', [ACCMakePaymentController::class, 'update'])->name('update');
-
-        // Route to delete a payment from the database
         Route::delete('/{payment}', [ACCMakePaymentController::class, 'destroy'])->name('destroy');
 
+        // --- NEW: Routes to SHOW confirmation pages ---
+        Route::get('/{payment}/approve-confirm', [ACCMakePaymentController::class, 'showApproveConfirm'])->name('approve.confirm');
+        Route::get('/{payment}/pay-confirm', [ACCMakePaymentController::class, 'showPayConfirm'])->name('pay.confirm');
+
+        // --- Workflow Action Routes (These are still needed) ---
+        Route::patch('/{payment}/approve', [ACCMakePaymentController::class, 'approve'])->name('approve');
+        Route::patch('/{payment}/pay', [ACCMakePaymentController::class, 'pay'])->name('pay');
+        
+        // --- Custom Search Routes ---
         Route::get('/search/recipients', [ACCMakePaymentController::class, 'searchRecipients'])->name('search.recipients');
         Route::get('/search/payables', [ACCMakePaymentController::class, 'searchPayables'])->name('search.payables');
+        
     });
 
 
