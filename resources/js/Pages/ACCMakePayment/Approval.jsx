@@ -5,11 +5,20 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCheck, faTimes } from '@fortawesome/free-solid-svg-icons';
 
 export default function Approval({ auth, payment }) {
-    const { processing } = useForm();
+    // We use the `processing` state from `useForm` to disable the button during submission.
+    const { processing, patch } = useForm();
 
     const handleConfirmApproval = () => {
-        router.patch(route('accounting1.approve', payment.id), {}, {
-            // On success, Inertia will redirect to the edit page, which will now show the "Proceed to Pay" button.
+        // Use `patch` from the useForm hook for consistency, though `router.patch` also works.
+        patch(route('accounting1.approve', payment.id), {
+            preserveScroll: true,
+            // --- THIS IS THE CRITICAL FIX ---
+            // This replaces the current page in the browser's history.
+            // After this, clicking the browser's "Back" button will skip this page.
+            replace: true,
+            onSuccess: () => {
+                // The controller handles the redirect, so nothing more is needed here.
+            },
         });
     };
 
@@ -23,11 +32,11 @@ export default function Approval({ auth, payment }) {
                         <p className="mb-6 text-sm text-gray-600">Please confirm that the following payment details are correct before approving.</p>
                         
                         {/* Summary Card */}
-                        <div className="border rounded-lg p-4 space-y-4 mb-6">
-                             <div><span className="font-semibold w-32 inline-block">Recipient:</span> {payment.recipient.display_name}</div>
-                             <div><span className="font-semibold w-32 inline-block">Payment Date:</span> {new Date(payment.transdate).toLocaleDateString()}</div>
-                             <div><span className="font-semibold w-32 inline-block">Total Amount:</span> {parseFloat(payment.total_amount).toLocaleString()} {payment.currency}</div>
-                             <div><span className="font-semibold w-32 inline-block">Memo:</span> {payment.description || 'N/A'}</div>
+                        <div className="border rounded-lg p-4 space-y-4 mb-6 bg-gray-50">
+                             <div><span className="font-semibold w-32 inline-block text-gray-600">Recipient:</span> {payment.recipient.display_name}</div>
+                             <div><span className="font-semibold w-32 inline-block text-gray-600">Payment Date:</span> {new Date(payment.transdate).toLocaleDateString()}</div>
+                             <div className="font-bold text-lg"><span className="font-semibold w-32 inline-block text-gray-800">Total Amount:</span> {parseFloat(payment.total_amount).toLocaleString()} {payment.currency}</div>
+                             <div><span className="font-semibold w-32 inline-block text-gray-600">Memo:</span> {payment.description || 'N/A'}</div>
                         </div>
 
                         {/* Action Buttons */}
@@ -41,7 +50,7 @@ export default function Approval({ auth, payment }) {
                                 className="px-6 py-2 bg-blue-600 text-white rounded-md flex items-center gap-2 font-semibold disabled:bg-blue-300"
                             >
                                 <FontAwesomeIcon icon={faCheck} />
-                                Confirm Approval
+                                {processing ? 'Approving...' : 'Confirm Approval'}
                             </button>
                         </div>
                     </div>

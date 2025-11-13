@@ -29,34 +29,40 @@ class DashboardController extends Controller
 
         $storeIds = SIV_Store::pluck('id'); // Get all store IDs
 
-        // // Low stock still can be per store or across all stores
-        // $lowStockItemCount = DB::table('iv_productcontrol as pc')
-        //     ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
-        //     ->whereNotNull('p.reorderlevel')
-        //     ->where(function($query) use ($storeIds) {
-        //         foreach ($storeIds as $id) {
-        //             $query->orWhereColumn("pc.qty_$id", '<=', 'p.reorderlevel');
-        //         }
-        //     })
-        //     ->count(DB::raw('DISTINCT p.id'));
+        if ($storeIds->isEmpty()) {
+            $lowStockItemCount = 0;
+            $totalStockValue = 0;
+        } else {
 
-        // Create the part of the query that sums the quantity columns
-        $sumOfQuantities = $storeIds->map(fn($id) => "pc.qty_$id")->join(' + ');
+            // // Low stock still can be per store or across all stores
+            // $lowStockItemCount = DB::table('iv_productcontrol as pc')
+            //     ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
+            //     ->whereNotNull('p.reorderlevel')
+            //     ->where(function($query) use ($storeIds) {
+            //         foreach ($storeIds as $id) {
+            //             $query->orWhereColumn("pc.qty_$id", '<=', 'p.reorderlevel');
+            //         }
+            //     })
+            //     ->count(DB::raw('DISTINCT p.id'));
 
-        $lowStockItemCount = DB::table('iv_productcontrol as pc')
-            ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
-            ->whereNotNull('p.reorderlevel')
-            // Compare the sum of quantities across all stores to the product's reorder level
-            ->where(DB::raw("($sumOfQuantities)"), '<=', DB::raw('p.reorderlevel'))
-            ->count('p.id'); // DISTINCT is not strictly necessary here but is good practice
+            // Create the part of the query that sums the quantity columns
+            $sumOfQuantities = $storeIds->map(fn($id) => "pc.qty_$id")->join(' + ');
 
-        // Total stock across all stores
-        $sumColumns = $storeIds->map(fn($id) => "pc.qty_$id")->join(' + ');
+            $lowStockItemCount = DB::table('iv_productcontrol as pc')
+                ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
+                ->whereNotNull('p.reorderlevel')
+                // Compare the sum of quantities across all stores to the product's reorder level
+                ->where(DB::raw("($sumOfQuantities)"), '<=', DB::raw('p.reorderlevel'))
+                ->count('p.id'); // DISTINCT is not strictly necessary here but is good practice
 
-        $totalStockValue = DB::table('iv_productcontrol as pc')
-            ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
-            ->select(DB::raw("SUM(($sumColumns) * p.costprice) as total_value"))
-            ->value('total_value');
+            // Total stock across all stores
+            $sumColumns = $storeIds->map(fn($id) => "pc.qty_$id")->join(' + ');
+
+            $totalStockValue = DB::table('iv_productcontrol as pc')
+                ->join('siv_products as p', 'pc.product_id', '=', 'p.id')
+                ->select(DB::raw("SUM(($sumColumns) * p.costprice) as total_value"))
+                ->value('total_value');
+        }
 
 
         return Inertia::render('Dashboard', [

@@ -4,7 +4,7 @@ import axios from 'axios';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTrash, faSpinner, faSave, faTimes, faPlus } from '@fortawesome/free-solid-svg-icons';
 
-// Debounce utility to prevent API calls on every keystroke
+// Debounce utility
 const debounce = (fn, delay) => {
     let timeout;
     return (...args) => {
@@ -25,15 +25,12 @@ const useClickOutside = (ref, handler) => {
     }, [ref, handler]);
 };
 
-// The form now receives `paymentTypes` and a `readOnly` prop
-export default function PaymentForm({ payment = null, paymentTypes = [], readOnly = false }) { 
+export default function PaymentForm({ payment = null, readOnly = false }) { 
     
-    // This helper function correctly initializes items for both create and edit modes.
     const getInitialItems = () => {
         if (payment?.items && payment.items.length > 0) {
             return payment.items;
         }
-        // A new payment starts with one item that has a temporary `ui_key`.
         return [{ ui_key: `new_${Date.now()}`, amount: '', description: '' }];
     };
 
@@ -41,8 +38,6 @@ export default function PaymentForm({ payment = null, paymentTypes = [], readOnl
         transdate: payment?.transdate ? new Date(payment.transdate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
         recipient_id: payment?.recipient_id || null,
         recipient_type: payment?.recipient_type || null,
-        payment_method: payment?.payment_method || (paymentTypes.length > 0 ? paymentTypes[0].name : ''),
-        reference_number: payment?.reference_number || '',
         currency: payment?.currency || 'TZS',
         description: payment?.description || '',
         items: getInitialItems(),
@@ -52,16 +47,13 @@ export default function PaymentForm({ payment = null, paymentTypes = [], readOnl
         _method: payment ? 'PUT' : 'POST',
     });
 
-    // --- Local UI State for search dropdowns ---
     const [recipientSearch, setRecipientSearch] = useState(payment?.recipient?.display_name || '');
     const [recipientResults, setRecipientResults] = useState([]);
     const [showRecipientDD, setShowRecipientDD] = useState(false);
     
-    // --- Refs for Click Outside ---
     const recipientDropdownRef = useRef(null);
     useClickOutside(recipientDropdownRef, () => setShowRecipientDD(false));
 
-    // --- Effect to calculate total amount ---
     useEffect(() => {
         const total = data.items.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
         if (data.total_amount !== total) {
@@ -69,7 +61,6 @@ export default function PaymentForm({ payment = null, paymentTypes = [], readOnl
         }
     }, [data.items]);
 
-    // --- API Calls for searching ---
     const fetchRecipients = (query) => {
         if (!query) { setRecipientResults([]); return; }
         axios.get(route('accounting1.search.recipients', { query })).then(res => setRecipientResults(res.data.data));
@@ -80,14 +71,12 @@ export default function PaymentForm({ payment = null, paymentTypes = [], readOnl
         debouncedFetchRecipients(recipientSearch);
     }, [recipientSearch]);
 
-    // --- UI Handlers ---
     const selectRecipient = (recipient) => {
         setData({ ...data, recipient_id: recipient.id, recipient_type: recipient.type });
         setRecipientSearch(recipient.name);
         setShowRecipientDD(false);
     };
 
-    // Correctly adds a new item with a temporary `ui_key`, leaving `id` undefined.
     const addPaymentItem = () => {
         setData('items', [...data.items, { ui_key: `new_${Date.now()}`, amount: '', description: '' }]);
     };
@@ -107,12 +96,9 @@ export default function PaymentForm({ payment = null, paymentTypes = [], readOnl
     };
     const removeExistingDoc = (docId) => setData('documents_to_delete', [...data.documents_to_delete, docId]);
 
-    // --- Form Submission Handler ---
     const handleSubmit = (e) => {
         e.preventDefault();
-        // Prevent submission if the form is in read-only mode
         if (readOnly) return;
-        
         const url = payment ? route('accounting1.update', payment.id) : route('accounting1.store');
         
         post(url, {
@@ -127,22 +113,15 @@ export default function PaymentForm({ payment = null, paymentTypes = [], readOnl
     };
 
     return (
+        // --- THIS IS THE CRITICAL FIX ---
+        // The `pointer-events-none` class has been removed to ensure links inside the form remain clickable.
         <form onSubmit={handleSubmit} className={`space-y-6 ${readOnly ? 'opacity-75' : ''}`}>
-            <section className="p-4 border rounded-lg grid grid-cols-1 md:grid-cols-3 gap-4">
+            <section className="p-4 border rounded-lg grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium">Transaction Date</label><input type="date" value={data.transdate} disabled={readOnly} onChange={e=>setData('transdate',e.target.value)} className="mt-1 w-full rounded-md border-gray-300 disabled:bg-gray-100"/>{errors.transdate&&<p className="text-red-500 text-xs mt-1">{errors.transdate}</p>}</div>
                 
                 <div ref={recipientDropdownRef} className="relative"><label className="block text-sm font-medium">Recipient</label><input type="text" placeholder="Search supplier..." value={recipientSearch} disabled={readOnly} onChange={e=>{setRecipientSearch(e.target.value);setShowRecipientDD(true);if(data.recipient_id)setData('recipient_id',null)}} className="mt-1 w-full rounded-md border-gray-300 disabled:bg-gray-100"/>{showRecipientDD&&!readOnly&&recipientResults.length>0&&<ul className="absolute z-10 w-full bg-white border shadow-lg max-h-60 overflow-y-auto">{recipientResults.map(r=><li key={r.id} onClick={()=>selectRecipient(r)} className="p-2 hover:bg-gray-100 cursor-pointer">{r.name}</li>)}</ul>}{errors.recipient_id&&<p className="text-red-500 text-xs mt-1">{errors.recipient_id}</p>}</div>
                 
-                <div>
-                    <label className="block text-sm font-medium">Payment Method</label>
-                    <select value={data.payment_method} disabled={readOnly} onChange={e => setData('payment_method', e.target.value)} className="mt-1 w-full rounded-md border-gray-300 disabled:bg-gray-100">
-                        {paymentTypes.map(pt => (<option key={pt.id} value={pt.name}>{pt.name}</option>))}
-                    </select>
-                    {errors.payment_method && <p className="text-red-500 text-xs mt-1">{errors.payment_method}</p>}
-                </div>
-                
-                <div><label className="block text-sm font-medium">Reference #</label><input type="text" value={data.reference_number} disabled={readOnly} onChange={e=>setData('reference_number',e.target.value)} className="mt-1 w-full rounded-md border-gray-300 disabled:bg-gray-100"/></div>
-                <div className="md:col-span-3"><label className="block text-sm font-medium">Description/Memo</label><textarea value={data.description} disabled={readOnly} onChange={e=>setData('description',e.target.value)} className="mt-1 w-full rounded-md border-gray-300 disabled:bg-gray-100" rows="2"></textarea></div>
+                <div className="md:col-span-2"><label className="block text-sm font-medium">Description/Memo</label><textarea value={data.description} disabled={readOnly} onChange={e=>setData('description',e.target.value)} className="mt-1 w-full rounded-md border-gray-300 disabled:bg-gray-100" rows="2"></textarea></div>
             </section>
 
             <section className="p-4 border rounded-lg space-y-4">
@@ -177,7 +156,9 @@ export default function PaymentForm({ payment = null, paymentTypes = [], readOnl
             <div className="flex justify-between items-center pt-4 border-t">
                 <div className="text-2xl font-bold text-gray-800">Total: {parseFloat(data.total_amount || 0).toLocaleString()} {data.currency}</div>
                 <div className="flex items-center gap-4">
-                    <Link href={route('accounting1.index')} className="text-gray-700 hover:text-gray-900 font-medium">Cancel</Link>
+                    <Link href={route('accounting1.index')} className="text-gray-700 hover:text-gray-900 font-medium">
+                        {readOnly ? 'Back to List' : 'Cancel'}
+                    </Link>
                     {!readOnly && (
                         <button type="submit" disabled={processing} className="px-6 py-2 bg-blue-600 text-white rounded-md flex items-center gap-2 font-semibold disabled:bg-blue-300">
                             {processing ? <FontAwesomeIcon icon={faSpinner} spin /> : <FontAwesomeIcon icon={faSave} />}

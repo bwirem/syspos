@@ -10,7 +10,7 @@ use App\Models\FacilityOption;
 use App\Models\SPR_Supplier;
 use App\Models\User;
 use App\Models\ChartOfAccountMapping;
-use App\Models\BLSPaymentType; // <-- Import the new model
+use App\Models\BLSPaymentType;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -23,7 +23,9 @@ use Illuminate\Support\Facades\Log;
 
 class ACCMakePaymentController extends Controller
 {
-    // ... index() method is unchanged ...
+    /**
+     * Display a listing of the resource.
+     */
     public function index(Request $request)
     {
         $query = ACCMakePayment::with(['recipient', 'user', 'facilityoption']);
@@ -50,29 +52,25 @@ class ACCMakePaymentController extends Controller
         ]);
     }
 
-
     /**
-     * UPDATED: Now fetches payment types for the form.
+     * Show the form for creating a new resource.
      */
     public function create()
     {
         return Inertia::render('ACCMakePayment/Create', [
-            'paymentTypes' => BLSPaymentType::all(['id', 'name']),
+            // 'paymentTypes' are no longer needed here, they are fetched for the 'pay' screen
         ]);
     }
 
     /**
-     * UPDATED: Validation for payment_method is now more strict.
+     * Store a newly created pending payment.
      */
     public function store(Request $request)
-    {      
-
+    {
         $validated = $request->validate([
             'transdate' => 'required|date',
             'recipient_type' => 'required|string',
             'recipient_id' => 'required|integer|exists:siv_suppliers,id',
-            'payment_method' => 'required|string|exists:bls_paymenttypes,name', // Validate against the table
-            'reference_number' => 'nullable|string|max:255',
             'description' => 'nullable|string',
             'currency' => 'required|string|max:3',
             'items' => 'required|array|min:1',
@@ -92,11 +90,9 @@ class ACCMakePaymentController extends Controller
                 'transdate' => $validated['transdate'],
                 'total_amount' => $totalAmount,
                 'facilityoption_id' => $defaultFacility->id,
-                'stage' => 1,
+                'stage' => 1, // 1 = Pending
                 'recipient_id' => $validated['recipient_id'],
                 'recipient_type' => $validated['recipient_type'],
-                'payment_method' => $request->payment_method,
-                'reference_number' => $request->reference_number,
                 'description' => $request->description,
                 'currency' => $request->currency,
                 'user_id' => Auth::id(),
@@ -120,38 +116,36 @@ class ACCMakePaymentController extends Controller
                     }
                 }
             }
-
-            $payment->load(['recipient', 'items', 'facilityoption.chartOfAccount']);
-            $this->createJournalEntryForPayment($payment);
         });
 
         return redirect()->route('accounting1.index')->with('success', 'Payment created successfully.');
     }
 
     /**
-     * UPDATED: Now fetches payment types for the form.
+     * Show the form for editing an existing payment.
      */
     public function edit(ACCMakePayment $payment)
     {
         $payment->load(['recipient', 'items.payable', 'documents', 'facilityoption']);
         return Inertia::render('ACCMakePayment/Edit', [
             'payment' => $payment,
-            'paymentTypes' => BLSPaymentType::all(['id', 'name']),
+            // 'paymentTypes' are only needed for the final pay screen
         ]);
     }
 
     /**
-     * UPDATED: Validation for payment_method is now more strict.
+     * Update an existing pending payment.
      */
     public function update(Request $request, ACCMakePayment $payment)
-    {       
-       
+    {
+        if ($payment->stage !== 1) {
+            return redirect()->back()->with('error', 'Only pending payments can be edited.');
+        }
+
         $validated = $request->validate([
             'transdate' => 'required|date',
             'recipient_id' => 'required|integer|exists:siv_suppliers,id',
             'recipient_type' => 'required|string',
-            'payment_method' => 'required|string|exists:bls_paymenttypes,name', // Validate against the table
-            'reference_number' => 'nullable|string|max:255',
             'description' => 'nullable|string',
             'currency' => 'required|string|max:3',
             'items' => 'required|array|min:1',
@@ -168,7 +162,7 @@ class ACCMakePaymentController extends Controller
         DB::transaction(function () use ($validated, $request, $payment) {
             $payableAccountId = ChartOfAccountMapping::firstOrFail()->account_payable_id;
             
-            $payment->update($request->only(['transdate', 'recipient_id', 'recipient_type', 'payment_method', 'reference_number', 'description', 'currency']));
+            $payment->update($request->only(['transdate', 'recipient_id', 'recipient_type', 'description', 'currency']));
 
             $itemIdsToKeep = collect($validated['items'])->pluck('id')->filter();
             $payment->items()->whereNotIn('id', $itemIdsToKeep)->delete();
@@ -208,53 +202,32 @@ class ACCMakePaymentController extends Controller
         return redirect()->route('accounting1.index')->with('success', 'Payment updated successfully.');
     }
 
+    /**
+     * Remove the specified resource from storage.
+     */
     public function destroy(ACCMakePayment $payment)
     {
+        if ($payment->stage !== 1) {
+            return redirect()->back()->with('error', 'Only pending payments can be deleted.');
+        }
+
         DB::transaction(function () use ($payment) {
-            foreach ($payment->documents as $document) Storage::disk('public')->delete($document->url);
+            foreach ($payment->documents as $document) {
+                Storage::disk('public')->delete($document->url);
+            }
+            $payment->items()->delete();
+            $payment->documents()->delete();
             $payment->delete();
         });
+
         return redirect()->route('accounting1.index')->with('success', 'Payment deleted successfully.');
     }
 
     /**
-     * Approve a pending payment.
-     */
-    public function approve(ACCMakePayment $payment)
-    {
-        // Add authorization check if needed, e.g., if ($payment->stage != 1) abort(403);
-        
-        $payment->update(['stage' => 2]); // 2 = Approved
-
-        return redirect()->back()->with('success', 'Payment #' . $payment->id . ' has been approved.');
-    }
-
-    /**
-     * Mark an approved payment as paid and create the final journal entry.
-     */
-    public function pay(ACCMakePayment $payment)
-    {
-        // Add authorization check if needed, e.g., if ($payment->stage != 2) abort(403);
-
-        DB::transaction(function () use ($payment) {
-            $payment->update(['stage' => 3]); // 3 = Paid
-            
-            // Load necessary relationships before creating the journal entry
-            $payment->load(['recipient', 'items', 'facilityoption.chartOfAccount']);
-            
-            // Call the existing method to create the journal entries
-            $this->createJournalEntryForPayment($payment);
-        });
-
-        return redirect()->back()->with('success', 'Payment #' . $payment->id . ' marked as paid and journalized.');
-    }
-
-     /**
      * Show the confirmation page before approving a payment.
      */
     public function showApproveConfirm(ACCMakePayment $payment)
     {
-        // Ensure only pending payments can access this page
         if ($payment->stage !== 1) {
             return redirect()->route('accounting1.edit', $payment->id)->with('error', 'This payment is not pending approval.');
         }
@@ -265,25 +238,70 @@ class ACCMakePaymentController extends Controller
     }
 
     /**
+     * Approve a pending payment.
+     */
+    public function approve(ACCMakePayment $payment)
+    {
+        if ($payment->stage !== 1) {
+            return redirect()->back()->with('error', 'This payment cannot be approved.');
+        }
+        
+        $payment->update(['stage' => 2]); // 2 = Approved
+
+        return redirect()->route('accounting1.edit', $payment->id)->with('success', 'Payment #' . $payment->id . ' has been approved.');
+    }
+    
+    /**
      * Show the confirmation page before marking a payment as paid.
      */
     public function showPayConfirm(ACCMakePayment $payment)
     {
-        // Ensure only approved payments can access this page
         if ($payment->stage !== 2) {
             return redirect()->route('accounting1.edit', $payment->id)->with('error', 'This payment has not been approved for payment.');
         }
         $payment->load(['recipient', 'items.payable', 'facilityoption.chartOfAccount']);
         return Inertia::render('ACCMakePayment/Payment', [
             'payment' => $payment,
+            'paymentTypes' => BLSPaymentType::all(['id', 'name']),
         ]);
     }
 
+    /**
+     * Mark an approved payment as paid and create the final journal entry.
+     */
+    public function pay(Request $request, ACCMakePayment $payment)
+    {
+        if ($payment->stage !== 2) {
+            return redirect()->back()->with('error', 'This payment is not ready to be paid.');
+        }
+
+        $validated = $request->validate([
+            'payment_method' => 'required|string|exists:bls_paymenttypes,name',
+            'reference_number' => 'nullable|string|max:255',
+        ]);
+
+        DB::transaction(function () use ($payment, $validated) {
+            $payment->update([
+                'stage' => 3, // 3 = Paid
+                'payment_method' => $validated['payment_method'],
+                'reference_number' => $validated['reference_number'],
+            ]);
+            
+            $payment->load(['recipient', 'items', 'facilityoption.chartOfAccount']);
+            //$this->createJournalEntryForPayment($payment);
+        });
+
+        return redirect()->route('accounting1.edit', $payment->id)->with('success', 'Payment marked as paid and journalized.');
+    }
+
+    /**
+     * Creates the double-entry journal records for a given payment.
+     */
     private function createJournalEntryForPayment(ACCMakePayment $payment): void
     {
         $cashOrBankAccount = $payment->facilityoption->chartOfAccount;
         if (!$cashOrBankAccount) {
-            throw new Exception("Facility #{$payment->facilityoption_id} does not have a default Chart of Account assigned.");
+            throw new Exception("Facility #{$payment->facilityoption_id} does not have a default Chart of Account assigned for payments.");
         }
 
         $journalEntry = ACCJournalEntry::create([
@@ -292,11 +310,13 @@ class ACCMakePaymentController extends Controller
             'reference_number' => $payment->reference_number,
         ]);
 
+        // Credit the asset account (Cash/Bank) that the money came FROM
         $journalEntry->journalEntryLines()->create([
             'account_id' => $cashOrBankAccount->id,
             'credit' => $payment->total_amount,
         ]);
 
+        // Debit the liability account (Accounts Payable) that was paid
         foreach ($payment->items as $item) {
             $journalEntry->journalEntryLines()->create([
                 'account_id' => $item->payable_id,
@@ -309,6 +329,9 @@ class ACCMakePaymentController extends Controller
         }
     }
 
+    /**
+     * Search for recipients (Suppliers).
+     */
     public function searchRecipients(Request $request)
     {
         $query = $request->input('query', '');
@@ -319,12 +342,5 @@ class ACCMakePaymentController extends Controller
             })->limit(10)->get();
 
         return response()->json(['data' => $suppliers->map(fn($s) => ['id' => $s->id, 'name' => $s->display_name, 'type' => SPR_Supplier::class])]);
-    }
-
-    public function searchPayables(Request $request)
-    {
-        $query = $request->input('query', '');
-        $accounts = ChartOfAccount::where(fn($q) => $q->where('account_name', 'LIKE', "%{$query}%")->orWhere('account_code', 'LIKE', "%{$query}%"))->where('is_active', true)->limit(10)->get(['id', 'account_name', 'account_code']);
-        return response()->json(['data' => $accounts->map(fn($a) => ['id' => $a->id, 'name' => "{$a->account_name} ({$a->account_code})", 'type' => ChartOfAccount::class])]);
     }
 }
