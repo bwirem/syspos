@@ -2,11 +2,17 @@
 namespace App\Http\Controllers;
 
 use App\Models\SIV_Product;
+use App\Models\SIV_ProductCategory;
+use App\Models\SIV_Packaging;
 use App\Models\BLSItem; 
 use App\Models\BLSItemGroup; 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+
+use App\Imports\ProductsImport; // <-- Import the new class
+use Maatwebsite\Excel\Facades\Excel; // <-- Import Excel Facade
+use Maatwebsite\Excel\Validators\ValidationException; // <-- Import Excel's exception
 
 
 class SIV_ProductController extends Controller
@@ -16,19 +22,22 @@ class SIV_ProductController extends Controller
      */
     public function index(Request $request)
     {
-        $query = SIV_Product::query();
+        // Eager-load relationships for efficiency and to display in the table
+        $query = SIV_Product::with(['category', 'unit']);
 
         // Search functionality
         if ($request->filled('search')) {
-            $query->where('name', 'like', '%' . $request->search . '%');
+            $search = $request->search;
+            $query->where('name', 'like', '%' . $search . '%')
+                  ->orWhere('displayname', 'like', '%' . $search . '%');
         }
 
-        // Paginate the results
-        $products = $query->orderBy('created_at', 'desc')->paginate(10);
+        $products = $query->orderBy('name', 'asc')->paginate(10)->withQueryString();
 
         return inertia('SystemConfiguration/InventorySetup/Products/Index', [
             'products' => $products,
             'filters' => $request->only(['search']),
+            'success' => session('success'), // Pass success flash messages
         ]);
     }
 
@@ -37,9 +46,12 @@ class SIV_ProductController extends Controller
      */
     public function create()
     {
-        return inertia('SystemConfiguration/InventorySetup/Products/Create');
+        // FIX: Load categories and units and pass them as props
+        return inertia('SystemConfiguration/InventorySetup/Products/Create', [
+            'categories' => SIV_ProductCategory::orderBy('name')->get(),
+            'units' => SIV_Packaging::orderBy('name')->get(),
+        ]);
     }
-
     /**
      * Store a newly created product in storage.
      */
@@ -101,11 +113,13 @@ class SIV_ProductController extends Controller
      */
     public function edit(SIV_Product $product)
     {
+        // FIX: Load categories and units alongside the product
         return inertia('SystemConfiguration/InventorySetup/Products/Edit', [
             'product' => $product,
+            'categories' => SIV_ProductCategory::orderBy('name')->get(),
+            'units' => SIV_Packaging::orderBy('name')->get(),
         ]);
     }
-
     /**
      * Update the specified product in storage.
      */
@@ -226,6 +240,59 @@ class SIV_ProductController extends Controller
         $products = $productsQuery->take(10)->get();
 
         return response()->json(['products' => $products]);
+    }
+
+
+    /**
+     * Show the form for importing products.
+     */
+    public function showImportForm()
+    {
+        return inertia('SystemConfiguration/InventorySetup/Products/ProductImport');
+    }
+
+    /**
+     * Handle the import of a product Excel file.
+     */
+    public function import(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|mimes:xlsx,xls,csv'
+        ]);
+
+        try {
+            Excel::import(new ProductsImport, $request->file('file'));
+        } catch (ValidationException $e) {
+            $failures = $e->failures();
+            $errors = [];
+            foreach ($failures as $failure) {
+                $errors[] = [
+                    'row' => $failure->row(),
+                    'attribute' => $failure->attribute(),
+                    'errors' => $failure->errors(),
+                ];
+            }
+            // Redirect back with validation errors for specific rows
+            return redirect()->route('systemconfiguration2.products.import.show')
+                ->with('import_errors', $errors);
+        }
+
+        return redirect()->route('systemconfiguration2.products.index')
+            ->with('success', 'Products imported successfully!');
+    }
+
+    /**
+     * Download the product import template file.
+     */
+    public function downloadTemplate()
+    {
+        $path = storage_path('app/templates/products_import_template.xlsx');
+
+        if (!file_exists($path)) {
+            abort(404, 'Template file not found.');
+        }
+
+        return response()->download($path);
     }
     
 }

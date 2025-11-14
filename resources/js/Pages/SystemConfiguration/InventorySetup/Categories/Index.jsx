@@ -1,162 +1,98 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Head, Link, useForm, router } from "@inertiajs/react";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import {faHome, faSearch, faPlus, faEdit, faTrash } from "@fortawesome/free-solid-svg-icons";
-import "@fortawesome/fontawesome-svg-core/styles.css";
-
+import { faSearch, faPlus, faEdit, faTrash, faHome } from "@fortawesome/free-solid-svg-icons";
 import Modal from '@/Components/CustomModal';
+import Pagination from "@/Components/Pagination";
 
-export default function Index({ auth, categories, filters }) {
-    const { data, setData, get, errors } = useForm({
-        search: filters.search || "",
-        stage: filters.stage || "1",
-    });
+const DEBOUNCE_DELAY = 300;
 
-    const [modalState, setModalState] = useState({
-        isOpen: false,
-        message: '',
-        isAlert: false,
-        categoryToDeleteId: null,
-    });
+export default function Index({ auth, categories, filters, success }) {
+    const { data, setData } = useForm({ search: filters.search || "" });
+    const [modalState, setModalState] = useState({ isOpen: false, categoryToDeleteId: null });
+    const searchTimeoutRef = useRef(null);
 
     useEffect(() => {
-        get(route("systemconfiguration2.categories.index"), { preserveState: true });
-    }, [data.search, data.stage, get]);
+        if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+        searchTimeoutRef.current = setTimeout(() => {
+            router.get(route("systemconfiguration2.categories.index"), { search: data.search }, {
+                preserveState: true,
+                replace: true,
+            });
+        }, DEBOUNCE_DELAY);
+        return () => clearTimeout(searchTimeoutRef.current);
+    }, [data.search]);
 
-
-    const handleSearchChange = (e) => {
-        setData("search", e.target.value);
-    };
-
-    const handleStageChange = (stage) => {
-        setData("stage", stage);
-    };
-
-    const handleDelete = (id) => {
-        setModalState({
-            isOpen: true,
-            message: "Are you sure you want to delete this category?",
-            isAlert: false,
-            categoryToDeleteId: id,
+    const handleDelete = (id) => setModalState({ isOpen: true, categoryToDeleteId: id });
+    const handleModalClose = () => setModalState({ isOpen: false, categoryToDeleteId: null });
+    const handleModalConfirm = () => {
+        if (!modalState.categoryToDeleteId) return;
+        router.delete(route("systemconfiguration2.categories.destroy", modalState.categoryToDeleteId), {
+            onSuccess: () => handleModalClose(),
         });
     };
-
-    const handleModalClose = () => {
-        setModalState({ isOpen: false, message: '', isAlert: false, categoryToDeleteId: null });
-    };
-
-    const handleModalConfirm = async () => {
-        try {
-            await router.delete(route("systemconfiguration2.categories.destroy", modalState.categoryToDeleteId));
-        } catch (error) {
-            console.error("Failed to delete category:", error);
-            showAlert("There was an error deleting the category. Please try again.");
-        }
-        setModalState({ isOpen: false, message: '', isAlert: false, categoryToDeleteId: null });
-    };
-
-    // Show alert modal
-    const showAlert = (message) => {
-        setModalState({
-            isOpen: true,
-            message: message,
-            isAlert: true,
-            categoryToDeleteId: null,
-        });
-    };
-
 
     return (
-        <AuthenticatedLayout
-            header={<h2 className="text-xl font-semibold text-gray-800">Categories List</h2>}
-        >
-            <Head title="Categories List" />
-            <div className="container mx-auto p-4">
-                {/* Header Actions */}
-                <div className="flex flex-col md:flex-row justify-between items-center mb-4">
-                    <div className="flex items-center space-x-2 mb-4 md:mb-0">
-                        <div className="relative flex items-center">
-                            <FontAwesomeIcon icon={faSearch} className="absolute left-3 text-gray-500" />
-                            <input
-                                type="text"
-                                name="search"
-                                placeholder="Search by category name"
-                                value={data.search}
-                                onChange={handleSearchChange}
-                                className={`pl-10 border px-2 py-1 rounded text-sm ${errors.search ? "border-red-500" : ""
-                                    }`}
-                            />
+        <AuthenticatedLayout user={auth.user} header={<h2 className="text-xl font-semibold">Categories</h2>}>
+            <Head title="Category List" />
+            <div className="py-12">
+                <div className="mx-auto max-w-7xl sm:px-6 lg:px-8">
+                    {success && <div className="mb-4 p-4 bg-green-100 text-green-700 rounded-md">{success}</div>}
+                    <div className="bg-white shadow-sm sm:rounded-lg p-6">
+                        <div className="mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
+                            <div className="flex items-center space-x-2">
+                                <div className="relative">
+                                    <FontAwesomeIcon icon={faSearch} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search categories..."
+                                        value={data.search}
+                                        onChange={e => setData("search", e.target.value)}
+                                        className="w-full rounded-md border-gray-300 pl-10"
+                                    />
+                                </div>
+                                <Link href={route("systemconfiguration2.categories.create")} className="flex items-center whitespace-nowrap rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-700">
+                                    <FontAwesomeIcon icon={faPlus} className="mr-2" /> Create
+                                </Link>
+                                <Link href={route("systemconfiguration2.index")} className="flex items-center whitespace-nowrap rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
+                                    <FontAwesomeIcon icon={faHome} className="mr-2" /> Home
+                                </Link>
+                            </div>
                         </div>
 
-
-                        <Link
-                            href={route("systemconfiguration2.categories.create")}
-                            className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm flex items-center"
-                        >
-                            <FontAwesomeIcon icon={faPlus} className="mr-1" /> Create
-                        </Link>
-                        
-                        <Link
-                            href={route("systemconfiguration2.index")}
-                            className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm flex items-center"
-                        >
-                            <FontAwesomeIcon icon={faHome} className="mr-1" /> Home
-                        </Link> 
-                    </div>
-                    
-                </div>
-
-                {/* Categories Table */}
-                <div className="overflow-x-auto">
-                    <table className="min-w-full border border-gray-300 shadow-md rounded">
-                        <thead className="bg-gray-50">
-                            <tr>
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Category Descriptions</th>                                 
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {categories.data.length > 0 ? (
-                                categories.data.map((category, index) => (
-                                    <tr key={category.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                                        <td className="border-b p-3 text-gray-700">{category.name ? category.name : "n/a"}</td>                                        
-                                                                      
-                                        <td className="border-b p-3 flex space-x-2">
-                                            <Link
-                                                href={route("systemconfiguration2.categories.edit", category.id)}
-                                                className="px-2 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-xs flex items-center"
-                                            >
-                                                <FontAwesomeIcon icon={faEdit} className="mr-1" />
-                                                Edit
-                                            </Link>
-                                            <button
-                                                onClick={() => handleDelete(category.id)}
-                                                className="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs flex items-center"
-                                            >
-                                                <FontAwesomeIcon icon={faTrash} className="mr-1" />
-                                                Delete
-                                            </button>
-                                        </td>
+                        <div className="overflow-x-auto rounded-lg border">
+                            <table className="min-w-full divide-y divide-gray-200">
+                                <thead className="bg-gray-50">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
                                     </tr>
-                                ))
-                            ) : (
-                                <tr>
-                                    <td colSpan="4" className="border-b p-3 text-center text-gray-700">No categories found.</td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                    {categories.data.length > 0 ? (
+                                        categories.data.map((category) => (
+                                            <tr key={category.id} className="hover:bg-gray-50">
+                                                <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{category.name}</td>
+                                                <td className="px-4 py-4 whitespace-nowrap text-sm text-center">
+                                                    <div className="flex items-center justify-center space-x-4">
+                                                        <Link href={route("systemconfiguration2.categories.edit", category.id)} className="text-blue-600 hover:text-blue-800"><FontAwesomeIcon icon={faEdit} /></Link>
+                                                        <button onClick={() => handleDelete(category.id)} className="text-red-600 hover:text-red-800"><FontAwesomeIcon icon={faTrash} /></button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr><td colSpan="2" className="text-center py-10 text-gray-500">No categories found.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                        <Pagination class="mt-6" links={categories.links} />
+                    </div>
                 </div>
             </div>
-            <Modal
-                isOpen={modalState.isOpen}
-                onClose={handleModalClose}
-                onConfirm={handleModalConfirm}
-                title={modalState.isAlert ? "Alert" : "Confirm Action"}
-                message={modalState.message}
-                isAlert={modalState.isAlert}
-            />
+            <Modal isOpen={modalState.isOpen} onClose={handleModalClose} onConfirm={handleModalConfirm} title="Confirm Deletion" message="Are you sure you want to delete this category?" />
         </AuthenticatedLayout>
     );
 }

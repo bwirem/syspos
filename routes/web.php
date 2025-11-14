@@ -584,8 +584,8 @@ Route::middleware('auth')->group(function () {
             Route::get('/', [BLSCurrencyController::class, 'index'])->name('index'); // Lists item groups
             Route::get('/create', [BLSCurrencyController::class, 'create'])->name('create'); // Show form to create new item group
             Route::post('/', [BLSCurrencyController::class, 'store'])->name('store'); // Store new item group
-            Route::get('/{itemgroup}/edit', [BLSCurrencyController::class, 'edit'])->name('edit'); // Show form to edit item group
-            Route::put('/{itemgroup}', [BLSCurrencyController::class, 'update'])->name('update'); // Update item group
+            Route::get('/{currency}/edit', [BLSCurrencyController::class, 'edit'])->name('edit'); // Show form to edit item group
+            Route::put('/{currency}', [BLSCurrencyController::class, 'update'])->name('update'); // Update item group
         });
 
 
@@ -721,6 +721,11 @@ Route::middleware('auth')->group(function () {
             Route::put('/{product}', [SIV_ProductController::class, 'update'])->name('update'); 
             Route::delete('/{product}', [SIV_ProductController::class, 'destroy'])->name('destroy');
             Route::get('/search', [SIV_ProductController::class, 'search'])->name('search');
+
+             // --- NEWLY ADDED IMPORT ROUTES ---
+            Route::get('/import', [SIV_ProductController::class, 'showImportForm'])->name('import.show');
+            Route::post('/import', [SIV_ProductController::class, 'import'])->name('import.store');
+            Route::get('/template', [SIV_ProductController::class, 'downloadTemplate'])->name('template.download');
         });
 
         // --- Unit Routes ---

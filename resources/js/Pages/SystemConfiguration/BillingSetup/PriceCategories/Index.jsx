@@ -1,160 +1,112 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Head, Link, useForm, router } from "@inertiajs/react";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faHome, faSearch, faPlus, faEdit, faTrash } from "@fortawesome/free-solid-svg-icons";
-import "@fortawesome/fontawesome-svg-core/styles.css";
-
+import { faSearch, faPlus, faEdit, faTrash, faHome, faCheckCircle, faTimesCircle } from "@fortawesome/free-solid-svg-icons";
 import Modal from '@/Components/CustomModal';
+import Pagination from "@/Components/Pagination";
 
-export default function Index({ auth, pricecategories, filters }) {
-    const { data, setData, get, errors } = useForm({
-        search: filters.search || "",       
-    });
+const DEBOUNCE_DELAY = 300;
 
-    const [modalState, setModalState] = useState({
-        isOpen: false,
-        message: '',
-        isAlert: false,
-        itemToDeleteId: null,
-    });
+// A small component for displaying a boolean status visually
+const StatusIndicator = ({ isActive }) => (
+    isActive
+        ? <FontAwesomeIcon icon={faCheckCircle} className="text-green-500" title="Enabled" />
+        : <FontAwesomeIcon icon={faTimesCircle} className="text-gray-400" title="Disabled" />
+);
+
+export default function Index({ auth, pricecategories, filters, success }) {
+    const { data, setData } = useForm({ search: filters.search || "" });
+    const [modalState, setModalState] = useState({ isOpen: false, itemToDeleteId: null });
+    const searchTimeoutRef = useRef(null);
 
     useEffect(() => {
-        get(route("systemconfiguration0.pricecategories.index"), { preserveState: true });
+        if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+        searchTimeoutRef.current = setTimeout(() => {
+            router.get(route("systemconfiguration0.pricecategories.index"), { search: data.search }, {
+                preserveState: true,
+                replace: true,
+            });
+        }, DEBOUNCE_DELAY);
+        return () => clearTimeout(searchTimeoutRef.current);
     }, [data.search]);
 
-    const handleSearchChange = (e) => {
-        setData("search", e.target.value);
-    };
-
-    const handleDelete = (id) => {
-        setModalState({
-            isOpen: true,
-            message: "Are you sure you want to delete this price category?",
-            isAlert: false,
-            itemToDeleteId: id,
+    const handleDelete = (id) => setModalState({ isOpen: true, itemToDeleteId: id });
+    const handleModalClose = () => setModalState({ isOpen: false, itemToDeleteId: null });
+    const handleModalConfirm = () => {
+        if (!modalState.itemToDeleteId) return;
+        router.delete(route("systemconfiguration0.pricecategories.destroy", modalState.itemToDeleteId), {
+            onSuccess: () => handleModalClose(),
         });
     };
 
-    const handleModalClose = () => {
-        setModalState({ isOpen: false, message: '', isAlert: false, itemToDeleteId: null });
-    };
-
-    const handleModalConfirm = async () => {
-        try {
-            await router.delete(route("systemconfiguration0.pricecategories.destroy", modalState.itemToDeleteId));
-        } catch (error) {
-            console.error("Failed to delete item:", error);
-            showAlert("There was an error deleting the item. Please try again.");
-        }
-        setModalState({ isOpen: false, message: '', isAlert: false, itemToDeleteId: null });
-    };
-
-    const showAlert = (message) => {
-        setModalState({
-            isOpen: true,
-            message: message,
-            isAlert: true,
-            itemToDeleteId: null,
-        });
-    };
+    // Since there's only one set of price categories, we determine if we should show create or edit
+    const hasCategories = pricecategories.data.length > 0;
+    const item = hasCategories ? pricecategories.data[0] : null;
 
     return (
-        <AuthenticatedLayout header={<h2 className="text-xl font-semibold text-gray-800">Price Categories</h2>}>
+        <AuthenticatedLayout user={auth.user} header={<h2 className="text-xl font-semibold">Price Categories</h2>}>
             <Head title="Price Categories" />
-            <div className="container mx-auto p-4">
-                <div className="flex flex-col md:flex-row justify-between items-center mb-4">
-                    <div className="flex items-center space-x-2 mb-4 md:mb-0">
-                        <div className="relative flex items-center">
-                            <FontAwesomeIcon icon={faSearch} className="absolute left-3 text-gray-500" />
-                            <input
-                                type="text"
-                                name="search"
-                                placeholder="Search by price1 value"
-                                value={data.search}
-                                onChange={handleSearchChange}
-                                className={`pl-10 border px-2 py-1 rounded text-sm ${errors.search ? "border-red-500" : ""}`}
-                            />
+            <div className="py-12">
+                <div className="mx-auto max-w-7xl sm:px-6 lg:px-8">
+                    {success && <div className="mb-4 p-4 bg-green-100 text-green-700 rounded-md">{success}</div>}
+                    <div className="bg-white shadow-sm sm:rounded-lg p-6">
+                        <div className="mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
+                            <h3 className="text-lg font-medium text-gray-800">
+                                {hasCategories ? "Current Price Category Settings" : "No Price Categories Defined"}
+                            </h3>
+                            <div className="flex items-center space-x-2">
+                                {hasCategories ? (
+                                    <Link href={route("systemconfiguration0.pricecategories.edit", item.id)} className="flex items-center whitespace-nowrap rounded-md bg-yellow-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-yellow-600">
+                                        <FontAwesomeIcon icon={faEdit} className="mr-2" /> Edit
+                                    </Link>
+                                ) : (
+                                    <Link href={route("systemconfiguration0.pricecategories.create")} className="flex items-center whitespace-nowrap rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-700">
+                                        <FontAwesomeIcon icon={faPlus} className="mr-2" /> Create
+                                    </Link>
+                                )}
+                                <Link href={route("systemconfiguration0.index")} className="flex items-center whitespace-nowrap rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
+                                    <FontAwesomeIcon icon={faHome} className="mr-2" /> Home
+                                </Link>
+                            </div>
                         </div>
 
-                        <Link
-                            href={route("systemconfiguration0.pricecategories.create")}
-                            className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm flex items-center"
-                        >
-                            <FontAwesomeIcon icon={faPlus} className="mr-1" /> Create
-                        </Link>
-                        <Link
-                            href={route("systemconfiguration0.index")}
-                            className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm flex items-center"
-                        >
-                            <FontAwesomeIcon icon={faHome} className="mr-1" /> Home
-                        </Link>
+                        <div className="overflow-x-auto rounded-lg border">
+                            <table className="min-w-full divide-y divide-gray-200">
+                                <thead className="bg-gray-50">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price Level 1</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Enabled</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price Level 2</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Enabled</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price Level 3</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Enabled</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price Level 4</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Enabled</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                    {hasCategories ? (
+                                        <tr className="hover:bg-gray-50">
+                                            <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.price1}</td>
+                                            <td className="px-4 py-4 whitespace-nowrap text-sm text-center"><StatusIndicator isActive={item.useprice1} /></td>
+                                            <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.price2}</td>
+                                            <td className="px-4 py-4 whitespace-nowrap text-sm text-center"><StatusIndicator isActive={item.useprice2} /></td>
+                                            <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.price3}</td>
+                                            <td className="px-4 py-4 whitespace-nowrap text-sm text-center"><StatusIndicator isActive={item.useprice3} /></td>
+                                            <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.price4}</td>
+                                            <td className="px-4 py-4 whitespace-nowrap text-sm text-center"><StatusIndicator isActive={item.useprice4} /></td>
+                                        </tr>
+                                    ) : (
+                                        <tr><td colSpan="8" className="text-center py-10 text-gray-500">Click "Create" to define your price categories.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
-
-                <div className="overflow-x-auto">
-                    <table className="min-w-full border border-gray-300 shadow-md rounded">
-                        <thead className="bg-gray-50">
-                            <tr>
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Price 1</th>
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Use Price 1</th>
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Price 2</th>
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Use Price 2</th>
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Price 3</th>
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Use Price 3</th>
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Price 4</th>
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Use Price 4</th>
-                                <th className="border-b p-3 text-center font-medium text-gray-700">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {pricecategories.data.length > 0 ? (
-                                pricecategories.data.map((pricecategory, index) => (
-                                    <tr key={pricecategory.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                                        <td className="border-b p-3 text-center text-gray-700">{pricecategory.price1}</td>
-                                        <td className="border-b p-3 text-center text-gray-700">{pricecategory.useprice1 ? 'Yes' : 'No'}</td>
-                                        <td className="border-b p-3 text-center text-gray-700">{pricecategory.price2 || '-'}</td>
-                                        <td className="border-b p-3 text-center text-gray-700">{pricecategory.useprice2 ? 'Yes' : 'No'}</td>
-                                        <td className="border-b p-3 text-center text-gray-700">{pricecategory.price3 || '-'}</td>
-                                        <td className="border-b p-3 text-center text-gray-700">{pricecategory.useprice3 ? 'Yes' : 'No'}</td>
-                                        <td className="border-b p-3 text-center text-gray-700">{pricecategory.price4 || '-'}</td>
-                                        <td className="border-b p-3 text-center text-gray-700">{pricecategory.useprice4 ? 'Yes' : 'No'}</td>
-                                        <td className="border-b p-3 flex space-x-2 justify-center">
-                                            <Link
-                                                href={route("systemconfiguration0.pricecategories.edit", pricecategory.id)}
-                                                className="px-2 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-xs flex items-center"
-                                            >
-                                                <FontAwesomeIcon icon={faEdit} className="mr-1" />
-                                                Edit
-                                            </Link>
-                                            <button
-                                                onClick={() => handleDelete(pricecategory.id)}
-                                                className="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs flex items-center"
-                                            >
-                                                <FontAwesomeIcon icon={faTrash} className="mr-1" />
-                                                Delete
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))
-                            ) : (
-                                <tr>
-                                    <td colSpan="9" className="border-b p-3 text-center text-gray-700">No price categories found.</td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
             </div>
-
-            <Modal
-                isOpen={modalState.isOpen}
-                onClose={handleModalClose}
-                onConfirm={handleModalConfirm}
-                title={modalState.isAlert ? "Alert" : "Confirm Action"}
-                message={modalState.message}
-                isAlert={modalState.isAlert}
-            />
+            {item && <Modal isOpen={modalState.isOpen} onClose={handleModalClose} onConfirm={handleModalConfirm} title="Confirm Deletion" message="Are you sure you want to delete these price categories?" />}
         </AuthenticatedLayout>
     );
 }

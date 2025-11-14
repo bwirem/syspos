@@ -2,6 +2,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\BLSItem;
+use App\Models\BLSItemGroup;
+use App\Models\BLSPriceCategory;
 use Illuminate\Http\Request;
 
 class BLSItemController extends Controller
@@ -11,19 +13,27 @@ class BLSItemController extends Controller
      */
     public function index(Request $request)
     {
-        $query = BLSItem::query();
+        // Eager load the itemgroup relationship to prevent N+1 queries
+        $query = BLSItem::with('itemgroup');
 
-        // Search functionality
+        // Search functionality for both item name and group name
         if ($request->filled('search')) {
-            $query->where('name', 'like', '%' . $request->search . '%');
+            $search = $request->search;
+            $query->where(function($q) use ($search) {
+                $q->where('name', 'like', '%' . $search . '%')
+                  ->orWhereHas('itemgroup', function ($subQuery) use ($search) {
+                      $subQuery->where('name', 'like', '%' . $search . '%');
+                  });
+            });
         }
 
         // Paginate the results
-        $items = $query->orderBy('created_at', 'desc')->paginate(10);
+        $items = $query->orderBy('name', 'asc')->paginate(10)->withQueryString();
 
         return inertia('SystemConfiguration/BillingSetup/Items/Index', [
             'items' => $items,
             'filters' => $request->only(['search']),
+            'success' => session('success'), // Pass success flash message
         ]);
     }
 
@@ -32,7 +42,11 @@ class BLSItemController extends Controller
      */
     public function create()
     {
-        return inertia('SystemConfiguration/BillingSetup/Items/Create');
+        // Fetch ALL necessary data and pass it to the view
+        return inertia('SystemConfiguration/BillingSetup/Items/Create', [
+            'itemGroups' => BLSItemGroup::orderBy('name')->get(),
+            'pricecategories' => BLSPriceCategory::all(), // <-- FIX: Pass price categories
+        ]);
     }
 
     /**
@@ -44,13 +58,16 @@ class BLSItemController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'price1' => 'required|numeric|min:0',
-            'price2' => 'nullable|numeric|min:0',
-            'price3' => 'nullable|numeric|min:0',
-            'price4' => 'nullable|numeric|min:0',
-            'defaultqty' => 'nullable|integer|min:1',
+            'price2' => 'required|numeric|min:0',
+            'price3' => 'required|numeric|min:0',
+            'price4' => 'required|numeric|min:0',
+            'defaultqty' => 'required|integer|min:1',
             'addtocart' => 'boolean',
             'itemgroup_id' => 'required|exists:bls_itemgroups,id',
         ]);
+         
+        // Ensure boolean is correctly cast
+        $validated['addtocart'] = $request->boolean('addtocart');
 
         // Create the item
         BLSItem::create($validated);
@@ -64,8 +81,11 @@ class BLSItemController extends Controller
      */
     public function edit(BLSItem $item)
     {
+        // Fetch ALL necessary data and pass it to the view
         return inertia('SystemConfiguration/BillingSetup/Items/Edit', [
             'item' => $item,
+            'itemGroups' => BLSItemGroup::orderBy('name')->get(),
+            'pricecategories' => BLSPriceCategory::all(), // <-- FIX: Pass price categories
         ]);
     }
 
@@ -78,9 +98,9 @@ class BLSItemController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'price1' => 'required|numeric|min:0',
-            'price2' => 'nullable|numeric|min:0',
-            'price3' => 'nullable|numeric|min:0',
-            'price4' => 'nullable|numeric|min:0', // Fixed here
+            'price2' => 'required|numeric|min:0',
+            'price3' => 'required|numeric|min:0',
+            'price4' => 'required|numeric|min:0',
             'defaultqty' => 'required|integer|min:1',
             'addtocart' => 'boolean',
             'itemgroup_id' => 'required|exists:bls_itemgroups,id',
@@ -93,11 +113,11 @@ class BLSItemController extends Controller
         if ($item->product_id) {
             $updateData = [
                 'price1' => $validated['price1'],
-                'price2' => $validated['price2'] ?? null,
-                'price3' => $validated['price3'] ?? null,
-                'price4' => $validated['price4'] ?? null,
+                'price2' => $validated['price2'],
+                'price3' => $validated['price3'],
+                'price4' => $validated['price4'],
                 'addtocart' => $validated['addtocart'],
-                'defaultqty' => $validated['defaultqty'] ?? null,
+                'defaultqty' => $validated['defaultqty'],
             ];
         } else {
             // Update all fields if not linked to stock
