@@ -1,30 +1,35 @@
 <?php
 namespace App\Http\Controllers;
 
-use App\Models\SEXPItem
-;
+use App\Models\SEXPItem;
+use App\Models\SEXPItemGroup;
 use Illuminate\Http\Request;
 
 class SEXPItemController extends Controller
-{
+{    
+    
     /**
      * Display a listing of items.
      */
     public function index(Request $request)
     {
-        $query = SEXPItem::query();
+        // Eager-load the 'itemgroup' relationship for efficient grouping
+        $query = SEXPItem::with('itemgroup');
 
-        // Search functionality
         if ($request->filled('search')) {
-            $query->where('name', 'like', '%' . $request->search . '%');
+            $search = $request->search;
+            $query->where('name', 'like', '%' . $search . '%')
+                  ->orWhereHas('itemgroup', function ($q) use ($search) {
+                      $q->where('name', 'like', '%' . $search . '%');
+                  });
         }
 
-        // Paginate the results
-        $items = $query->orderBy('created_at', 'desc')->paginate(10);
+        $items = $query->orderBy('name', 'asc')->paginate(10)->withQueryString();
 
         return inertia('SystemConfiguration/ExpensesSetup/Items/Index', [
             'items' => $items,
             'filters' => $request->only(['search']),
+            'success' => session('success'),
         ]);
     }
 
@@ -33,7 +38,10 @@ class SEXPItemController extends Controller
      */
     public function create()
     {
-        return inertia('SystemConfiguration/ExpensesSetup/Items/Create');
+        // FIX: Pass the list of available groups to the Create page
+        return inertia('SystemConfiguration/ExpensesSetup/Items/Create', [
+            'itemGroups' => SEXPItemGroup::orderBy('name')->get(),
+        ]);
     }
 
     /**
@@ -44,7 +52,7 @@ class SEXPItemController extends Controller
         // Validate input
         $validated = $request->validate([
             'name' => 'required|string|max:255',            
-            'itemgroup_id' => 'nullable|exists:sexp_itemgroups,id',
+            'itemgroup_id' => 'required|exists:sexp_itemgroups,id',
         ]);
 
         // Create the item
@@ -58,9 +66,10 @@ class SEXPItemController extends Controller
      * Show the form for editing the specified item.
      */
     public function edit(SEXPItem $item)
-    {
+    {       
         return inertia('SystemConfiguration/ExpensesSetup/Items/Edit', [
             'item' => $item,
+            'itemGroups' => SEXPItemGroup::orderBy('name')->get(),
         ]);
     }
 
@@ -72,7 +81,7 @@ class SEXPItemController extends Controller
         // Validate input
         $validated = $request->validate([
             'name' => 'required|string|max:255',            
-            'itemgroup_id' => 'nullable|exists:sexp_itemgroups,id',
+            'itemgroup_id' => 'required|exists:sexp_itemgroups,id',
         ]);
 
         // Update the item

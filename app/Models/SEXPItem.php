@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SEXPItem extends Model
 {
@@ -18,4 +19,12 @@ class SEXPItem extends Model
         'itemgroup_id',  
         'name',
     ];
+
+     /**
+     * Get the group that owns the expense item.
+     */
+    public function itemgroup(): BelongsTo
+    {
+        return $this->belongsTo(SEXPItemGroup::class, 'itemgroup_id');
+    }
 }
