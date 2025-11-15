@@ -283,7 +283,8 @@ class SIV_ProductController extends Controller
 
     /**
      * Download the product import template file.
-     */
+     */   
+
     public function downloadTemplate()
     {
         $path = storage_path('app/templates/products_import_template.xlsx');
@@ -292,7 +293,16 @@ class SIV_ProductController extends Controller
             abort(404, 'Template file not found.');
         }
 
-        return response()->download($path);
+        $fileName = 'products_import_template.xlsx';
+
+        $headers = [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
+            'Content-Length' => filesize($path), // Adding Content-Length can help
+        ];
+
+        // Use response()->file() as a modern and efficient alternative
+        return response()->file($path, $headers);
     }
     
 }

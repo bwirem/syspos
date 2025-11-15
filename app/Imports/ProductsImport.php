@@ -19,7 +19,6 @@ class ProductsImport implements ToModel, WithHeadingRow, WithValidation
 
     public function __construct()
     {
-        // Cache categories and units to avoid repeated DB queries inside the loop
         $this->categories = SIV_ProductCategory::pluck('id', 'name');
         $this->units = SIV_Packaging::pluck('id', 'name');
     }
@@ -31,30 +30,41 @@ class ProductsImport implements ToModel, WithHeadingRow, WithValidation
     */
     public function model(array $row)
     {
-        // Look up the IDs from the cached collections
         $categoryId = $this->categories[$row['category_name']] ?? null;
         $unitId = $this->units[$row['unit_name']] ?? null;
 
-        // Use a transaction to ensure both product and item are created or neither
         return DB::transaction(function () use ($row, $categoryId, $unitId) {
+            // --- THIS IS THE FIX ---
+            // Create the product with ALL required fields, providing defaults for those not in the Excel file.
             $product = SIV_Product::create([
-                'name'         => $row['name'],
-                'displayname'  => $row['displayname'],
-                'category_id'  => $categoryId,
-                'package_id'   => $unitId,
-                'costprice'    => $row['costprice'],
-                'reorderlevel' => $row['reorderlevel'],
-                'display'      => true, // Set default values
-                'addtocart'    => true,
+                'name'           => $row['name'],
+                'displayname'    => $row['displayname'],
+                'category_id'    => $categoryId,
+                'package_id'     => $unitId,
+                'costprice'      => $row['costprice'],
+                'reorderlevel'   => $row['reorderlevel'],
+                
+                // Add default values for all other non-nullable fields
+                'prevcost'       => $row['costprice'], // Default prevcost to the current costprice on import
+                'averagecost'    => $row['costprice'], // Default averagecost to the current costprice on import
+                'defaultqty'     => 1,
+                'addtocart'      => true,
+                'hasexpiry'      => false,
+                'expirynotice'   => false,
+                'display'        => true,
             ]);
 
             $itemGroup = BLSItemGroup::firstOrCreate(['name' => 'Inventory']);
 
+            // Also ensure the corresponding BLSItem has all necessary defaults
             BLSItem::create([
                 'product_id'   => $product->id,
                 'itemgroup_id' => $itemGroup->id,
                 'name'         => $row['name'],
-                'price1'       => 0, // Default prices
+                'price1'       => 0,
+                'price2'       => 0,
+                'price3'       => 0,
+                'price4'       => 0,
                 'addtocart'    => true,
                 'defaultqty'   => 1,
             ]);
@@ -63,13 +73,9 @@ class ProductsImport implements ToModel, WithHeadingRow, WithValidation
         });
     }
 
-    /**
-     * Define the validation rules for each row.
-     *
-     * @return array
-     */
     public function rules(): array
     {
+        // ... rules remain the same ...
         return [
             'name' => 'required|string|max:255|unique:siv_products,name',
             'displayname' => 'required|string|max:255',

@@ -4,6 +4,55 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faUpload, faDownload, faSpinner, faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
 
+/**
+ * A helper function to trigger a browser download from a URL using the Fetch API.
+ * This is more robust than a standard anchor link for handling file downloads via Inertia/AJAX.
+ * @param {string} url - The URL to download the file from.
+ * @param {string} filename - The desired name for the downloaded file.
+ */
+const downloadFileFromUrl = async (url, filename) => {
+    try {
+        // Fetch the file from the server
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                // Add any headers if necessary, e.g., for authentication.
+                // For a simple GET request via a web route, this is often not needed.
+            },
+        });
+
+        // Check if the server responded with an error (e.g., 404, 500)
+        if (!response.ok) {
+            throw new Error(`Server responded with status: ${response.status}`);
+        }
+
+        // Get the file data as a binary large object (blob)
+        const blob = await response.blob();
+        
+        // Create a temporary URL that points to the blob data in the browser's memory
+        const blobUrl = window.URL.createObjectURL(blob);
+
+        // Create a temporary, hidden anchor element to programmatically trigger the download
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = blobUrl;
+        a.download = filename; // Set the filename for the download prompt
+        document.body.appendChild(a);
+        
+        // Trigger a click on the anchor element
+        a.click();
+        
+        // Clean up by revoking the blob URL and removing the temporary anchor element
+        window.URL.revokeObjectURL(blobUrl);
+        a.remove();
+        
+    } catch (error) {
+        // If anything goes wrong, log it to the console and show an alert.
+        console.error('Download failed:', error);
+        alert('Could not download the file. The server may have responded with an error. Please check the browser console for more details.');
+    }
+};
+
 export default function ProductImport({ auth, errors: pageErrors }) {
     const { data, setData, post, processing, errors } = useForm({
         file: null,
@@ -11,10 +60,19 @@ export default function ProductImport({ auth, errors: pageErrors }) {
 
     const handleSubmit = (e) => {
         e.preventDefault();
+        // The post helper will correctly handle multipart/form-data for file uploads
         post(route('systemconfiguration2.products.import.store'));
     };
+
+    // Handler for the download button click event
+    const handleDownloadClick = (e) => {
+        e.preventDefault();
+        const templateUrl = route('systemconfiguration2.products.template.download');
+        downloadFileFromUrl(templateUrl, 'products_import_template.xlsx');
+    };
     
-    // The controller passes back row-specific errors via flash session
+    // The controller passes back row-specific validation errors via a flash session key.
+    // We check if this key exists in the shared `pageErrors` prop.
     const importErrors = pageErrors.import_errors || [];
 
     return (
@@ -23,20 +81,25 @@ export default function ProductImport({ auth, errors: pageErrors }) {
 
             <div className="py-12">
                 <div className="mx-auto max-w-4xl sm:px-6 lg:px-8 space-y-6">
+                    
                     {/* Instructions Card */}
                     <div className="bg-blue-50 border border-blue-200 text-blue-800 p-6 shadow-sm sm:rounded-lg">
                         <h3 className="text-lg font-semibold mb-2">Instructions</h3>
                         <ol className="list-decimal list-inside space-y-1 text-sm">
                             <li>Download the Excel template file using the link below.</li>
-                            <li>Fill in the product details. Do not change the column headers.</li>
+                            <li>Fill in the product details. **Do not change the column headers.**</li>
                             <li>The `category_name` and `unit_name` must exactly match existing entries in the system.</li>
                             <li>Save the file and upload it using the form below.</li>
                         </ol>
                         <div className="mt-4">
-                            <Link href={route('systemconfiguration2.products.template.download')} className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
+                            <button
+                                type="button"
+                                onClick={handleDownloadClick}
+                                className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                            >
                                 <FontAwesomeIcon icon={faDownload} />
                                 Download Template
-                            </Link>
+                            </button>
                         </div>
                     </div>
 
@@ -68,7 +131,7 @@ export default function ProductImport({ auth, errors: pageErrors }) {
                         </form>
                     </div>
 
-                    {/* Import Errors Display */}
+                    {/* Import Errors Display Card */}
                     {importErrors.length > 0 && (
                         <div className="bg-red-50 border border-red-200 p-6 shadow-sm sm:rounded-lg">
                              <h3 className="text-lg font-semibold text-red-800 mb-3 flex items-center gap-2">
