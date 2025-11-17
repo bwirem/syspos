@@ -6,6 +6,8 @@ use App\Models\SIV_ProductCategory;
 use App\Models\SIV_Packaging;
 use App\Models\BLSItem; 
 use App\Models\BLSItemGroup; 
+use App\Models\BLSPriceCategory;
+use App\Models\BILProductCostLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -13,10 +15,37 @@ use Illuminate\Support\Facades\Log;
 use App\Imports\ProductsImport; // <-- Import the new class
 use Maatwebsite\Excel\Facades\Excel; // <-- Import Excel Facade
 use Maatwebsite\Excel\Validators\ValidationException; // <-- Import Excel's exception
+use Illuminate\Validation\Rule;
 
 
 class SIV_ProductController extends Controller
 {
+
+    // A private helper function to get active price categories to avoid repeating code
+    private function getActivePriceCategories()
+    {
+        $activePriceCategories = [];
+        $priceCategorySettings = BLSPriceCategory::first();
+
+        if ($priceCategorySettings) {
+            for ($i = 1; $i <= 4; $i++) {
+                if ($priceCategorySettings->{'useprice' . $i}) {
+                    $activePriceCategories[] = [
+                        'key' => 'price' . $i,
+                        'label' => $priceCategorySettings->{'price' . $i},
+                    ];
+                }
+            }
+        }
+        
+        // Always return at least a default if none are set
+        if (empty($activePriceCategories)) {
+            $activePriceCategories[] = ['key' => 'price1', 'label' => 'Price'];
+        }
+
+        return $activePriceCategories;
+    }
+
     /**
      * Display a listing of products.
      */
@@ -46,10 +75,10 @@ class SIV_ProductController extends Controller
      */
     public function create()
     {
-        // FIX: Load categories and units and pass them as props
         return inertia('SystemConfiguration/InventorySetup/Products/Create', [
             'categories' => SIV_ProductCategory::orderBy('name')->get(),
             'units' => SIV_Packaging::orderBy('name')->get(),
+            'activePriceCategories' => $this->getActivePriceCategories(), // <-- PASS DATA
         ]);
     }
     /**
@@ -57,52 +86,59 @@ class SIV_ProductController extends Controller
      */
     public function store(Request $request)
     {
-        // Validate input
+        // Validate input - `prevcost` and `averagecost` are removed from validation
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
+            'name' => 'required|string|max:255|unique:siv_products,name',
             'displayname' => 'required|string|max:255',
             'costprice' => 'required|numeric|min:0',
-            'prevcost' => 'nullable|numeric|min:0',
-            'averagecost' => 'nullable|numeric|min:0',
-
             'addtocart' => 'sometimes|boolean',
             'hasexpiry' => 'sometimes|boolean',
             'expirynotice' => 'sometimes|boolean',
             'display' => 'sometimes|boolean',
-            
             'defaultqty' => 'nullable|integer|min:1',
             'reorderlevel' => 'nullable|integer|min:1',
-        
             'category_id' => 'required|exists:siv_productcategories,id',
             'package_id' => 'required|exists:siv_packagings,id',  
         ]);     
 
-        // Ensure proper boolean casting (avoid errors when checkboxes are unchecked)
+        // --- NEW LOGIC: Set cost fields automatically ---
+        $validated['prevcost'] = $validated['costprice'];
+        $validated['averagecost'] = $validated['costprice'];
+
+        // Ensure proper boolean casting
         $validated['addtocart'] = $request->boolean('addtocart');
         $validated['hasexpiry'] = $request->boolean('hasexpiry');
         $validated['expirynotice'] = $request->boolean('expirynotice');
         $validated['display'] = $request->boolean('display');
-
-        // Assign default values for nullable fields
         $validated['defaultqty'] = $validated['defaultqty'] ?? 1;
         $validated['reorderlevel'] = $validated['reorderlevel'] ?? 1;
 
-        // Create the product
-        $product = SIV_Product::create($validated);       
-        $itemGroup = BLSItemGroup::firstOrCreate(['name' => 'Inventory']);  
-
-        // Create the item
-        BLSItem::create([
-            'name' => $validated['name'],            
-            'price1' => 0,
-            'price2' => 0,
-            'price3' => 0,
-            'price4' => 0, 
-            'addtocart' => $validated['addtocart'],
-            'defaultqty' => $validated['defaultqty'],
-            'itemgroup_id' => $itemGroup->id,  
-            'product_id' => $product->id,   
-        ]);   
+        // Use a transaction for data integrity
+        DB::transaction(function () use ($validated) {
+            // Create the product
+            $product = SIV_Product::create($validated);      
+            
+            BILProductCostLog::create([
+                'sysdate' => now(),
+                'transdate' => now(), // For a manual update, transdate is the same as sysdate
+                'product_id' => $product->id,
+                'costprice' => $product->costprice,
+            ]);
+            
+            $itemGroup = BLSItemGroup::firstOrCreate(['name' => 'Inventory']);  
+            // Create the item
+            BLSItem::create([
+                'name' => $validated['name'],            
+                'price1' => 0,
+                'price2' => 0,
+                'price3' => 0,
+                'price4' => 0, 
+                'addtocart' => $validated['addtocart'],
+                'defaultqty' => $validated['defaultqty'],
+                'itemgroup_id' => $itemGroup->id,  
+                'product_id' => $product->id,   
+            ]);
+        });
 
         return redirect()->route('systemconfiguration2.products.index')
             ->with('success', 'Product created successfully.');
@@ -113,11 +149,14 @@ class SIV_ProductController extends Controller
      */
     public function edit(SIV_Product $product)
     {
-        // FIX: Load categories and units alongside the product
+        // Eager load the associated BLSItem to get its prices
+        $product->load('blsItem');
+
         return inertia('SystemConfiguration/InventorySetup/Products/Edit', [
             'product' => $product,
             'categories' => SIV_ProductCategory::orderBy('name')->get(),
             'units' => SIV_Packaging::orderBy('name')->get(),
+            'activePriceCategories' => $this->getActivePriceCategories(), // <-- PASS DATA
         ]);
     }
     /**
@@ -127,54 +166,76 @@ class SIV_ProductController extends Controller
     {
         // Validate input
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
+            'name' => ['required', 'string', 'max:255', Rule::unique('siv_products')->ignore($product->id)],
             'displayname' => 'required|string|max:255',
             'costprice' => 'required|numeric|min:0',
-            'prevcost' => 'nullable|numeric|min:0',
-            'averagecost' => 'nullable|numeric|min:0',
-
             'addtocart' => 'sometimes|boolean',
             'hasexpiry' => 'sometimes|boolean',
             'expirynotice' => 'sometimes|boolean',
             'display' => 'sometimes|boolean',
-            
             'defaultqty' => 'nullable|integer|min:1',
             'reorderlevel' => 'nullable|integer|min:1',
-        
             'category_id' => 'required|exists:siv_productcategories,id',
             'package_id' => 'required|exists:siv_packagings,id',  
         ]);    
+
+        // Store the new cost price from the request
+        $newCostPrice = (float) $validated['costprice'];
+        $costPriceHasChanged = $product->costprice != $newCostPrice;
+
+        // --- NEW LOGIC: Update cost fields if costprice has changed ---
+        if ($costPriceHasChanged) {
+            $validated['prevcost'] = $product->costprice; // Set prevcost to the old value
+            $validated['averagecost'] = $newCostPrice;    // Correct the average cost to the new value
+        }
 
         // Ensure proper boolean casting
         $validated['addtocart'] = $request->boolean('addtocart');
         $validated['hasexpiry'] = $request->boolean('hasexpiry');
         $validated['expirynotice'] = $request->boolean('expirynotice');
         $validated['display'] = $request->boolean('display');
-
-        // Assign default values for nullable fields
         $validated['defaultqty'] = $validated['defaultqty'] ?? 1;
         $validated['reorderlevel'] = $validated['reorderlevel'] ?? 1;
 
-        // Update the product
-        $product->update($validated);
-
-        // Find the related item group
-        $itemGroup = BLSItemGroup::firstOrCreate(['name' => 'Inventory']);
-
-        // Update the related BLSItem
-        $product->blsItem()->updateOrCreate(
-            ['product_id' => $product->id],
-            [
-                'name' => $validated['name'],            
-                'price1' => 0,
-                'price2' => 0,
-                'price3' => 0,
-                'price4' => 0, 
-                'addtocart' => $validated['addtocart'],
-                'defaultqty' => $validated['defaultqty'],
-                'itemgroup_id' => $itemGroup->id,  
-            ]
-        );
+        // Use a transaction for data integrity
+        DB::transaction(function () use ($product, $validated, $costPriceHasChanged, $newCostPrice) {
+            // Update the product with all validated data
+            $product->update($validated);
+            
+            // --- THIS IS THE FIX ---
+            // If the cost price changed, create a log entry
+            if ($costPriceHasChanged) {
+                BILProductCostLog::create([
+                    'sysdate' => now(),
+                    'transdate' => now(), // For a manual update, transdate is the same as sysdate
+                    'product_id' => $product->id,
+                    'costprice' => $newCostPrice,
+                ]);
+            }
+            
+            // by the SIV_Product. DO NOT update the prices.
+            if ($product->blsItem) { // Check if a blsItem already exists
+                $product->blsItem->update([
+                    'name' => $validated['name'],            
+                    'addtocart' => $validated['addtocart'],
+                    'defaultqty' => $validated['defaultqty'],
+                ]);
+            } else {
+                // If for some reason a blsItem doesn't exist, create it, but still don't set prices to 0.
+                // Let the user set them in the other module.
+                $itemGroup = BLSItemGroup::firstOrCreate(['name' => 'Inventory']);
+                $product->blsItem()->create([
+                    'name' => $validated['name'],
+                    'price1' => 0,
+                    'price2' => 0,
+                    'price3' => 0,
+                    'price4' => 0, 
+                    'itemgroup_id' => $itemGroup->id,
+                    'addtocart' => $validated['addtocart'],
+                    'defaultqty' => $validated['defaultqty'],                    
+                ]);
+            }
+        });
 
         return redirect()->route('systemconfiguration2.products.index')
             ->with('success', 'Product updated successfully.');
@@ -303,6 +364,53 @@ class SIV_ProductController extends Controller
 
         // Use response()->file() as a modern and efficient alternative
         return response()->file($path, $headers);
+    }
+
+    /**
+     * Quickly update the cost price of a single product.
+     * This is intended for AJAX calls from the index page.
+     */
+    // ...
+    public function updatePrice(Request $request, SIV_Product $product)
+    {
+        $validated = $request->validate([
+            'costprice' => 'required|numeric|min:0',
+        ]);
+
+        $newCostPrice = (float) $validated['costprice'];
+
+        try {
+            DB::transaction(function () use ($product, $newCostPrice) {
+                
+                // 1. Update cost fields
+                $product->prevcost = $product->costprice;
+                $product->costprice = $newCostPrice;
+                
+                // 2. Correct the average cost to this new value.
+                // This is the standard practice for a manual re-valuation.
+                $product->averagecost = $newCostPrice;
+                
+                $product->save();
+
+                // 3. Log the change
+                BILProductCostLog::create([
+                    'sysdate' => now(),
+                    'transdate' => now(),
+                    'product_id' => $product->id,
+                    'costprice' => $newCostPrice,
+                ]);
+            });
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while updating the price.',
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cost price updated successfully.',
+        ]);
     }
     
 }

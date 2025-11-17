@@ -629,6 +629,9 @@ Route::middleware('auth')->group(function () {
             Route::get('/{item}/edit', [BLSItemController::class, 'edit'])->name('edit'); 
             Route::put('/{item}', [BLSItemController::class, 'update'])->name('update'); 
             Route::get('/search', [BLSItemController::class, 'search'])->name('search'); 
+            
+            // --- NEW ROUTE FOR QUICK PRICE UPDATE ---
+            Route::patch('/{item}/update-prices', [BLSItemController::class, 'updatePrices'])->name('update-prices');
         });
 
          // --- customers Routes ---
@@ -726,6 +729,8 @@ Route::middleware('auth')->group(function () {
             Route::get('/import', [SIV_ProductController::class, 'showImportForm'])->name('import.show');
             Route::post('/import', [SIV_ProductController::class, 'import'])->name('import.store');
             Route::get('/template', [SIV_ProductController::class, 'downloadTemplate'])->name('template.download');
+            // --- NEW ROUTE FOR QUICK PRICE UPDATE ---
+            Route::patch('/{product}/update-price', [SIV_ProductController::class, 'updatePrice'])->name('update-price');
         });
 
         // --- Unit Routes ---

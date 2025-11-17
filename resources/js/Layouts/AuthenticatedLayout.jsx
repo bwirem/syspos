@@ -41,6 +41,9 @@ import { faBoxOpen as faInventorySetupIcon } from '@fortawesome/free-solid-svg-i
 import { faMapMarkerAlt as faLocationSetupIcon } from '@fortawesome/free-solid-svg-icons'; // New icon for Location Setup
 import "@fortawesome/fontawesome-svg-core/styles.css";
 
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+
 import usePermissionsStore from "../stores/usePermissionsStore";
 
 // Constants for CSS classes
@@ -375,6 +378,17 @@ export default function AuthenticatedLayout({ header, children }) {
                     <div className="p-4 h-full">
                         {children}
                     </div>
+                    <ToastContainer
+                        position="bottom-right"
+                        autoClose={5000}
+                        hideProgressBar={false}
+                        newestOnTop={false}
+                        closeOnClick
+                        rtl={false}
+                        pauseOnFocusLoss
+                        draggable
+                        pauseOnHover
+                    />
                 </main>
             </div>
         </div>

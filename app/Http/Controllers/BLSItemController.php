@@ -5,6 +5,7 @@ use App\Models\BLSItem;
 use App\Models\BLSItemGroup;
 use App\Models\BLSPriceCategory;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class BLSItemController extends Controller
 {
@@ -13,10 +14,8 @@ class BLSItemController extends Controller
      */
     public function index(Request $request)
     {
-        // Eager load the itemgroup relationship to prevent N+1 queries
+        // ... (query logic remains the same)
         $query = BLSItem::with('itemgroup');
-
-        // Search functionality for both item name and group name
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function($q) use ($search) {
@@ -26,25 +25,54 @@ class BLSItemController extends Controller
                   });
             });
         }
-
-        // Paginate the results
         $items = $query->orderBy('name', 'asc')->paginate(10)->withQueryString();
+
+        // --- REVISED AND IMPROVED LOGIC ---
+        $activePriceCategories = [];
+        $priceCategorySettings = BLSPriceCategory::first();
+
+        if ($priceCategorySettings) {
+            for ($i = 1; $i <= 4; $i++) {
+                // Check if the 'useprice' field is true (or 1)
+                if ($priceCategorySettings->{'useprice' . $i}) {
+                    $activePriceCategories[] = [
+                        'key' => 'price' . $i,
+                        'label' => $priceCategorySettings->{'price' . $i},
+                    ];
+                }
+            }
+        }
+
+        // FINAL CHECK: If after checking the DB, the array is STILL empty,
+        // then we must add a default. This is the crucial fix.
+        if (empty($activePriceCategories)) {
+            $activePriceCategories[] = [
+                'key' => 'price1',
+                'label' => $priceCategorySettings ? $priceCategorySettings->price1 : 'Price' // Use the name from the DB if it exists, otherwise a generic fallback
+            ];
+        }
 
         return inertia('SystemConfiguration/BillingSetup/Items/Index', [
             'items' => $items,
             'filters' => $request->only(['search']),
-            'success' => session('success'), // Pass success flash message
+            'success' => session('success'),
+            'activePriceCategories' => $activePriceCategories,
         ]);
     }
+    
 
     /**
      * Show the form for creating a new item.
      */
     public function create()
     {
+        $filteredItemGroups = BLSItemGroup::orderBy('name')
+            ->where('name', '!=', 'Inventory')
+            ->get();
+
         // Fetch ALL necessary data and pass it to the view
         return inertia('SystemConfiguration/BillingSetup/Items/Create', [
-            'itemGroups' => BLSItemGroup::orderBy('name')->get(),
+            'itemGroups' => $filteredItemGroups,
             'pricecategories' => BLSPriceCategory::all(), // <-- FIX: Pass price categories
         ]);
     }
@@ -54,20 +82,29 @@ class BLSItemController extends Controller
      */
     public function store(Request $request)
     {
-        // Validate input
+        // --- UPDATED VALIDATION ---
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'price1' => 'required|numeric|min:0',
-            'price2' => 'required|numeric|min:0',
-            'price3' => 'required|numeric|min:0',
-            'price4' => 'required|numeric|min:0',
+            'name' => 'required|string|max:255|unique:bls_items,name',
+            'itemgroup_id' => 'required|exists:bls_itemgroups,id',
             'defaultqty' => 'required|integer|min:1',
             'addtocart' => 'boolean',
-            'itemgroup_id' => 'required|exists:bls_itemgroups,id',
+            
+            // price1 is always required as a baseline
+            'price1' => 'required|numeric|min:0',
+            
+            // Other prices are only required if they are sent with the form
+            'price2' => 'nullable|numeric|min:0',
+            'price3' => 'nullable|numeric|min:0',
+            'price4' => 'nullable|numeric|min:0',
         ]);
          
         // Ensure boolean is correctly cast
         $validated['addtocart'] = $request->boolean('addtocart');
+        
+        // Ensure prices that were not submitted default to 0
+        $validated['price2'] = $validated['price2'] ?? 0;
+        $validated['price3'] = $validated['price3'] ?? 0;
+        $validated['price4'] = $validated['price4'] ?? 0;
 
         // Create the item
         BLSItem::create($validated);
@@ -75,16 +112,18 @@ class BLSItemController extends Controller
         return redirect()->route('systemconfiguration0.items.index')
             ->with('success', 'Item created successfully.');
     }
-
     /**
      * Show the form for editing the specified item.
      */
     public function edit(BLSItem $item)
     {
+        $filteredItemGroups = BLSItemGroup::orderBy('name')           
+            ->get();
+
         // Fetch ALL necessary data and pass it to the view
         return inertia('SystemConfiguration/BillingSetup/Items/Edit', [
             'item' => $item,
-            'itemGroups' => BLSItemGroup::orderBy('name')->get(),
+            'itemGroups' => $filteredItemGroups,
             'pricecategories' => BLSPriceCategory::all(), // <-- FIX: Pass price categories
         ]);
     }
@@ -94,34 +133,29 @@ class BLSItemController extends Controller
      */
     public function update(Request $request, BLSItem $item)
     {
-        // Validate input
+        // --- UPDATED VALIDATION ---
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'price1' => 'required|numeric|min:0',
-            'price2' => 'required|numeric|min:0',
-            'price3' => 'required|numeric|min:0',
-            'price4' => 'required|numeric|min:0',
+            'name' => ['required', 'string', 'max:255', Rule::unique('bls_items')->ignore($item->id)],
+            'itemgroup_id' => 'required|exists:bls_itemgroups,id',
             'defaultqty' => 'required|integer|min:1',
             'addtocart' => 'boolean',
-            'itemgroup_id' => 'required|exists:bls_itemgroups,id',
+
+            'price1' => 'required|numeric|min:0',
+            'price2' => 'nullable|numeric|min:0',
+            'price3' => 'nullable|numeric|min:0',
+            'price4' => 'nullable|numeric|min:0',
         ]);
     
         // Ensure boolean values are set correctly
         $validated['addtocart'] = $request->boolean('addtocart');
-    
-        // If item is linked to stock (has product_id), update only certain fields
+
+        // Prepare the data for update, ensuring prices not sent don't overwrite existing ones with null
+        $updateData = $validated;
+        
+        // If an item is linked to stock, we must restrict what can be updated.
+        // The name and group are managed by the inventory product.
         if ($item->product_id) {
-            $updateData = [
-                'price1' => $validated['price1'],
-                'price2' => $validated['price2'],
-                'price3' => $validated['price3'],
-                'price4' => $validated['price4'],
-                'addtocart' => $validated['addtocart'],
-                'defaultqty' => $validated['defaultqty'],
-            ];
-        } else {
-            // Update all fields if not linked to stock
-            $updateData = $validated;
+            unset($updateData['name'], $updateData['itemgroup_id']);
         }
     
         // Update the item
@@ -169,6 +203,41 @@ class BLSItemController extends Controller
             ->get();
 
         return response()->json(['items' => $items]);
+    }
+
+
+    /**
+     * Quickly update the prices of a single BLSItem.
+     * Intended for AJAX calls from the index page.
+     */
+    public function updatePrices(Request $request, BLSItem $item)
+    {
+        // REMOVED: The check for product_id has been taken out.
+        // if ($item->product_id) { ... }
+
+        // Dynamically build validation rules based on the data sent from the form
+        $rules = [];
+        $priceKeys = ['price1', 'price2', 'price3', 'price4'];
+        
+        foreach ($request->all() as $key => $value) {
+            if (in_array($key, $priceKeys)) {
+                $rules[$key] = 'required|numeric|min:0';
+            }
+        }
+
+        if (empty($rules)) {
+            return response()->json(['success' => false, 'message' => 'No valid price data provided.'], 400);
+        }
+
+        $validated = $request->validate($rules);
+
+        // Update the item with only the validated price fields
+        $item->update($validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Prices updated successfully.',
+        ]);
     }
 
 }

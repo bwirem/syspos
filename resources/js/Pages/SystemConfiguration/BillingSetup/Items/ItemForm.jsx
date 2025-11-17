@@ -4,13 +4,24 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSave, faTimesCircle, faSpinner } from '@fortawesome/free-solid-svg-icons';
 
 export default function ItemForm({ item = null, itemGroups, pricecategories }) {
-    // Use the first price category record if it exists, otherwise provide fallbacks.
-    const priceLabels = pricecategories[0] || {
-        price1: 'Price 1',
-        price2: 'Price 2',
-        price3: 'Price 3',
-        price4: 'Price 4',
-    };
+    
+    // Get the single price category settings record.
+    const priceCategorySettings = pricecategories[0] || {};
+    
+    // --- NEW: Derive the list of active price categories ---
+    const activePriceCategories = [];
+    for (let i = 1; i <= 4; i++) {
+        if (priceCategorySettings[`useprice${i}`]) {
+            activePriceCategories.push({
+                key: `price${i}`, // e.g., 'price1'
+                label: priceCategorySettings[`price${i}`] || `Price ${i}`, // e.g., 'Retail Price'
+            });
+        }
+    }
+    // If no prices are active, default to showing the first one.
+    if (activePriceCategories.length === 0) {
+        activePriceCategories.push({ key: 'price1', label: priceCategorySettings.price1 || 'Price 1' });
+    }
 
     const { data, setData, post, put, processing, errors, reset } = useForm({
         name: item?.name || '',
@@ -38,7 +49,7 @@ export default function ItemForm({ item = null, itemGroups, pricecategories }) {
 
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Basic Info */}
+            {/* Basic Info (No changes) */}
             <div className="p-4 border rounded-md grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                     <label htmlFor="name" className="block text-sm font-medium text-gray-700">Item Name*</label>
@@ -48,7 +59,7 @@ export default function ItemForm({ item = null, itemGroups, pricecategories }) {
                         value={data.name}
                         onChange={e => setData('name', e.target.value)}
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-                        placeholder="e.g., Laptop Pro"
+                        placeholder="e.g., Consultation Fee"
                     />
                     {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
                 </div>
@@ -69,30 +80,31 @@ export default function ItemForm({ item = null, itemGroups, pricecategories }) {
                 </div>
             </div>
 
-            {/* Pricing Info */}
+            {/* --- UPDATED: Dynamic Pricing Info Section --- */}
             <div className="p-4 border rounded-md">
                 <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">Pricing</h3>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    {[1, 2, 3, 4].map(index => (
-                        <div key={index}>
-                            <label htmlFor={`price${index}`} className="block text-sm font-medium text-gray-700">
-                                {priceLabels[`price${index}`]}*
+                    {/* Loop through only the ACTIVE price categories */}
+                    {activePriceCategories.map(category => (
+                        <div key={category.key}>
+                            <label htmlFor={category.key} className="block text-sm font-medium text-gray-700">
+                                {category.label}*
                             </label>
                             <input
-                                id={`price${index}`}
+                                id={category.key}
                                 type="number"
                                 step="0.01"
-                                value={data[`price${index}`]}
-                                onChange={e => setData(`price${index}`, e.target.value)}
+                                value={data[category.key]}
+                                onChange={e => setData(category.key, e.target.value)}
                                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
                             />
-                            {errors[`price${index}`] && <p className="text-red-500 text-xs mt-1">{errors[`price${index}`]}</p>}
+                            {errors[category.key] && <p className="text-red-500 text-xs mt-1">{errors[category.key]}</p>}
                         </div>
                     ))}
                 </div>
             </div>
 
-            {/* Other Settings */}
+            {/* Other Settings (No changes) */}
             <div className="p-4 border rounded-md grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
                 <div>
                     <label htmlFor="defaultqty" className="block text-sm font-medium text-gray-700">Default Quantity*</label>
@@ -119,7 +131,7 @@ export default function ItemForm({ item = null, itemGroups, pricecategories }) {
                 </div>
             </div>
 
-
+            {/* Buttons (No changes) */}
             <div className="flex justify-end items-center gap-4 pt-4 border-t">
                 <Link href={route('systemconfiguration0.items.index')} className="text-gray-700 font-medium">
                     Cancel

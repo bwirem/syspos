@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useForm } from '@inertiajs/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSave, faTimesCircle, faSpinner } from '@fortawesome/free-solid-svg-icons';
+import { faSave, faTimesCircle, faSpinner, faInfoCircle } from '@fortawesome/free-solid-svg-icons';
 
 const CheckboxInput = ({ id, label, checked, onChange }) => (
     <div className="flex items-center pt-6">
@@ -10,15 +10,13 @@ const CheckboxInput = ({ id, label, checked, onChange }) => (
     </div>
 );
 
-export default function ProductForm({ product = null, categories, units }) {
+export default function ProductForm({ product = null, categories, units, activePriceCategories }) {
     const { data, setData, post, put, processing, errors, reset } = useForm({
         name: product?.name || '',
         displayname: product?.displayname || '',
         category_id: product?.category_id || '',
         package_id: product?.package_id || '',
         costprice: product?.costprice || '0.00',
-        prevcost: product?.prevcost || '0.00',
-        averagecost: product?.averagecost || '0.00',
         addtocart: product ? Boolean(product.addtocart) : false,
         hasexpiry: product ? Boolean(product.hasexpiry) : false,
         expirynotice: product ? Boolean(product.expirynotice) : false,
@@ -36,19 +34,23 @@ export default function ProductForm({ product = null, categories, units }) {
         }
     };
 
+    // The controller eager-loads the `blsItem` relationship as `bls_item` in the JSON payload.
+    const sellingPrices = product?.bls_item || {};
+
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Basic Information Section */}
             <div className="p-4 border rounded-md space-y-4">
                 <h3 className="text-lg font-medium leading-6 text-gray-900">Basic Information</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                         <label htmlFor="name" className="block text-sm font-medium text-gray-700">Product Name*</label>
-                        <input id="name" type="text" value={data.name} onChange={e => setData('name', e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm" />
+                        <input id="name" type="text" value={data.name} onChange={e => setData('name', e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm" placeholder="e.g., HP EliteBook 840 G5" />
                         {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
                     </div>
                     <div>
                         <label htmlFor="displayname" className="block text-sm font-medium text-gray-700">Display Name*</label>
-                        <input id="displayname" type="text" value={data.displayname} onChange={e => setData('displayname', e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm" />
+                        <input id="displayname" type="text" value={data.displayname} onChange={e => setData('displayname', e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm" placeholder="e.g., HP EliteBook 14-inch" />
                         {errors.displayname && <p className="text-red-500 text-xs mt-1">{errors.displayname}</p>}
                     </div>
                     <div>
@@ -70,27 +72,39 @@ export default function ProductForm({ product = null, categories, units }) {
                 </div>
             </div>
 
-            <div className="p-4 border rounded-md space-y-4">
-                <h3 className="text-lg font-medium leading-6 text-gray-900">Costing</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Costing & Selling Prices Section */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Costing Section */}
+                <div className="p-4 border rounded-md space-y-4">
+                    <h3 className="text-lg font-medium leading-6 text-gray-900">Costing</h3>
                     <div>
                         <label htmlFor="costprice" className="block text-sm font-medium text-gray-700">Cost Price*</label>
                         <input id="costprice" type="number" step="0.01" value={data.costprice} onChange={e => setData('costprice', e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm" />
                         {errors.costprice && <p className="text-red-500 text-xs mt-1">{errors.costprice}</p>}
                     </div>
-                    <div>
-                        <label htmlFor="prevcost" className="block text-sm font-medium text-gray-700">Previous Cost</label>
-                        <input id="prevcost" type="number" step="0.01" value={data.prevcost} onChange={e => setData('prevcost', e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm" />
-                        {errors.prevcost && <p className="text-red-500 text-xs mt-1">{errors.prevcost}</p>}
+                </div>
+
+                {/* Selling Prices Display Section */}
+                <div className="p-4 border rounded-md space-y-4 bg-gray-50">
+                    <h3 className="text-lg font-medium leading-6 text-gray-900">Selling Prices (Read-Only)</h3>
+                    <div className="space-y-2">
+                        {activePriceCategories.map(category => (
+                            <div key={category.key} className="flex justify-between items-center text-sm">
+                                <span className="text-gray-600 font-medium">{category.label}:</span>
+                                <span className="font-semibold text-gray-800">
+                                    {parseFloat(sellingPrices[category.key] || 0).toFixed(2)}
+                                </span>
+                            </div>
+                        ))}
                     </div>
-                    <div>
-                        <label htmlFor="averagecost" className="block text-sm font-medium text-gray-700">Average Cost</label>
-                        <input id="averagecost" type="number" step="0.01" value={data.averagecost} onChange={e => setData('averagecost', e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm" />
-                        {errors.averagecost && <p className="text-red-500 text-xs mt-1">{errors.averagecost}</p>}
+                    <div className="mt-2 text-xs text-gray-500 flex items-start gap-2">
+                        <FontAwesomeIcon icon={faInfoCircle} className="mt-0.5" />
+                        <span>Selling prices are managed in "Billing Items & Services" after saving.</span>
                     </div>
                 </div>
             </div>
 
+            {/* Settings Section */}
             <div className="p-4 border rounded-md space-y-4">
                 <h3 className="text-lg font-medium leading-6 text-gray-900">Settings</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -113,6 +127,7 @@ export default function ProductForm({ product = null, categories, units }) {
                 </div>
             </div>
 
+            {/* Buttons */}
             <div className="flex justify-end items-center gap-4 pt-4 border-t">
                 <Link href={route('systemconfiguration2.products.index')} className="text-gray-700 font-medium">Cancel</Link>
                 <button type="submit" disabled={processing} className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-md flex items-center gap-2 disabled:bg-blue-300">
