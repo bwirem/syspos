@@ -6,7 +6,9 @@ use App\Http\Controllers\Traits\HandlesVoiding;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 use App\Models\BILSale;
+use App\Models\FacilityOption;
 use Illuminate\Support\Facades\Validator;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Inertia\Inertia;
 
 class BilSalesHistoryController extends Controller
@@ -113,5 +115,41 @@ class BilSalesHistoryController extends Controller
             \Log::error('Failed to void sale: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             return back()->with('error', 'Failed to void sale.');
         }
+    }
+
+    /**
+     * Generate and stream the Invoice/Receipt PDF.
+     */
+    public function printInvoice(BILSale $sale)
+    {
+        $sale->load(['customer', 'items.item']);
+
+        // Fetch Facility Details
+        $facility = FacilityOption::first(); 
+
+        $pdf = Pdf::loadView('pdfs.sale_invoice', [
+            'sale' => $sale,
+            'facility' => $facility, // <--- Pass variable to view
+        ]);
+
+        return $pdf->stream('invoice_' . ($sale->invoiceno ?? $sale->receiptno) . '.pdf');
+    }
+
+    /**
+     * Generate and stream the Delivery Note PDF.
+     */
+    public function printDeliveryNote(BILSale $sale)
+    {
+        $sale->load(['customer', 'items.item']);
+
+        // Fetch Facility Details
+        $facility = FacilityOption::first();
+
+        $pdf = Pdf::loadView('pdfs.sale_delivery_note', [
+            'sale' => $sale,
+            'facility' => $facility, // <--- Pass variable to view
+        ]);
+
+        return $pdf->stream('delivery_note_' . ($sale->invoiceno ?? $sale->receiptno) . '.pdf');
     }
 }

@@ -146,7 +146,9 @@ Route::middleware('auth')->group(function () {
         Route::get('/', [BilSalesHistoryController::class, 'saleHistory'])->name('salehistory'); 
         Route::get('/{sale}/preview', [BilSalesHistoryController::class, 'previewSale'])->name('preview');
         Route::put('/{sale}', [BilSalesHistoryController::class, 'postVoidSale'])->name('voidsale');  
-
+        // Add these two new routes for printing
+        Route::get('/{sale}/print-invoice', [BilSalesHistoryController::class, 'printInvoice'])->name('print.invoice');
+        Route::get('/{sale}/print-delivery', [BilSalesHistoryController::class, 'printDeliveryNote'])->name('print.delivery');
     });
 
     // Pay Bills routes

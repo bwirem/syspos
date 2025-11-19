@@ -16,6 +16,13 @@ class FacilityOption extends Model
     // Add attributes to $fillable array for mass assignment
     protected $fillable = [  
         'name',  
+        'address', // Added
+        'phone',   // Added
+        'email',   // Added
+        'website', // Added
+        'tin',     // Added
+        'vrn',     // Added
+        'logo_path', // Added
         'chart_of_account_id',
         'affectstockatcashier',
         'doubleentryissuing',

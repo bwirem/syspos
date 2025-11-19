@@ -1,10 +1,10 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
-import React, { useState, useCallback } from 'react'; // Added useState and useCallback
+import React, { useState, useCallback } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimesCircle, faTrash } from '@fortawesome/free-solid-svg-icons'; // Added faTrash
+import { faTimesCircle, faTrash, faFileInvoice, faTruck } from '@fortawesome/free-solid-svg-icons'; // Added faFileInvoice, faTruck
 import '@fortawesome/fontawesome-svg-core/styles.css';
-import Modal from '@/Components/CustomModal.jsx'; // Import the Modal component
+import Modal from '@/Components/CustomModal.jsx';
 
 export default function SalePreview({ auth, sale }) {
     // useForm is now dedicated to handling the void action
@@ -153,6 +153,29 @@ export default function SalePreview({ auth, sale }) {
 
                             {/* Action Buttons Section */}
                             <div className="flex justify-end space-x-3 border-t border-gray-200 pt-6 mt-6">
+                                
+                                {/* PRINT DELIVERY NOTE BUTTON */}
+                                <a 
+                                    href={route('billing3.print.delivery', sale.id)} 
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                                >
+                                    <FontAwesomeIcon icon={faTruck} className="mr-2 h-4 w-4 text-blue-600" />
+                                    Delivery Note
+                                </a>
+
+                                {/* PRINT INVOICE/RECEIPT BUTTON */}
+                                <a 
+                                    href={route('billing3.print.invoice', sale.id)} 
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                                >
+                                    <FontAwesomeIcon icon={faFileInvoice} className="mr-2 h-4 w-4 text-green-600" />
+                                    {sale.invoiceno ? 'Print Invoice' : 'Print Receipt'}
+                                </a>
+
                                 <Link href={route('billing3.salehistory')} className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
                                     <FontAwesomeIcon icon={faTimesCircle} className="mr-2 h-4 w-4" />
                                     Close
