@@ -64,6 +64,7 @@ use App\Http\Controllers\FacilityOptionController;
 use App\Http\Controllers\UserGroupController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\UserPermissionController;
+use App\Http\Controllers\UserGroupPrinterController;
 
 
 use App\Http\Controllers\Reports\SalesBillingController;
@@ -107,19 +108,24 @@ Route::middleware('auth')->group(function () {
 
      // Post Bills routes
      Route::prefix('billing1')->name('billing1.')->group(function () {
+        
         Route::get('/', [BilPostController::class, 'index'])->name('index');
         Route::get('/create', [BilPostController::class, 'create'])->name('create');
+        Route::get('/{order}/edit', [BilPostController::class, 'edit'])->name('edit');
 
         // Add these two new routes
         Route::post('/confirm-save', [BilPostController::class, 'confirmSave'])->name('confirmSave');
         Route::post('/confirm-payment', [BilPostController::class, 'confirmPayment'])->name('confirmPayment');
+        Route::get('/confirm-save', [BilPostController::class, 'create'])->name('create');
+        Route::get('/confirm-payment', [BilPostController::class, 'create'])->name('create');
 
         // ADD THESE TWO NEW ROUTES FOR THE EDIT FLOW
         Route::post('/confirm-update/{order}', [BilPostController::class, 'confirmUpdate'])->name('confirmUpdate');
         Route::post('/confirm-existing-payment/{order}', [BilPostController::class, 'confirmExistingPayment'])->name('confirmExistingPayment');
+        Route::get('/confirm-update/{order}', [BilPostController::class, 'edit'])->name('edit');
+        Route::get('/confirm-existing-payment/{order}', [BilPostController::class, 'edit'])->name('edit');
 
-        Route::post('/', [BilPostController::class, 'store'])->name('store');
-        Route::get('/{order}/edit', [BilPostController::class, 'edit'])->name('edit');
+        Route::post('/', [BilPostController::class, 'store'])->name('store');        
         Route::put('/{order}', [BilPostController::class, 'update'])->name('update');
         Route::delete('/{order}', [BilPostController::class, 'destroy'])->name('destroy');
     
@@ -127,6 +133,11 @@ Route::middleware('auth')->group(function () {
         Route::post('/pay', [BilPostController::class, 'processPayment'])->name('pay');  // POST route with no parameter
         Route::put('/pay/{order}', [BilPostController::class, 'processPayment'])->name('pay_update');  // PUT route with {order} param and a different name.
     
+
+        // web.php
+        Route::get('/invoice-preview', [BilPostController::class, 'invoicePreview'])
+        ->name('invoice_preview');
+
     });
 
      // Pay Bills routes
@@ -930,6 +941,16 @@ Route::middleware('auth')->group(function () {
             // New route for fetching modules and items
             Route::get('/modules-and-items', [UserPermissionController::class, 'getModulesAndItems'])->name('modulesAndItems');
         });   
+
+        // --- UserGroupPrinter Routes ---
+        Route::prefix('usergroupprinters')->name('usergroupprinters.')->group(function () {
+            Route::get('/', [UserGroupPrinterController::class, 'index'])->name('index');
+            Route::get('/create', [UserGroupPrinterController::class, 'create'])->name('create');
+            Route::post('/', [UserGroupPrinterController::class, 'store'])->name('store');
+            Route::get('/{usergroupprinter}/edit', [UserGroupPrinterController::class, 'edit'])->name('edit');
+            Route::put('/{usergroupprinter}', [UserGroupPrinterController::class, 'update'])->name('update');
+            Route::delete('/{usergroupprinter}', [UserGroupPrinterController::class, 'destroy'])->name('destroy');
+        });
 
     });
     

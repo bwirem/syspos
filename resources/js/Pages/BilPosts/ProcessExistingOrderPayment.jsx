@@ -1,10 +1,10 @@
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, useForm, Link, router } from '@inertiajs/react';
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus, faMoneyBill, faTimesCircle, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
-import axios from 'axios';
+import axios from 'axios'; // Updated: Import Axios
 import Modal from '../../Components/CustomModal.jsx';
 
 // Reusable helper functions
@@ -23,12 +23,13 @@ const formatCurrency = (value) => {
     });
 };
 
-export default function ProcessExistingOrderPayment({ auth, orderData, originalOrder,paymentMethods }) {
+export default function ProcessExistingOrderPayment({ auth, orderData, originalOrder, paymentMethods }) {
 
-    // --- NEW: DYNAMIC STORAGE KEY ---
+    // Dynamic storage key for this specific order
     const STORAGE_KEY = `pendingOrderChanges_${orderData.id}`;
 
-    const { data, setData, post, errors, processing } = useForm({
+    // Destructure setError and clearErrors, remove 'post'
+    const { data, setData, errors, setError, clearErrors, reset } = useForm({
         ...orderData,
         customer_id: originalOrder.customer_id,
         stage: originalOrder.stage,
@@ -37,7 +38,13 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
         paid_amount: orderData.total,
     });
     
+    // Local loading state
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // UI States
     const [amountDisplay, setAmountDisplay] = useState(formatCurrency(orderData.total || 0));
+    
+    // Customer Search States
     const [customerSearchQuery, setCustomerSearchQuery] = useState(
         originalOrder.customer?.customer_type === 'company'
             ? originalOrder.customer?.company_name
@@ -47,20 +54,25 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
     const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
     const [isCustomerSearchLoading, setIsCustomerSearchLoading] = useState(false);
     const customerDropdownRef = useRef(null);
+
+    // Modal States
     const [newCustomerModalOpen, setNewCustomerModalOpen] = useState(false);
     const [newCustomer, setNewCustomer] = useState({ 
         customer_type: 'individual', first_name: '', other_names: '', surname: '', company_name: '', email: '', phone: '' 
     });
     const [newCustomerModalLoading, setNewCustomerModalLoading] = useState(false);
     const [alertModal, setAlertModal] = useState({ isOpen: false, message: '' });
-    const [showSuccessModal, setShowSuccessModal] = useState(false); // <-- NEW SUCCESS MODAL STATE   
-    const [paymentConfirmationModal, setPaymentConfirmationModal] = useState({ isOpen: false }); // <-- NEW STATE
+    const [showSuccessModal, setShowSuccessModal] = useState(false);  
+    const [paymentConfirmationModal, setPaymentConfirmationModal] = useState({ isOpen: false });
 
 
+    // --- 1. PAYMENT AMOUNT LOGIC ---
     useEffect(() => {
         if (data.sale_type === 'credit') {
             setData('paid_amount', 0);
             setAmountDisplay(formatCurrency(0));
+        } else if (data.sale_type === 'partial') {
+            // Keep current amount
         } else {
             setData('paid_amount', data.total);
             setAmountDisplay(formatCurrency(data.total));
@@ -73,6 +85,7 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
         setAmountDisplay(formatCurrency(value));
     };
 
+    // --- 2. CUSTOMER SEARCH LOGIC ---
     const fetchCustomers = useCallback((query) => {
         if (!query.trim()) { setCustomerSearchResults([]); return; }
         setIsCustomerSearchLoading(true);
@@ -84,11 +97,15 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
 
     const debouncedCustomerSearch = useMemo(() => debounce(fetchCustomers, 300), [fetchCustomers]);
 
+    // Update search box if external data changes, but respect user input
     useEffect(() => {
         const originalName = originalOrder.customer?.customer_type === 'company' ? originalOrder.customer.company_name : `${originalOrder.customer?.first_name || ''} ${originalOrder.customer?.surname || ''}`.trim();
-        if (customerSearchQuery !== originalName) {
-            if (customerSearchQuery.trim()) debouncedCustomerSearch(customerSearchQuery);
-            else setCustomerSearchResults([]);
+        
+        // Only trigger search if the query is different from the loaded original name (meaning user typed something)
+        if (customerSearchQuery !== originalName && customerSearchQuery.trim()) {
+             debouncedCustomerSearch(customerSearchQuery);
+        } else {
+            setCustomerSearchResults([]);
         }
     }, [customerSearchQuery, debouncedCustomerSearch, originalOrder]);
 
@@ -107,6 +124,7 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
         setShowCustomerDropdown(false);
     };
     
+    // --- 3. NEW CUSTOMER LOGIC ---
     const handleNewCustomerClick = () => {
         setNewCustomerModalOpen(true);
         setNewCustomer({ customer_type: 'individual', first_name: '', other_names: '', surname: '', company_name: '', email: '', phone: '' });
@@ -129,27 +147,61 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
         }
     };   
    
-
+    // --- 4. SUBMISSION LOGIC (AXIOS) ---
     const proceedWithSubmission = () => {
-        post(route('billing1.pay', { order: orderData.id }), {
-            onSuccess: () => {
-                sessionStorage.removeItem(STORAGE_KEY); // <-- CLEAR STORAGE ON SUCCESS            
+        setIsSubmitting(true);
+        clearErrors();
+
+        // Ensure we pass the order ID in the route for the Model Binding to work
+        axios.post(route('billing1.pay', { order: orderData.id }), data)
+            .then((response) => {
+                // --- SUCCESS ---
+                sessionStorage.removeItem(STORAGE_KEY);
+
+                // Handle Printing (Preview URL vs Silent Print)
+                if (response.data.invoice_url) {
+                    window.open(response.data.invoice_url, '_blank');
+                }
+            
                 setShowSuccessModal(true);
+                reset();
+
                 setTimeout(() => {
                     router.visit(route('billing1.index'));
                 }, 1500);
-            },
-            onError: (formErrors) => {
-                const errorMessages = Object.values(formErrors).join('\n');
-                setAlertModal({ isOpen: true, message: `Payment failed:\n${errorMessages}` });
-            }
-        });
+            })
+            .catch((error) => {
+                // --- ERROR ---
+                setIsSubmitting(false);
+
+                if (error.response && error.response.status === 422) {
+                    // Map Laravel validation errors to UI
+                    const serverErrors = error.response.data.errors;
+                    Object.keys(serverErrors).forEach((key) => {
+                        setError(key, serverErrors[key][0]);
+                    });
+                    setAlertModal({ isOpen: true, message: 'Please check the input fields for errors.' });
+                } else {
+                    setAlertModal({ 
+                        isOpen: true, 
+                        message: error.response?.data?.message || `Payment failed: ${error.message}` 
+                    });
+                }
+            });
     };
 
+    // --- 5. PARTIAL PAYMENT LOGIC ---
     const handlePaymentConfirmation = () => {
         setPaymentConfirmationModal({ isOpen: false });
+        
+        // Switch to partial, but DO NOT submit yet.
+        // Allow user to confirm or change the customer.
         setData('sale_type', 'partial');
-        setTimeout(() => proceedWithSubmission(), 50);
+        
+        setAlertModal({ 
+            isOpen: true, 
+            message: 'Switched to Partial Payment. Please confirm the customer details before finishing.' 
+        });
     };
 
     const submitPayment = (e) => {
@@ -159,6 +211,7 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
             return;
         }
 
+        // Check if trying to pay cash but amount is less than total
         if (data.sale_type === 'cash' && parseFloat(data.paid_amount) < data.total) {
             setPaymentConfirmationModal({ isOpen: true });
             return;
@@ -280,8 +333,12 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
 
                             <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
                                 <Link href={route('billing1.edit', { order: orderData.id })} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded">Back to Edit</Link>
-                                <button type="submit" disabled={processing} className="px-4 py-2 bg-green-600 text-white rounded flex items-center">
-                                    {processing ? <FontAwesomeIcon icon={faSpinner} spin className="mr-2" /> : <FontAwesomeIcon icon={faMoneyBill} className="mr-2" />}
+                                <button 
+                                    type="submit" 
+                                    disabled={isSubmitting} 
+                                    className="px-4 py-2 bg-green-600 text-white rounded flex items-center hover:bg-green-700 disabled:opacity-50"
+                                >
+                                    {isSubmitting ? <FontAwesomeIcon icon={faSpinner} spin className="mr-2" /> : <FontAwesomeIcon icon={faMoneyBill} className="mr-2" />}
                                     Confirm Payment
                                 </button>
                             </div>
@@ -304,7 +361,7 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
                 isOpen={showSuccessModal}
                 title="Success"
                 isAlert={true}
-                hideCloseButton={true} // A good UX is to prevent closing during the auto-redirect
+                hideCloseButton={true} 
             >
                 <div className="text-center">
                     <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
@@ -314,7 +371,6 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
                 </div>
             </Modal>
 
-            {/* --- NEW CONFIRMATION MODAL --- */}
             <Modal
                 isOpen={paymentConfirmationModal.isOpen}
                 onClose={() => setPaymentConfirmationModal({ isOpen: false })}

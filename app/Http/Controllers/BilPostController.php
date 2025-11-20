@@ -8,13 +8,14 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 
 use App\Models\{
     BILOrder, BILOrderItem, BILSale, BILReceipt, BILInvoice, BILInvoiceLog,
     BILInvoicePayment, BILInvoicePaymentDetail, BILDebtor, BILDebtorLog,
     BILCollection, IVRequistion, IVRequistionItem, SIV_Store,
-    FacilityOption, BLSPaymentType, BLSPriceCategory
+    FacilityOption, BLSPaymentType, BLSPriceCategory,UserGroupPrinter
 };
 
 use App\Enums\{
@@ -184,15 +185,13 @@ class BilPostController extends Controller
             'paymentMethods' => BLSPaymentType::all(),
         ]);
     }
-
+   
     /**
-     * Processes the payment for a new or existing order.
-     * This is the main endpoint that finalizes a sale.
+     * Processes the payment and handles Printing logic (Silent vs Preview).
      */
     public function processPayment(Request $request, BILOrder $order = null)
     {
-
-        // we manually check the request body for an ID and load the order.
+        // 1. Manual ID Check (Same as before)
         if (!$order) {
             $orderId = $request->input('id') ?? $request->input('order');
             if ($orderId) {
@@ -200,6 +199,7 @@ class BilPostController extends Controller
             }
         }
 
+        // 2. Validation (Same as before)
         $validated = $request->validate([
             'orderitems' => 'required|array|min:1',
             'orderitems.*.id' => 'nullable|exists:bil_orderitems,id',
@@ -214,19 +214,130 @@ class BilPostController extends Controller
         ]);
 
         try {
-            DB::transaction(function () use ($validated, $order) {
+            // 3. Database Transaction (Save Sale)
+            $sale = DB::transaction(function () use ($validated, $order) {
                 $finalOrder = $this->createOrUpdateFinalOrder($validated, $order);
-                $this->postBills($validated, $finalOrder);
+                return $this->postBills($validated, $finalOrder);
             });
-            return redirect()->route('billing1.index')->with('success', 'Payment processed successfully.');
+
+            session(['latest_sale_id' => $sale->id]);
+
+            // ============================================================
+            // 4. PRINTING LOGIC START
+            // ============================================================
+            
+            // Get Context: Current User Group & Machine Name
+            $userGroupId = Auth::user()->usergroup_id;
+            $machineName = gethostname(); 
+
+            // Query Configuration
+            // We look for a config for this Group + DocType + (Specific Machine OR Any Machine)
+            $printerConfig = UserGroupPrinter::where('usergroup_id', $userGroupId)
+                ->where('documenttypecode', 'invoice') 
+                ->where('autoprint', true) // Must be set to Auto Print
+                ->where(function ($query) use ($machineName) {
+                    $query->where('machinename', $machineName)
+                          ->orWhere('machinename', '')
+                          ->orWhereNull('machinename');
+                })
+                // Order by length of machinename desc so specific matches ("PC-01") come before generic matches ("")
+                ->orderByRaw('LENGTH(machinename) DESC') 
+                ->first();
+
+            $shouldPrintSilently = false;
+            $targetPrinterName = null;
+
+            if ($printerConfig) {
+                $targetPrinterName = $printerConfig->printername;
+                // If printtoscreen is FALSE (0), we print silently in backend
+                // If printtoscreen is TRUE (1), we send URL to frontend
+                $shouldPrintSilently = !$printerConfig->printtoscreen;
+            }
+
+            // ------------------------------------------------------------
+            // HANDLE SILENT BACKEND PRINTING
+            // ------------------------------------------------------------
+            if ($shouldPrintSilently) {
+                
+                // A. Generate PDF
+                $facility = FacilityOption::first();
+                $pdf = Pdf::loadView('pdfs.sale_invoice', [
+                    'sale' => $sale,
+                    'facility' => $facility,
+                ]);
+
+                // B. Save to Temp File
+                $fileName = 'invoice_' . $sale->id . '_' . time() . '.pdf';
+                $directory = storage_path('app/public/temp_invoices');
+                
+                if (!file_exists($directory)) {
+                    mkdir($directory, 0755, true);
+                }
+                
+                $filePath = $directory . '/' . $fileName;
+                $pdf->save($filePath);
+
+                // C. Send to Printer (SumatraPDF)
+                $this->printToBackendPrinter($filePath, $targetPrinterName);
+            }
+
+            // ============================================================
+            // 5. RETURN RESPONSE
+            // ============================================================
+
+            // If we printed silently, invoice_url is null (frontend does nothing).
+            // If we need preview, invoice_url is the route.
+            $invoiceUrl = $shouldPrintSilently ? null : route('billing1.invoice_preview');
+            
+            $msg = 'Payment processed successfully.';
+            if ($shouldPrintSilently) {
+                $msg .= ' Sent to printer: ' . $targetPrinterName;
+            }
+
+            return response()->json([
+                'success' => true,
+                'invoice_url' => $invoiceUrl,
+                'message' => $msg,
+            ]);
+
         } catch (\Exception $e) {
-            Log::error('Error during payment processing:', [
+            Log::error('Error during payment/printing:', [
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
                 'order_id' => $order?->id,
-                'request_data' => $request->all(),
             ]);
-            return back()->with('error', 'An unexpected error occurred during payment processing.');
+            
+            return response()->json(['message' => 'An unexpected error occurred: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Helper: Executes the printing command
+     */
+    /**
+     * Helper: Executes the printing command
+     */
+    private function printToBackendPrinter($filePath, $printerName)
+    {
+        $printerExe = public_path('SumatraPDF.exe');
+        
+        if (!file_exists($printerExe)) {
+            Log::error("SumatraPDF.exe not found at: " . $printerExe);
+            return; 
+        }
+
+        if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+            // WINDOWS FIX: 
+            // The syntax is: start /B "" "PathToExe" Arguments
+            // We add an empty pair of quotes "" after /B so Windows knows the next quoted string is the command, not the title.
+            
+            $command = "start /B \"\" \"{$printerExe}\" -print-to \"{$printerName}\" -silent \"{$filePath}\"";
+            
+            pclose(popen($command, "r"));
+        } else {
+            // Linux/Mac fallback
+            $linuxCmd = "lp -d \"{$printerName}\" \"{$filePath}\"";
+            exec($linuxCmd);
         }
     }
 
@@ -268,7 +379,7 @@ class BilPostController extends Controller
     /**
      * Orchestrates all accounting and inventory posting after a sale is finalized.
      */
-    private function postBills(array $data, BILOrder $order): void
+    private function postBills(array $data, BILOrder $order):BILSale
     {
         $transdate = Carbon::now();
         $totalDue = $data['total'];
@@ -297,6 +408,9 @@ class BilPostController extends Controller
             $paymentSource = $isCreditSale ? PaymentSources::InvoicePayment->value : PaymentSources::CashSale->value;
             $this->createCollectionRecord($data, $transdate, $receiptNo, $paymentSource);
         }
+
+        return $sale;
+        
     }
 
     /**
@@ -461,4 +575,29 @@ class BilPostController extends Controller
             $paymentMethodColumn => $data['paid_amount'],
         ]);
     }
+
+
+
+    public function invoicePreview()
+    {
+        $saleId = session('latest_sale_id');
+        if (!$saleId) {
+            return redirect()->route('billing1.index')->with('error', 'No sale to display.');
+        }
+
+        $sale = BILSale::findOrFail($saleId);
+        $facility = FacilityOption::first();
+
+        $pdf = Pdf::loadView('pdfs.sale_invoice', [
+            'sale' => $sale,
+            'facility' => $facility,
+        ]);
+
+        // Send PDF with correct headers so browser opens it
+        return response($pdf->output(), 200)
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'inline; filename="invoice_' . ($sale->invoiceno ?? $sale->receiptno) . '.pdf"');
+    }
+
+
 }
