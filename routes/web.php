@@ -116,14 +116,14 @@ Route::middleware('auth')->group(function () {
         // Add these two new routes
         Route::post('/confirm-save', [BilPostController::class, 'confirmSave'])->name('confirmSave');
         Route::post('/confirm-payment', [BilPostController::class, 'confirmPayment'])->name('confirmPayment');
-        Route::get('/confirm-save', [BilPostController::class, 'create'])->name('create');
-        Route::get('/confirm-payment', [BilPostController::class, 'create'])->name('create');
+        Route::get('/confirm-save', [BilPostController::class, 'create'])->name('confirm.save');
+        Route::get('/confirm-payment', [BilPostController::class, 'create'])->name('confirm.payment');
 
         // ADD THESE TWO NEW ROUTES FOR THE EDIT FLOW
         Route::post('/confirm-update/{order}', [BilPostController::class, 'confirmUpdate'])->name('confirmUpdate');
         Route::post('/confirm-existing-payment/{order}', [BilPostController::class, 'confirmExistingPayment'])->name('confirmExistingPayment');
-        Route::get('/confirm-update/{order}', [BilPostController::class, 'edit'])->name('edit');
-        Route::get('/confirm-existing-payment/{order}', [BilPostController::class, 'edit'])->name('edit');
+        Route::get('/confirm-update/{order}', [BilPostController::class, 'edit'])->name('confirm.update');
+        Route::get('/confirm-existing-payment/{order}', [BilPostController::class, 'edit'])->name('confirm.existing.payment');
 
         Route::post('/', [BilPostController::class, 'store'])->name('store');        
         Route::put('/{order}', [BilPostController::class, 'update'])->name('update');
