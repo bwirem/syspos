@@ -15,7 +15,7 @@ class UserGroupPrinterSeeder extends Seeder
     {
         // 1. Get a valid User Group ID (e.g., 'Admin' or the first one found)
         // Make sure you have run the UserGroup seeder first!
-        $userGrcclearoup = UserGroup::first();
+        $userGroup = UserGroup::first();
 
         if (!$userGroup) {
             $this->command->warn('No UserGroups found. Please seed UserGroups first.');
