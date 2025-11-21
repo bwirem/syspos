@@ -642,6 +642,7 @@ Route::middleware('auth')->group(function () {
             Route::get('/{item}/edit', [BLSItemController::class, 'edit'])->name('edit'); 
             Route::put('/{item}', [BLSItemController::class, 'update'])->name('update'); 
             Route::get('/search', [BLSItemController::class, 'search'])->name('search'); 
+            Route::delete('/{item}', [BLSItemController::class, 'destroy'])->name('destroy');
             
             // --- NEW ROUTE FOR QUICK PRICE UPDATE ---
             Route::patch('/{item}/update-prices', [BLSItemController::class, 'updatePrices'])->name('update-prices');

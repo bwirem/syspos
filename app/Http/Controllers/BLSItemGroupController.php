@@ -2,6 +2,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\BLSItemGroup;
+use App\Models\BLSItem;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 
 class BLSItemGroupController extends Controller
@@ -19,7 +21,7 @@ class BLSItemGroupController extends Controller
         }
 
         // Paginate the results
-        $itemgroups = $query->orderBy('created_at', 'desc')->paginate(10);
+        $itemgroups = $query->orderBy('name', 'asc')->paginate(10);
 
         return inertia('SystemConfiguration/BillingSetup/ItemGroups/Index', [
             'itemgroups' => $itemgroups,
@@ -84,12 +86,24 @@ class BLSItemGroupController extends Controller
      */
     public function destroy(BLSItemGroup $itemgroup)
     {
-        $itemgroup->delete();
+        // 1. Check if this group has any items assigned to it
+        if (BLSItem::where('itemgroup_id', $itemgroup->id)->exists()) {
+            return redirect()->route('systemconfiguration0.itemgroups.index')
+                ->with('error', 'Unable to delete: This group contains items.');
+        }
+
+        // 2. Attempt deletion
+        try {
+            $itemgroup->delete();
+        } catch (QueryException $e) {
+            // Catches database foreign key constraints
+            return redirect()->route('systemconfiguration0.itemgroups.index')
+                ->with('error', 'Unable to delete: Database integrity constraint violation.');
+        }
 
         return redirect()->route('systemconfiguration0.itemgroups.index')
-            ->with('success', 'Item deleted successfully.');
+            ->with('success', 'Item Group deleted successfully.');
     }
-
   
       /**
      * Search for items based on query.

@@ -2,6 +2,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\SIV_ProductCategory;
+use App\Models\SIV_Product;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 
 class SIV_ProductCategoryController extends Controller
@@ -19,7 +21,7 @@ class SIV_ProductCategoryController extends Controller
         }
 
         // Paginate the results
-        $categories = $query->orderBy('created_at', 'desc')->paginate(10);
+        $categories = $query->orderBy('name', 'asc')->paginate(10);
 
         return inertia('SystemConfiguration/InventorySetup/Categories/Index', [
             'categories' => $categories,
@@ -82,12 +84,25 @@ class SIV_ProductCategoryController extends Controller
     /**
      * Remove the specified item from storage.
      */
+    
     public function destroy(SIV_ProductCategory $category)
     {
-        $category->delete();
+        // Check if any product is currently assigned to this category
+        if (SIV_Product::where('category_id', $category->id)->exists()) {
+            return redirect()->route('systemconfiguration2.categories.index')
+                ->with('error', 'Unable to delete: This category is assigned to one or more products.');
+        }
+
+        try {
+            $category->delete();
+        } catch (QueryException $e) {
+            // Handles database-level Foreign Key constraints
+            return redirect()->route('systemconfiguration2.categories.index')
+                ->with('error', 'Unable to delete: Database integrity constraint violation.');
+        }
 
         return redirect()->route('systemconfiguration2.categories.index')
-            ->with('success', 'Item deleted successfully.');
+            ->with('success', 'Category deleted successfully.');
     }
 
     /**

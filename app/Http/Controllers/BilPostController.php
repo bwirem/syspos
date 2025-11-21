@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Traits\HandlesOrdering;
 use App\Http\Controllers\Traits\GeneratesUniqueNumbers;
+use App\Services\InventoryService; // Import the service
+
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -14,8 +16,8 @@ use Carbon\Carbon;
 use App\Models\{
     BILOrder, BILOrderItem, BILSale, BILReceipt, BILInvoice, BILInvoiceLog,
     BILInvoicePayment, BILInvoicePaymentDetail, BILDebtor, BILDebtorLog,
-    BILCollection, IVRequistion, IVRequistionItem, SIV_Store,
-    FacilityOption, BLSPaymentType, BLSPriceCategory,UserGroupPrinter
+    BILCollection, IVRequistion, IVRequistionItem,IVIssue ,SIV_Store,
+    FacilityOption, BLSPaymentType, BLSPriceCategory,UserGroupPrinter, BLSCustomer
 };
 
 use App\Enums\{
@@ -440,13 +442,24 @@ class BilPostController extends Controller
      */
     private function createInventoryRequisition(array $data, Carbon $transdate, $orderItems, BILSale $sale): void
     {
+        $inventoryService = new InventoryService();
+        // Check facility option for affecting stock at cashier
+        $facilityOptions = FacilityOption::first();
+        $affectstockatcashier = $facilityOptions?->affectstockatcashier ?? true;
+        
+        $stage = 3;// Ready for inventory issue
+        if ($affectstockatcashier) {
+            $stage = 4; // Directly issued
+        }
+
+
         $requisition = IVRequistion::create([
             'sale_id' => $sale->id, 
             'transdate' => $transdate,
             'tostore_id' => $data['customer_id'],
             'tostore_type' => StoreType::Customer->value,
             'fromstore_id' => $data['store_id'],
-            'stage' => 3, // Ready for inventory issue
+            'stage' => $stage, 
             'total' => 0,
             'user_id' => Auth::id(),
         ]);
@@ -461,10 +474,34 @@ class BilPostController extends Controller
                 ];
             }
         }
+
         $requisition->requistionitems()->createMany($requisitionItemsData);
 
         $costTotal = $requisition->requistionitems()->sum(DB::raw('quantity * price'));
         $requisition->update(['total' => $costTotal]);
+
+        
+        
+        if (!$affectstockatcashier) {
+            return; // Skip inventory issue if not affecting stock at cashier
+        }
+
+        // Generate a unique delivery number
+        $deliveryNo = $this->generateUniqueNumber(IVIssue::class, 'delivery_no', 'ISS');
+        $tostore_type = StoreType::Customer->value;
+        $customer = BLSCustomer::find($data['customer_id']); 
+        $tostore_name = $customer->company_name ?? trim("{$customer->first_name} {$customer->surname}");
+         
+         // Perform the issuance
+        $inventoryService->issue(
+            $data['store_id'],
+            $data['customer_id'],
+            $tostore_type,
+            $tostore_name,
+            $requisitionItemsData,
+            $deliveryNo,
+            null // Expiry date is not handled in this part of the form
+        );
     }
 
     /**

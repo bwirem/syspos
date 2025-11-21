@@ -61,7 +61,7 @@ class ProductsImport implements ToModel, WithHeadingRow, WithValidation
                 'product_id'   => $product->id,
                 'itemgroup_id' => $itemGroup->id,
                 'name'         => $row['name'],
-                'price1'       => 0,
+                'price1'       => $row['price1'],
                 'price2'       => 0,
                 'price3'       => 0,
                 'price4'       => 0,
@@ -83,6 +83,7 @@ class ProductsImport implements ToModel, WithHeadingRow, WithValidation
             'unit_name' => 'required|string|exists:siv_packagings,name',
             'costprice' => 'required|numeric|min:0',
             'reorderlevel' => 'required|integer|min:0',
+            'price1' => 'required|numeric|min:0',
         ];
     }
 }

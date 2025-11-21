@@ -8,6 +8,14 @@ use App\Models\BLSItem;
 use App\Models\BLSItemGroup; 
 use App\Models\BLSPriceCategory;
 use App\Models\BILProductCostLog;
+
+use App\Models\IVIssueItem;
+use App\Models\IVReceiveItem;
+use App\Models\IVNormalAdjustmentItem;
+use App\Models\IVPhysicalInventoryItem;
+use App\Models\IVRequistionItem;
+
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -61,7 +69,12 @@ class SIV_ProductController extends Controller
                   ->orWhere('displayname', 'like', '%' . $search . '%');
         }
 
-        $products = $query->orderBy('name', 'asc')->paginate(10)->withQueryString();
+        $query->orderBy(
+            SIV_ProductCategory::select('name')
+                ->whereColumn('siv_productcategories.id', 'siv_products.category_id')
+        )->orderBy('name', 'asc');
+
+        $products = $query->paginate(10)->withQueryString();
 
         return inertia('SystemConfiguration/InventorySetup/Products/Index', [
             'products' => $products,
@@ -244,34 +257,51 @@ class SIV_ProductController extends Controller
     /**
      * Remove the specified product from storage.
      */
+   
+
     public function destroy(SIV_Product $siv_product)
     {
-        $siv_product->delete();
+        // 1. Check if the product is used in any transaction tables OR linked to BLS Items
+        
+        $isUsed = false;
+
+        if (IVIssueItem::where('product_id', $siv_product->id)->exists()) {
+            $isUsed = true;
+        } elseif (IVReceiveItem::where('product_id', $siv_product->id)->exists()) {
+            $isUsed = true;
+        } elseif (IVNormalAdjustmentItem::where('product_id', $siv_product->id)->exists()) {
+            $isUsed = true;
+        } elseif (IVPhysicalInventoryItem::where('product_id', $siv_product->id)->exists()) {
+            $isUsed = true;
+        } elseif (IVRequistionItem::where('product_id', $siv_product->id)->exists()) {
+            $isUsed = true;
+        } elseif (BLSItem::where('product_id', $siv_product->id)->exists()) { 
+            // Added check for BLS Items
+            $isUsed = true;
+        }
+
+        // 2. If used, prevent deletion and redirect with error
+        if ($isUsed) {
+            return redirect()->route('systemconfiguration2.products.index')
+                ->with('error', 'Unable to delete: This product is currently associated with transactions or Sales Items (BLS).');
+        }
+
+        // 3. Attempt deletion with a database safety net
+        try {
+            $siv_product->delete();
+        } catch (QueryException $e) {
+            // Catches any foreign key constraints defined in the database that weren't caught above
+            return redirect()->route('systemconfiguration2.products.index')
+                ->with('error', 'Unable to delete: Database integrity constraint violation.');
+        }
 
         return redirect()->route('systemconfiguration2.products.index')
             ->with('success', 'Product deleted successfully.');
     }
 
     /**
-     * Search for products based on query.
+     * Search products for AJAX requests.
      */
-    // public function search(Request $request)
-    // {
-    //     $query = $request->input('query');
-    //     $storeId = $request->input('store_id', null); // Optional store ID
-
-    //     //$products = SIV_Product::where('name', 'like', '%' . $query . '%')->get();
-    //     $products = SIV_Product::where('name', 'like', '%' . $query . '%')
-    //     ->select('id', 'name', 'costprice as price','iv_productcontrol.qty_' . $storeId. 'as stock_quantity')
-    //     innerJoin('iv_productcontrol', 'iv_productcontrol.product_id', '=', 'siv_products.id')
-    //     ->get();
-
-
-    //     return response()->json(['products' => $products]);
-    // }
-
-
-
     public function search(Request $request)
     {
         // Validate the request

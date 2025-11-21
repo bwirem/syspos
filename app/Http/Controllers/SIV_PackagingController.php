@@ -2,6 +2,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\SIV_Packaging;
+use App\Models\SIV_Product;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 
 class SIV_PackagingController extends Controller
@@ -84,14 +86,26 @@ class SIV_PackagingController extends Controller
     /**
      * Remove the specified unit from storage.
      */
+    
     public function destroy(SIV_Packaging $unit)
     {
-        $unit->delete();
+        // Check if any product is currently using this packaging/unit
+        if (SIV_Product::where('package_id', $unit->id)->exists()) {
+            return redirect()->route('systemconfiguration2.units.index')
+                ->with('error', 'Unable to delete: This unit is assigned to one or more products.');
+        }
+
+        try {
+            $unit->delete();
+        } catch (QueryException $e) {
+            // Handles database-level Foreign Key constraints
+            return redirect()->route('systemconfiguration2.units.index')
+                ->with('error', 'Unable to delete: Database integrity constraint violation.');
+        }
 
         return redirect()->route('systemconfiguration2.units.index')
             ->with('success', 'Unit deleted successfully.');
     }
-
     /**
      * Search for units based on query.
      */

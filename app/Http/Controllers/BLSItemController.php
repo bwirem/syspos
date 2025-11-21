@@ -4,8 +4,17 @@ namespace App\Http\Controllers;
 use App\Models\BLSItem;
 use App\Models\BLSItemGroup;
 use App\Models\BLSPriceCategory;
+
+use App\Models\BILInvoiceItem;
+use App\Models\BILOrderItem;
+use App\Models\BILReceiptItem;
+use App\Models\BILSaleItem;     
+use Illuminate\Database\QueryException;
+
+
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Log;
 
 class BLSItemController extends Controller
 {
@@ -25,7 +34,14 @@ class BLSItemController extends Controller
                   });
             });
         }
-        $items = $query->orderBy('name', 'asc')->paginate(10)->withQueryString();
+        
+        // Order by itemgroup name, then item name
+        $query->orderBy(
+            BLSItemGroup::select('name')
+                ->whereColumn('bls_itemgroups.id', 'bls_items.itemgroup_id')
+        )->orderBy('name', 'asc');
+
+        $items = $query->paginate(10)->withQueryString();
 
         // --- REVISED AND IMPROVED LOGIC ---
         $activePriceCategories = [];
@@ -169,16 +185,41 @@ class BLSItemController extends Controller
     /**
      * Remove the specified item from storage.
      */
+    
     public function destroy(BLSItem $item)
-    {
-        // Check if the item is linked to stock
+    {     
+        // 1. Check if the item is linked to stock (Existing Logic)
         if ($item->product_id) {
             return redirect()->route('systemconfiguration0.items.index')
-                ->with('error', 'Cannot delete item linked to stock.');
+                ->with('error', 'Cannot delete item: It is linked to a stock product.');
         }
 
-        // If not linked, proceed with deletion
-        $item->delete();
+        // 2. Check if the item is used in any transactions
+        $isUsed = false;
+
+        if (BILInvoiceItem::where('item_id', $item->id)->exists()) {
+            $isUsed = true;
+        } elseif (BILOrderItem::where('item_id', $item->id)->exists()) {
+            $isUsed = true;
+        } elseif (BILReceiptItem::where('item_id', $item->id)->exists()) {
+            $isUsed = true;
+        } elseif (BILSaleItem::where('item_id', $item->id)->exists()) {
+            $isUsed = true;
+        }
+
+        if ($isUsed) {
+            return redirect()->route('systemconfiguration0.items.index')
+                ->with('error', 'Cannot delete item: It has been used in existing transactions (Sales, Orders, Invoices, or Receipts).');
+        }
+
+        // 3. Attempt deletion with safety net
+        try {
+            $item->delete();
+        } catch (QueryException $e) {
+            // This catches any DB-level foreign key constraints not covered above
+            return redirect()->route('systemconfiguration0.items.index')
+                ->with('error', 'Unable to delete: Database integrity constraint violation.');
+        }
 
         return redirect()->route('systemconfiguration0.items.index')
             ->with('success', 'Item deleted successfully.');
