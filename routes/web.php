@@ -72,21 +72,24 @@ use App\Http\Controllers\Reports\SalesReportsController;
 use App\Http\Controllers\Reports\ProcurementReportsController;
 use App\Http\Controllers\Reports\InventoryReportsController;
 
-
+use App\Models\FacilityOption; // Import your model
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 Route::get('/', function () {
+     // Fetch the options (assuming there is only 1 row for facility options)
+    $options = FacilityOption::first();
+    
+    // Check if DB setting is 1 (true). Default to false if no record exists.
+    $showRegisterButton = $options ? ($options->show_register_button === 1) : false;
+
     return Inertia::render('Welcome', [
         'canLogin' => Route::has('login'),
-        'canRegister' => Route::has('register'),        
+        'canRegister' => Route::has('register') && $showRegisterButton,        
     ]);
 });
 
-// Route::get('/dashboard', function () {
-//     return Inertia::render('Dashboard');
-// })->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::get('/dashboard', DashboardController::class)->middleware(['auth', 'verified'])->name('dashboard');
 

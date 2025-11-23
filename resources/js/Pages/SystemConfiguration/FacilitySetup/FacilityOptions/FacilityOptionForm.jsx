@@ -32,11 +32,14 @@ export default function FacilityOptionForm({ option = null, chartOfAccounts, cus
         
         chart_of_account_id: option?.chart_of_account_id || '',
         default_customer_id: option?.default_customer_id || '',
+        
+        // Booleans
         affectstockatcashier: option ? Boolean(option.affectstockatcashier) : false,
         doubleentryissuing: option ? Boolean(option.doubleentryissuing) : false,
-        allownegativestock: option ? Boolean(option.allownegativestock) : false,
+        allownegativestock: option ? Boolean(option.allownegativestock) : false,        
+        show_register_button: option ? Boolean(option.show_register_button) : true, // Added this field
         
-        _method: option ? 'PUT' : 'POST', // Crucial for handling file uploads on Edit
+        _method: option ? 'PUT' : 'POST', 
     });
 
     const [previewUrl, setPreviewUrl] = useState(option?.logo_path ? `/storage/${option.logo_path}` : null);
@@ -53,11 +56,9 @@ export default function FacilityOptionForm({ option = null, chartOfAccounts, cus
         e.preventDefault();
         
         if (option) {
-            // IMPORTANT: Laravel cannot handle multipart/form-data via standard PUT/PATCH.
-            // We must send a POST request with _method="PUT" to the update route.
             post(route('systemconfiguration5.facilityoptions.update', option.id), {
                 preserveScroll: true,
-                forceFormData: true, // Ensures Inertia sends as FormData
+                forceFormData: true, 
             });
         } else {
             post(route('systemconfiguration5.facilityoptions.store'), {
@@ -228,6 +229,8 @@ export default function FacilityOptionForm({ option = null, chartOfAccounts, cus
                     <CheckboxInput id="affectstockatcashier" label="Affect Stock at Cashier" checked={data.affectstockatcashier} onChange={e => setData('affectstockatcashier', e.target.checked)} />
                     <CheckboxInput id="doubleentryissuing" label="Double Entry Issuing" checked={data.doubleentryissuing} onChange={e => setData('doubleentryissuing', e.target.checked)} />
                     <CheckboxInput id="allownegativestock" label="Allow Negative Stock" checked={data.allownegativestock} onChange={e => setData('allownegativestock', e.target.checked)} />
+                    {/* New Checkbox Added Here */}
+                    <CheckboxInput id="show_register_button" label="Show Register Button" checked={data.show_register_button} onChange={e => setData('show_register_button', e.target.checked)} />
                 </div>
                 {errors.affectstockatcashier && <p className="text-red-500 text-xs mt-2">{errors.affectstockatcashier}</p>}
             </div>

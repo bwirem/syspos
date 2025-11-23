@@ -68,6 +68,7 @@ class FacilityOptionController extends Controller
             'affectstockatcashier' => 'boolean',
             'doubleentryissuing' => 'boolean',
             'allownegativestock' => 'boolean',
+            'show_register_button' => 'boolean',
         ]);
 
         // Handle Logo Upload
@@ -116,6 +117,7 @@ class FacilityOptionController extends Controller
             'affectstockatcashier' => 'boolean',
             'doubleentryissuing' => 'boolean',
             'allownegativestock' => 'boolean',
+            'show_register_button' => 'boolean',
         ]);
 
         // Handle Logo Upload

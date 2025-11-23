@@ -28,6 +28,7 @@ class FacilityOption extends Model
         'doubleentryissuing',
         'allownegativestock',
         'default_customer_id',
+        'show_register_button', // Newly added field
     ];
 
 
