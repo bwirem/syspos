@@ -442,6 +442,31 @@ class SIV_ProductController extends Controller
             'message' => 'Cost price updated successfully.',
         ]);
     }
+
+    public function getAllForStore(Request $request)
+    {
+        $storeId = $request->input('store_id');
+
+        if (!$storeId || !is_numeric($storeId)) {
+            return response()->json(['error' => 'Invalid Store ID'], 400);
+        }
+
+        $qtyColumn = 'iv_productcontrol.qty_' . (int)$storeId;
+
+        // Fetch all products with their price and stock for this store
+        // Removed 'take(10)' limit to get everything
+        $products = SIV_Product::leftJoin('iv_productcontrol', 'iv_productcontrol.product_id', '=', 'siv_products.id')
+            ->select(
+                'siv_products.id', 
+                'siv_products.name', 
+                'siv_products.costprice as price',
+                \DB::raw("COALESCE($qtyColumn, 0) as stock_quantity")
+            )
+            ->orderBy('siv_products.name', 'asc')
+            ->get();
+
+        return response()->json(['products' => $products]);
+    }
     
 }
 

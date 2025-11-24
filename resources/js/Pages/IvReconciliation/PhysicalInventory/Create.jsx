@@ -2,7 +2,8 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, useForm, Link, router as inertiaRouter } from '@inertiajs/react';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimesCircle, faTrash, faSave, faCheck, faSpinner } from '@fortawesome/free-solid-svg-icons';
+// Added faDownload to imports
+import { faTimesCircle, faTrash, faSave, faCheck, faSpinner, faDownload } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
 import axios from 'axios';
 import Modal from '@/Components/CustomModal.jsx';
@@ -19,7 +20,7 @@ const defaultArray = [];
 
 export default function CreatePhysicalInventory({ auth, stores: initialStores = defaultArray }) {
     const { data, setData, post, errors, processing, reset, clearErrors, setError } = useForm({
-        store_id: '', // For <select>, will hold the ID
+        store_id: '', 
         description: '',
         total_counted_value: 0,
         stage: 1,
@@ -31,6 +32,10 @@ export default function CreatePhysicalInventory({ auth, stores: initialStores = 
     const [itemSearchResults, setItemSearchResults] = useState([]);
     const [showItemDropdown, setShowItemDropdown] = useState(false);
     const [isItemSearchLoading, setIsItemSearchLoading] = useState(false);
+    
+    // NEW: State for loading all items
+    const [isLoadingAll, setIsLoadingAll] = useState(false);
+
     const itemSearchContainerRef = useRef(null);
     const itemSearchInputRef = useRef(null);
 
@@ -43,13 +48,12 @@ export default function CreatePhysicalInventory({ auth, stores: initialStores = 
         isOpen: false, isLoading: false, isSuccess: false,
     });
 
-    // Stable showAppModal
     const showAppModal = useCallback((title, message, isAlert = true, confirmText = 'OK', onConfirmCallback = null) => {
         setUiFeedbackModal({
             isOpen: true, title, message, isAlert, confirmText,
             onConfirmAction: onConfirmCallback || (() => setUiFeedbackModal(prev => ({ ...prev, isOpen: false }))),
         });
-    }, []); // Empty dependency array makes this function stable
+    }, []);
 
     const fetchItems = useCallback(async (query) => {
         if (!query.trim()) {
@@ -58,22 +62,19 @@ export default function CreatePhysicalInventory({ auth, stores: initialStores = 
             return;
         }
 
-        // ***** CRUCIAL CHECK: Ensure store_id is selected *****
-        if (!data.store_id || data.store_id === '') { // Check for empty string too, as select can have it
+        if (!data.store_id || data.store_id === '') { 
             showAppModal("Store Required", "Please select a store before searching for items.");
             setIsItemSearchLoading(false);
             setShowItemDropdown(false);
-            setItemSearchResults([]); // Clear any previous results
+            setItemSearchResults([]); 
             return;
         }
-        // *****************************************************
 
         setIsItemSearchLoading(true);
         try {
-            console.log(`Fetching items with query: "${query}" and store_id: "${data.store_id}"`); // Frontend Log
             const response = await axios.get(
                 route('systemconfiguration2.products.search'),
-                { params: { query, store_id: data.store_id } } // data.store_id here will be from the current closure of fetchItems
+                { params: { query, store_id: data.store_id } } 
             );
             setItemSearchResults(response.data.products?.slice(0, 10) || []);
             setShowItemDropdown(true);
@@ -85,18 +86,16 @@ export default function CreatePhysicalInventory({ auth, stores: initialStores = 
         } finally {
             setIsItemSearchLoading(false);
         }
-    }, [data.store_id, showAppModal]); // Key dependency: data.store_id. showAppModal is stable.
+    }, [data.store_id, showAppModal]);
 
     const debouncedItemSearch = useMemo(() => debounce(fetchItems, 350), [fetchItems]);
 
     useEffect(() => {
-        // Only trigger search if there's a query.
-        // The fetchItems function itself will check for store_id.
         if (itemSearchQuery.trim()) {
             debouncedItemSearch(itemSearchQuery);
         } else {
-            setItemSearchResults([]); // Clear results when search query is empty
-            setShowItemDropdown(false); // Hide dropdown when search query is empty
+            setItemSearchResults([]); 
+            setShowItemDropdown(false); 
         }
     }, [itemSearchQuery, debouncedItemSearch]);
 
@@ -118,15 +117,76 @@ export default function CreatePhysicalInventory({ auth, stores: initialStores = 
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    // --- NEW FUNCTION: LOAD ALL ITEMS ---
+    const handleLoadAllItems = async () => {
+        if (!data.store_id) {
+            showAppModal("Store Required", "Please select a store first.");
+            return;
+        }
+
+        // Warn user if there are already items
+        if (data.physicalinventoryitems.length > 0) {
+            showAppModal(
+                "Replace List?", 
+                "This will merge all items from the store into your current list. Existing items will be kept.",
+                false,
+                "Proceed",
+                () => executeLoadAll()
+            );
+        } else {
+            executeLoadAll();
+        }
+    };
+
+    const executeLoadAll = async () => {
+        setUiFeedbackModal(prev => ({ ...prev, isOpen: false })); // Close modal if open
+        setIsLoadingAll(true);
+        try {
+            const response = await axios.get(route('systemconfiguration2.products.store-all'), {
+                params: { store_id: data.store_id }
+            });
+
+            const allProducts = response.data.products || [];
+            if (allProducts.length === 0) {
+                showAppModal("No Products", "No products found for this configuration.");
+                setIsLoadingAll(false);
+                return;
+            }
+
+            // Get IDs of items already in the list to avoid duplicates (or you can choose to reset)
+            const existingIds = new Set(data.physicalinventoryitems.map(i => i.item_id));
+
+            const newItems = allProducts
+                .filter(p => !existingIds.has(p.id))
+                .map(p => ({
+                    _listId: `physitem-${p.id}-${Date.now()}`,
+                    item_name: p.name,
+                    item_id: p.id,
+                    countedqty: '', // Leave blank so user is forced to input
+                    expectedqty: parseFloat(p.stock_quantity) || 0,
+                    price: parseFloat(p.price) || 0,
+                }));
+
+            // Combine existing and new
+            setData('physicalinventoryitems', [...data.physicalinventoryitems, ...newItems]);
+
+        } catch (error) {
+            console.error("Error loading all items", error);
+            showAppModal("Error", "Failed to load items. Please try again.");
+        } finally {
+            setIsLoadingAll(false);
+        }
+    };
+    // ------------------------------------
+
     const handlePhysicalInventoryItemChange = (index, field, value) => {
         setData('physicalinventoryitems', data.physicalinventoryitems.map((item, i) => {
             if (i === index) {
                 let processedValue = value;
                 if (['countedqty', 'expectedqty'].includes(field)) {
                     const parsedValue = parseFloat(value);
-                    // Allow empty string for temporary input state, otherwise ensure non-negative
                     processedValue = value === '' ? '' : (isNaN(parsedValue) || parsedValue < 0 ? 0 : parsedValue);
-                } else if (field === 'price') { // Price should always be non-negative
+                } else if (field === 'price') { 
                      const parsedValue = parseFloat(value);
                      processedValue = isNaN(parsedValue) || parsedValue < 0 ? 0 : parsedValue;
                 }
@@ -144,15 +204,12 @@ export default function CreatePhysicalInventory({ auth, stores: initialStores = 
         }
         const newItem = {
             _listId: `physitem-${Date.now()}`, item_name: selectedItem.name, item_id: selectedItem.id,
-            countedqty: '', // User will fill this
-            expectedqty: parseFloat(selectedItem.stock_quantity) === null || isNaN(parseFloat(selectedItem.stock_quantity)) ? 0 : parseFloat(selectedItem.stock_quantity), // Use store-specific stock
+            countedqty: '',
+            expectedqty: parseFloat(selectedItem.stock_quantity) === null || isNaN(parseFloat(selectedItem.stock_quantity)) ? 0 : parseFloat(selectedItem.stock_quantity), 
             price: parseFloat(selectedItem.price) || 0,
         };
         setData('physicalinventoryitems', [...data.physicalinventoryitems, newItem]);
         setItemSearchQuery(''); setItemSearchResults([]); setShowItemDropdown(false);
-        // Find the newly added item's input for countedqty and focus it
-        // This is a bit more complex, might need to do it after next render cycle.
-        // For now, just focus the main search input again or the first editable field.
         itemSearchInputRef.current?.focus();
     };
 
@@ -196,9 +253,8 @@ export default function CreatePhysicalInventory({ auth, stores: initialStores = 
     const handleSaveDraft = (e) => {
         e.preventDefault();
         if (!validatePhysicalInventoryForm(false)) return;
-        setData(prevData => ({ ...prevData, stage: 1 })); // Ensure stage is 1 for draft
+        setData(prevData => ({ ...prevData, stage: 1 })); 
 
-        //const payload = { ...data, stage: 1 };
         post(route('inventory3.physical-inventory.store'), {
             preserveScroll: true,
             onSuccess: () => { showAppModal("Success", "Physical inventory saved as draft successfully!"); },
@@ -206,17 +262,10 @@ export default function CreatePhysicalInventory({ auth, stores: initialStores = 
         });
     };
 
-    const openCommitConfirmationModal = () => {
-        if (!validatePhysicalInventoryForm(false)) return;
-        setData(prevData => ({ ...prevData, stage: 2, remarks: '' })); // Set stage for commit, clear remarks for modal
-        setCommitConfirmationModal({ isOpen: true, isLoading: false, isSuccess: false });
-    };
-
     const handleCommitWithRemarks = () => {
         if (!data.remarks.trim()) { setError('remarks', 'Remarks are required for committing.'); return; }
         clearErrors('remarks');
         setCommitConfirmationModal(prev => ({ ...prev, isLoading: true }));
-       // const payload = { ...data, stage: 2 };
         post(route('inventory3.physical-inventory.commit'), {
             preserveScroll: true,
             onSuccess: () => { setCommitConfirmationModal({ isOpen: true, isLoading: false, isSuccess: true }); reset(); },
@@ -239,7 +288,7 @@ export default function CreatePhysicalInventory({ auth, stores: initialStores = 
             <div className="py-12">
                 <div className="mx-auto max-w-5xl sm:px-6 lg:px-8">
                     <div className="bg-white p-6 shadow-sm sm:rounded-lg">
-                        <form className="space-y-6"> {/* No onSubmit here */}
+                        <form className="space-y-6"> 
                             <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
                                 {/* Store Select */}
                                 <div>
@@ -251,8 +300,7 @@ export default function CreatePhysicalInventory({ auth, stores: initialStores = 
                                         name="store_id"
                                         value={data.store_id}
                                         onChange={(e) => {
-                                            setData('store_id', e.target.value);
-                                            // Optionally clear item search when store changes if items are store-specific
+                                            setData(prev => ({...prev, store_id: e.target.value, physicalinventoryitems: []}));
                                             setItemSearchQuery('');
                                             setItemSearchResults([]);
                                             setShowItemDropdown(false);
@@ -283,7 +331,6 @@ export default function CreatePhysicalInventory({ auth, stores: initialStores = 
                                 </div>
                             </div>
 
-                            {/* Remarks Field */}
                              <div>
                                 <label htmlFor="remarks_phys" className="block text-sm font-medium leading-6 text-gray-900">
                                     Remarks <span className="text-gray-500">(Optional for Draft, Required for Commit)</span>
@@ -297,29 +344,50 @@ export default function CreatePhysicalInventory({ auth, stores: initialStores = 
                             {/* Item Search & Add */}
                             <div className="border-t border-gray-200 pt-6">
                                 <label htmlFor="item-search_phys" className="block text-sm font-medium leading-6 text-gray-900 mb-2">Add Items to Count</label>
-                                <div className="relative" ref={itemSearchContainerRef}>
-                                    <div className="relative">
-                                         <input type="text" name="item-search_phys" id="item-search_phys" ref={itemSearchInputRef}
-                                            placeholder="Search item (select store first)" value={itemSearchQuery}
-                                            onChange={(e) => setItemSearchQuery(e.target.value)}
-                                            onFocus={() => { if (itemSearchQuery.trim() || itemSearchResults.length > 0) setShowItemDropdown(true); }}
-                                            disabled={!data.store_id} // Disable item search if no store is selected
-                                            className={`block w-full rounded-md border-0 py-1.5 pr-10 text-gray-900 ring-1 ring-inset ${!data.store_id ? 'bg-gray-100 cursor-not-allowed' : 'ring-gray-300'} placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6`} autoComplete="off" />
-                                        {isItemSearchLoading && <FontAwesomeIcon icon={faSpinner} spin className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400"/>}
-                                        {!isItemSearchLoading && itemSearchQuery && (
-                                            <button type="button" onClick={() => { setItemSearchQuery(''); setItemSearchResults([]); setShowItemDropdown(false); itemSearchInputRef.current?.focus(); }}
-                                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600" title="Clear"><FontAwesomeIcon icon={faTimesCircle} /></button>)}
+                                
+                                <div className="flex gap-2">
+                                    <div className="relative flex-grow" ref={itemSearchContainerRef}>
+                                        <div className="relative">
+                                            <input type="text" name="item-search_phys" id="item-search_phys" ref={itemSearchInputRef}
+                                                placeholder="Search item (select store first)" value={itemSearchQuery}
+                                                onChange={(e) => setItemSearchQuery(e.target.value)}
+                                                onFocus={() => { if (itemSearchQuery.trim() || itemSearchResults.length > 0) setShowItemDropdown(true); }}
+                                                disabled={!data.store_id} 
+                                                className={`block w-full rounded-md border-0 py-1.5 pr-10 text-gray-900 ring-1 ring-inset ${!data.store_id ? 'bg-gray-100 cursor-not-allowed' : 'ring-gray-300'} placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6`} autoComplete="off" />
+                                            {isItemSearchLoading && <FontAwesomeIcon icon={faSpinner} spin className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400"/>}
+                                            {!isItemSearchLoading && itemSearchQuery && (
+                                                <button type="button" onClick={() => { setItemSearchQuery(''); setItemSearchResults([]); setShowItemDropdown(false); itemSearchInputRef.current?.focus(); }}
+                                                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600" title="Clear"><FontAwesomeIcon icon={faTimesCircle} /></button>)}
+                                        </div>
+                                        {showItemDropdown && (itemSearchQuery.trim() || itemSearchResults.length > 0) && data.store_id && (
+                                            <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                                                {itemSearchResults.length > 0 ? itemSearchResults.map((item) => (
+                                                    <li key={item.id} className="p-3 hover:bg-indigo-50 cursor-pointer text-sm" onClick={() => addPhysicalInventoryItem(item)}>
+                                                        <div className="font-medium">{item.name} {item.code ? `(${item.code})` : ''}</div>
+                                                        <div className="text-xs text-gray-500">Price: {formatCurrency(item.price)} / System Stock: {item.stock_quantity ?? 'N/A'}</div>
+                                                    </li>)) : !isItemSearchLoading && itemSearchQuery.trim() && (<li className="p-3 text-sm text-gray-500">No items found.</li>)}
+                                                {isItemSearchLoading && <li className="p-3 text-sm text-gray-500 text-center">Loading...</li>}
+                                            </ul>
+                                        )}
                                     </div>
-                                    {showItemDropdown && (itemSearchQuery.trim() || itemSearchResults.length > 0) && data.store_id && (
-                                        <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                                            {itemSearchResults.length > 0 ? itemSearchResults.map((item) => (
-                                                <li key={item.id} className="p-3 hover:bg-indigo-50 cursor-pointer text-sm" onClick={() => addPhysicalInventoryItem(item)}>
-                                                    <div className="font-medium">{item.name} {item.code ? `(${item.code})` : ''}</div>
-                                                    <div className="text-xs text-gray-500">Price: {formatCurrency(item.price)} / System Stock: {item.stock_quantity ?? 'N/A'}</div>
-                                                </li>)) : !isItemSearchLoading && itemSearchQuery.trim() && (<li className="p-3 text-sm text-gray-500">No items found.</li>)}
-                                            {isItemSearchLoading && <li className="p-3 text-sm text-gray-500 text-center">Loading...</li>}
-                                        </ul>
-                                    )}
+
+                                    {/* Load All Button */}
+                                    <button
+                                        type="button"
+                                        onClick={handleLoadAllItems}
+                                        disabled={!data.store_id || isLoadingAll}
+                                        className={`flex items-center justify-center px-4 py-1.5 rounded-md text-sm font-semibold shadow-sm text-white
+                                            ${!data.store_id || isLoadingAll 
+                                                ? 'bg-gray-400 cursor-not-allowed' 
+                                                : 'bg-indigo-600 hover:bg-indigo-500'}`}
+                                        title="Load all products for this store"
+                                    >
+                                        {isLoadingAll ? (
+                                            <><FontAwesomeIcon icon={faSpinner} spin className="mr-2" /> Loading...</>
+                                        ) : (
+                                            <><FontAwesomeIcon icon={faDownload} className="mr-2" /> Load All Items</>
+                                        )}
+                                    </button>
                                 </div>
                             </div>
 
@@ -392,10 +460,6 @@ export default function CreatePhysicalInventory({ auth, stores: initialStores = 
                                     className="rounded-md bg-slate-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-500 disabled:opacity-50 flex items-center justify-center">
                                     {processing && data.stage === 1 ? (<><FontAwesomeIcon icon={faSpinner} spin className="mr-2" />Saving Draft...</>) : (<><FontAwesomeIcon icon={faSave} className="mr-2" />Save Draft</>)}
                                 </button>
-                                {/* <button type="button" onClick={openCommitConfirmationModal} disabled={processing}
-                                    className="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50 flex items-center justify-center">
-                                    <FontAwesomeIcon icon={faCheck} className="mr-2"/>Commit Count
-                                </button> */}
                             </div>
                         </form>
                     </div>

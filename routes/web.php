@@ -748,6 +748,8 @@ Route::middleware('auth')->group(function () {
             Route::get('/template', [SIV_ProductController::class, 'downloadTemplate'])->name('template.download');
             // --- NEW ROUTE FOR QUICK PRICE UPDATE ---
             Route::patch('/{product}/update-price', [SIV_ProductController::class, 'updatePrice'])->name('update-price');
+
+            Route::get('/store-all', [SIV_ProductController::class, 'getAllForStore'])->name('store-all');
         });
 
         // --- Unit Routes ---
