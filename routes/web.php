@@ -527,6 +527,9 @@ Route::middleware('auth')->group(function () {
         Route::get('/expiring-items', [InventoryReportsController::class, 'expiringItems'])->name('expiring_items');
         Route::get('/slow-moving', [InventoryReportsController::class, 'slowMoving'])->name('slow_moving');
         Route::match(['get', 'post'],'/custom', [InventoryReportsController::class, 'customInventoryReport'])->name('custom');
+        Route::get('/product-list', [InventoryReportsController::class, 'productList'])->name('product-list');
+        Route::get('/product-list/export-pdf', [InventoryReportsController::class, 'exportProductListPdf'])->name('product-list.pdf');
+        Route::get('/product-list/export-excel', [InventoryReportsController::class, 'exportProductListExcel'])->name('product-list.excel');
     });
 
 

@@ -41,7 +41,7 @@ class BLSItemController extends Controller
                 ->whereColumn('bls_itemgroups.id', 'bls_items.itemgroup_id')
         )->orderBy('name', 'asc');
 
-        $items = $query->paginate(10)->withQueryString();
+        $items = $query->paginate(50)->withQueryString();
 
         // --- REVISED AND IMPROVED LOGIC ---
         $activePriceCategories = [];

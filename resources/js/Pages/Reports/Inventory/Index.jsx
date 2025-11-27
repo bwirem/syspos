@@ -85,7 +85,9 @@ export default function InventoryDashboard({
         reportsInventoryReorder: '/reports/inventory/reorder',
         reportsInventoryExpiringItems: '/reports/inventory/expiring-items',
         reportsInventorySlowMoving: '/reports/inventory/slow-moving',
-        reportsInventoryCustom: '/reports/inventory/custom',
+        reportsInventoryCustom: '/reports/inventory/custom',        
+        // NEW URL
+        reportsInventoryProductList: '/reports/inventory/product-list', 
     };
 
 
@@ -211,6 +213,17 @@ export default function InventoryDashboard({
                             Inventory Reports
                         </h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8">
+                           
+                           {/* NEW CARD: Product List */}
+                            <ActionOrReportCard
+                                title="Product List"
+                                description="Master list of all items, costs, and categories."
+                                icon={faListOl}
+                                iconBgColor="bg-blue-600"
+                                linkHref={urls.reportsInventoryProductList}
+                                linkText="View Item Master"
+                            />
+                           
                             <ActionOrReportCard
                                 title="Stock on Hand Report"
                                 description="Detailed list of current inventory levels by item/location."

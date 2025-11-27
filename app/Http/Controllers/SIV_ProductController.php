@@ -74,7 +74,7 @@ class SIV_ProductController extends Controller
                 ->whereColumn('siv_productcategories.id', 'siv_products.category_id')
         )->orderBy('name', 'asc');
 
-        $products = $query->paginate(10)->withQueryString();
+        $products = $query->paginate(50)->withQueryString();
 
         return inertia('SystemConfiguration/InventorySetup/Products/Index', [
             'products' => $products,

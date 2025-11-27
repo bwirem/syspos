@@ -9,8 +9,12 @@ use App\Models\BILProductTransactions;
 use App\Models\BILSale;
 use App\Models\SIV_Product;
 use App\Models\SIV_ProductCategory;
+use App\Models\BLSPriceCategory;
 use App\Models\SIV_Store;
 use Carbon\Carbon;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Maatwebsite\Excel\Facades\Excel;
+use App\Exports\ProductsExport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -415,5 +419,91 @@ class InventoryReportsController extends Controller
         ]);
     }
      */
+
+    private function getActivePriceConfigs()
+    {
+        $activePriceCategories = [];
+        $priceCategorySettings = BLSPriceCategory::first();
+
+        if ($priceCategorySettings) {
+            for ($i = 1; $i <= 4; $i++) {
+                if ($priceCategorySettings->{'useprice' . $i}) {
+                    $activePriceCategories[] = [
+                        'key' => 'price' . $i,
+                        'label' => $priceCategorySettings->{'price' . $i},
+                    ];
+                }
+            }
+        }
+        if (empty($activePriceCategories)) {
+            $activePriceCategories[] = ['key' => 'price1', 'label' => 'Price'];
+        }
+        return $activePriceCategories;
+    }
+
+    // ... Helper to build the query ...
+    private function getProductQuery(Request $request)
+    {
+        $query = SIV_Product::with(['category:id,name', 'unit:id,name', 'blsItem']);
+
+        if ($request->filled('category_id')) {
+            $query->where('category_id', $request->category_id);
+        }
+
+        if ($request->filled('search')) {
+            $query->where(function($q) use ($request) {
+                $q->where('name', 'like', '%' . $request->search . '%')
+                  ->orWhere('displayname', 'like', '%' . $request->search . '%');
+            });
+        }
+        
+        return $query->orderBy('name');
+    }
+
+    public function productList(Request $request)
+    {
+        $activePriceCategories = $this->getActivePriceConfigs();
+        
+        // Use paginate for the view
+        $products = $this->getProductQuery($request)->paginate(50)->withQueryString();
+
+        return Inertia::render('Reports/Inventory/ProductList', [
+            'products'   => $products,
+            'categories' => SIV_ProductCategory::orderBy('name')->get(['id', 'name']),
+            'activePriceCategories' => $activePriceCategories,
+            'filters'    => $request->only(['search', 'category_id']),
+        ]);
+    }
+
+    public function exportProductListPdf(Request $request)
+    {
+        $activePriceCategories = $this->getActivePriceConfigs();
+        
+        // Use get() for export (all records)
+        $products = $this->getProductQuery($request)->get();
+        
+        $categoryName = $request->category_id 
+            ? SIV_ProductCategory::find($request->category_id)?->name 
+            : 'All Categories';
+
+        $pdf = Pdf::loadView('pdfs.product_list', [
+            'products' => $products,
+            'activePriceCategories' => $activePriceCategories,
+            'categoryName' => $categoryName
+        ]);
+
+        return $pdf->download('product_list_' . date('Y_m_d') . '.pdf');
+    }
+
+    public function exportProductListExcel(Request $request)
+    {
+        $activePriceCategories = $this->getActivePriceConfigs();
+        $products = $this->getProductQuery($request)->get();
+
+        return Excel::download(
+            new ProductsExport($products, $activePriceCategories), 
+            'product_list_' . date('Y_m_d') . '.xlsx'
+        );
+    }
 
 }
