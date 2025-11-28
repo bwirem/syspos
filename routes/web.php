@@ -73,6 +73,21 @@ use App\Http\Controllers\Reports\ProcurementReportsController;
 use App\Http\Controllers\Reports\InventoryReportsController;
 
 use App\Models\FacilityOption; // Import your model
+use App\Models\SIV_Store; 
+use App\Models\SIV_ProductCategory;
+use App\Models\SIV_Packaging; // Assuming this is 'Units'
+use App\Models\SIV_Product;
+use App\Models\SIV_AdjustmentReason;
+use App\Models\SPR_Supplier; 
+
+use App\Models\BLSCurrency;       // Assumption: BLS_Currency or BLSCurrency
+use App\Models\BLSPaymentType;    // Assumption: BLS_PaymentType
+use App\Models\BLSPriceCategory;  // Confirmed from previous code
+use App\Models\BLSItemGroup;      // Confirmed from previous code
+use App\Models\BLSItem;           // Confirmed from previous code
+use App\Models\BLSCustomer;       // Assumption: BLS_Customer
+
+
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -591,11 +606,18 @@ Route::middleware('auth')->group(function () {
 
     // Routes for Billing Setup (Version 3)
     Route::prefix('systemconfiguration0')->name('systemconfiguration0.')->group(function () {
-
-        // Main index route
+        
+        // Billing Setup Index Route
         Route::get('/', function () {
-            return Inertia::render('SystemConfiguration/BillingSetup/Index');
-        })->name('index'); // Added a proper route name for the index.
+            return Inertia::render('SystemConfiguration/BillingSetup/Index', [
+                'currencyCount'      => BLSCurrency::count(),
+                'paymentTypeCount'   => BLSPaymentType::count(),
+                'priceCategoryCount' => BLSPriceCategory::count(),
+                'itemGroupCount'     => BLSItemGroup::count(),
+                'billingItemCount'   => BLSItem::count(),
+                'customerCount'      => BLSCustomer::count(),
+            ]);
+        })->name('index');
 
 
          // --- currencies Routes ---
@@ -674,7 +696,7 @@ Route::middleware('auth')->group(function () {
 
         // Main index route
         Route::get('/', function () {
-            return Inertia::render('SystemConfiguration/ExpensesSetup/Index');
+            return Inertia::render('SystemConfiguration/ExpensesSetup/Index');   
         })->name('index'); // Added a proper route name for the index.
 
 
@@ -706,12 +728,18 @@ Route::middleware('auth')->group(function () {
 
     // Routes for Inventory Setup (Version 3)
     Route::prefix('systemconfiguration2')->name('systemconfiguration2.')->group(function () {
-
+       
         // Main index route
         Route::get('/', function () {
-            return Inertia::render('SystemConfiguration/InventorySetup/Index');
-        })->name('index'); // Added a proper route name for the index.
-
+            return Inertia::render('SystemConfiguration/InventorySetup/Index', [ // Note: Your vars look like Inventory, not Expenses
+                'storeCount' => SIV_Store::count(),
+                'productCategoryCount' => SIV_ProductCategory::count(),
+                'productUnitCount' => SIV_Packaging::count(),
+                'productRegisterCount' => SIV_Product::count(),
+                'adjustmentReasonCount' => SIV_AdjustmentReason::count(),
+                'supplierCount' => SPR_Supplier::count(),
+            ]);
+        })->name('index');
 
          // --- stores Routes ---
         Route::prefix('stores')->name('stores.')->group(function () {

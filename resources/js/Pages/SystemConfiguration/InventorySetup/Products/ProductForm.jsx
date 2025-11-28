@@ -1,7 +1,7 @@
 import React from 'react';
-import { Link, useForm } from '@inertiajs/react';
+import { Link, useForm, usePage } from '@inertiajs/react'; // Added usePage to access auth/props
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSave, faTimesCircle, faSpinner, faInfoCircle } from '@fortawesome/free-solid-svg-icons';
+import { faSave, faSpinner, faInfoCircle, faLock, faUnlock } from '@fortawesome/free-solid-svg-icons';
 
 const CheckboxInput = ({ id, label, checked, onChange }) => (
     <div className="flex items-center pt-6">
@@ -10,13 +10,33 @@ const CheckboxInput = ({ id, label, checked, onChange }) => (
     </div>
 );
 
-export default function ProductForm({ product = null, categories, units, activePriceCategories }) {
+export default function ProductForm({ product = null, categories, units, activePriceCategories, userPermissions = [] }) {
+    
+    // 1. Get Authentication/Permission Data
+    // We assume 'userPermissions' is passed as a prop, OR acts as a fallback to check global auth props.
+    // Ensure your SIV_ProductController passes a list of function permissions (e.g., ['allow_price'])
+    const { auth } = usePage().props; 
+
+   // Fallback to auth user permissions if not explicitly passed     
+    const canEditPrice = userPermissions.includes('systemconfiguration2.allow_price');
+
+    // 2. Initialize Form Data including Prices
+    // We pull existing prices from the relationship (product.bls_item)
+    const initialPrices = product?.bls_item || {};
+
     const { data, setData, post, put, processing, errors, reset } = useForm({
         name: product?.name || '',
         displayname: product?.displayname || '',
         category_id: product?.category_id || '',
         package_id: product?.package_id || '',
         costprice: product?.costprice || '0.00',
+        
+        // Initialize dynamic selling prices
+        price1: initialPrices.price1 || '0.00',
+        price2: initialPrices.price2 || '0.00',
+        price3: initialPrices.price3 || '0.00',
+        price4: initialPrices.price4 || '0.00',
+
         addtocart: product ? Boolean(product.addtocart) : false,
         hasexpiry: product ? Boolean(product.hasexpiry) : false,
         expirynotice: product ? Boolean(product.expirynotice) : false,
@@ -33,9 +53,6 @@ export default function ProductForm({ product = null, categories, units, activeP
             post(route('systemconfiguration2.products.store'), { onSuccess: () => reset() });
         }
     };
-
-    // The controller eager-loads the `blsItem` relationship as `bls_item` in the JSON payload.
-    const sellingPrices = product?.bls_item || {};
 
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -84,23 +101,48 @@ export default function ProductForm({ product = null, categories, units, activeP
                     </div>
                 </div>
 
-                {/* Selling Prices Display Section */}
-                <div className="p-4 border rounded-md space-y-4 bg-gray-50">
-                    <h3 className="text-lg font-medium leading-6 text-gray-900">Selling Prices (Read-Only)</h3>
-                    <div className="space-y-2">
+                {/* Selling Prices Display/Edit Section */}
+                <div className={`p-4 border rounded-md space-y-4 ${canEditPrice ? 'bg-white' : 'bg-gray-50'}`}>
+                    <div className="flex justify-between items-center">
+                        <h3 className="text-lg font-medium leading-6 text-gray-900">Selling Prices</h3>
+                        {/* Visual indicator for permission state */}
+                        {canEditPrice ? 
+                            <span className="text-xs text-green-600 flex items-center gap-1"><FontAwesomeIcon icon={faUnlock} /> Editable</span> : 
+                            <span className="text-xs text-gray-500 flex items-center gap-1"><FontAwesomeIcon icon={faLock} /> Read-Only</span>
+                        }
+                    </div>
+
+                    <div className="space-y-4">
                         {activePriceCategories.map(category => (
-                            <div key={category.key} className="flex justify-between items-center text-sm">
-                                <span className="text-gray-600 font-medium">{category.label}:</span>
-                                <span className="font-semibold text-gray-800">
-                                    {parseFloat(sellingPrices[category.key] || 0).toFixed(2)}
-                                </span>
+                            <div key={category.key} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm">
+                                <label htmlFor={category.key} className="text-gray-700 font-medium w-32">{category.label}:</label>
+                                
+                                {canEditPrice ? (
+                                    // 3. Conditional Rendering: Input if allowed
+                                    <input 
+                                        type="number" 
+                                        step="0.01" 
+                                        id={category.key}
+                                        value={data[category.key]} 
+                                        onChange={e => setData(category.key, e.target.value)}
+                                        className="block w-full sm:w-40 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-right"
+                                    />
+                                ) : (
+                                    // 3. Conditional Rendering: Text if not allowed
+                                    <span className="font-semibold text-gray-800 bg-gray-100 px-3 py-2 rounded-md w-full sm:w-40 text-right border border-gray-200">
+                                        {parseFloat(data[category.key] || 0).toFixed(2)}
+                                    </span>
+                                )}
                             </div>
                         ))}
                     </div>
-                    <div className="mt-2 text-xs text-gray-500 flex items-start gap-2">
-                        <FontAwesomeIcon icon={faInfoCircle} className="mt-0.5" />
-                        <span>Selling prices are managed in "Billing Items & Services" after saving.</span>
-                    </div>
+
+                    {!canEditPrice && (
+                        <div className="mt-2 text-xs text-gray-500 flex items-start gap-2">
+                            <FontAwesomeIcon icon={faInfoCircle} className="mt-0.5" />
+                            <span>You do not have permission ('allow_price') to edit selling prices here.</span>
+                        </div>
+                    )}
                 </div>
             </div>
 

@@ -377,6 +377,12 @@ class UserPermissionController extends Controller
             'delete' => false,
         ];
 
+        if ($key === 'systemconfiguration2') {
+            return array_merge($defaultFunctionAccess, [                
+                'allow_price' => false,                
+            ]);
+        }
+
         // // Add loan-specific permissions only for 'loan1'
         if ($key === 'billing3') {
             return [

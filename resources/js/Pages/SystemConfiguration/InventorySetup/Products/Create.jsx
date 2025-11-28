@@ -3,8 +3,8 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head } from '@inertiajs/react';
 import ProductForm from './ProductForm';
 
-// Your controller's `create` method must pass `categories`, `units`, and `activePriceCategories`
-export default function Create({ auth, categories, units, activePriceCategories }) {
+// Added 'userPermissions' to props
+export default function Create({ auth, categories, units, activePriceCategories, userPermissions }) {
     return (
         <AuthenticatedLayout user={auth.user} header={<h2 className="text-xl font-semibold">Create New Product</h2>}>
             <Head title="Create Product" />
@@ -14,7 +14,8 @@ export default function Create({ auth, categories, units, activePriceCategories 
                         <ProductForm 
                             categories={categories} 
                             units={units} 
-                            activePriceCategories={activePriceCategories} 
+                            activePriceCategories={activePriceCategories}
+                            userPermissions={userPermissions} // <--- Pass permissions down to the form
                         />
                     </div>
                 </div>

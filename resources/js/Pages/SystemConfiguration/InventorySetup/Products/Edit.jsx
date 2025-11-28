@@ -3,8 +3,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head } from '@inertiajs/react';
 import ProductForm from './ProductForm';
 
-// Your controller's `edit` method must pass `product`, `categories`, `units`, and `activePriceCategories`
-export default function Edit({ auth, product, categories, units, activePriceCategories }) {
+export default function Edit({ auth, product, categories, units, activePriceCategories, userPermissions }) {
     return (
         <AuthenticatedLayout user={auth.user} header={<h2 className="text-xl font-semibold">Edit Product</h2>}>
             <Head title={`Edit ${product.name}`} />
@@ -16,6 +15,7 @@ export default function Edit({ auth, product, categories, units, activePriceCate
                             categories={categories} 
                             units={units} 
                             activePriceCategories={activePriceCategories} 
+                            userPermissions={userPermissions} // <--- Pass permissions here too
                         />
                     </div>
                 </div>
