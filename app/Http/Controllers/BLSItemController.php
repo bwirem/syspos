@@ -184,11 +184,27 @@ class BLSItemController extends Controller
         // Prepare the data for update, ensuring prices not sent don't overwrite existing ones with null
         $updateData = $validated;
         
-        // If an item is linked to stock, we must restrict what can be updated.
-        // The name and group are managed by the inventory product.
+        // --- MODIFIED LOGIC START ---
+        // If an item is linked to stock, check if user tried to change Name or Group
         if ($item->product_id) {
+            
+            // Check if the requested Name is different from the current Name
+            if ($validated['name'] !== $item->name) {
+                return redirect()->back()
+                    ->with('error', 'Cannot update Name: This item is linked to Inventory. Please rename it via the Products interface.');
+            }
+
+            // Check if the requested Group is different from the current Group
+            if ($validated['itemgroup_id'] != $item->itemgroup_id) {
+                return redirect()->back()
+                    ->with('error', 'Cannot update Group: This item is linked to Inventory. Please update the Category via the Products interface.');
+            }
+
+            // Safety precaution: Remove them from update array just in case
             unset($updateData['name'], $updateData['itemgroup_id']);
         }
+        // --- MODIFIED LOGIC END ---
+    
     
         // Update the item
         $item->update($updateData);
