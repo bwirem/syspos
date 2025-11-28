@@ -4,7 +4,9 @@ import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
     faSearch, faPlus, faEdit, faTrash, faHome,
-    faChevronDown, faChevronUp, faSave, faTimes, faSpinner, faPencilAlt
+    faChevronDown, faChevronUp, faSave, faTimes, 
+    faSpinner, // <--- Make sure this is imported
+    faPencilAlt
 } from "@fortawesome/free-solid-svg-icons";
 import Modal from '@/Components/CustomModal';
 import Pagination from "@/Components/Pagination";
@@ -13,9 +15,14 @@ import { toast } from 'react-toastify';
 
 const DEBOUNCE_DELAY = 300;
 
-export default function Index({ auth, items, filters, success, activePriceCategories = [] }) {
+export default function Index({ auth, items, filters, success, error, activePriceCategories = [] }) {
     const { data: searchData, setData: setSearchData } = useForm({ search: filters.search || "" });
-    const [modalState, setModalState] = useState({ isOpen: false, itemToDeleteId: null });
+    
+    const [modalState, setModalState] = useState({ isOpen: false, itemToDelete: null });
+    
+    // --- NEW: Loading State ---
+    const [isLoading, setIsLoading] = useState(false); 
+    
     const searchTimeoutRef = useRef(null);
     const [expandedGroups, setExpandedGroups] = useState({});
 
@@ -23,8 +30,14 @@ export default function Index({ auth, items, filters, success, activePriceCatego
     const [currentPrices, setCurrentPrices] = useState({});
     const [isSavingPrices, setIsSavingPrices] = useState(false);
 
+    // Grouping Logic
     const groupedItems = items.data.reduce((acc, item) => {
-        const groupName = item.itemgroup?.name || 'Uncategorized';
+        let groupName = 'Uncategorized';
+        if (item.product && item.product.category) {
+            groupName = item.product.category.name;
+        } else if (item.itemgroup) {
+            groupName = item.itemgroup.name;
+        }
         if (!acc[groupName]) { acc[groupName] = []; }
         acc[groupName].push(item);
         return acc;
@@ -34,34 +47,46 @@ export default function Index({ auth, items, filters, success, activePriceCatego
         setExpandedGroups(prev => ({ ...prev, [groupName]: !prev[groupName] }));
     };
 
+    // --- NEW: Listen to Inertia Navigation Events ---
+    useEffect(() => {
+        const removeStart = router.on('start', () => setIsLoading(true));
+        const removeFinish = router.on('finish', () => setIsLoading(false));
+
+        return () => {
+            removeStart();
+            removeFinish();
+        };
+    }, []);
+
+    // Search Debounce
     useEffect(() => {
         if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
         searchTimeoutRef.current = setTimeout(() => {
             router.get(route("systemconfiguration0.items.index"), { search: searchData.search }, {
                 preserveState: true,
                 replace: true,
+                preserveScroll: true, // Keep scroll position while loading
             });
         }, DEBOUNCE_DELAY);
         return () => clearTimeout(searchTimeoutRef.current);
     }, [searchData.search]);
     
     useEffect(() => {
-        if (success) {
-            toast.success(success);
-        }
-    }, [success]);
+        if (success) toast.success(success);
+        if (error) toast.error(error.message);
+    }, [success, error, items]);
 
-    const handleDelete = (id) => setModalState({ isOpen: true, itemToDeleteId: id });
-    const handleModalClose = () => setModalState({ isOpen: false, itemToDeleteId: null });
+    // ... (Handlers for Delete and Edit remain the same) ...
+    const handleDelete = (item) => setModalState({ isOpen: true, itemToDelete: item });
+    const handleModalClose = () => setModalState({ isOpen: false, itemToDelete: null });
     const handleModalConfirm = () => {
-        if (!modalState.itemToDeleteId) return;
-        router.delete(route("systemconfiguration0.items.destroy", modalState.itemToDeleteId), {
+        if (!modalState.itemToDelete) return;
+        router.delete(route("systemconfiguration0.items.destroy", modalState.itemToDelete.id), {
             onSuccess: () => handleModalClose(),
         });
     };
 
     const handleEditItem = (item) => {
-        // REMOVED: The check for item.product_id that prevented editing.
         setEditingItemId(item.id);
         const initialPrices = activePriceCategories.reduce((acc, category) => {
             acc[category.key] = parseFloat(item[category.key] || 0).toFixed(2);
@@ -82,7 +107,6 @@ export default function Index({ auth, items, filters, success, activePriceCatego
     const handleSavePrices = (itemId) => {
         if (isSavingPrices) return;
         setIsSavingPrices(true);
-
         axios.patch(route('systemconfiguration0.items.update-prices', itemId), currentPrices)
             .then(response => {
                 toast.success(response.data.message || 'Prices updated!');
@@ -90,13 +114,9 @@ export default function Index({ auth, items, filters, success, activePriceCatego
                 handleCancelEdit();
             })
             .catch(error => {
-                const errorMessage = error.response?.data?.message || 'An error occurred.';
-                toast.error(errorMessage);
-                console.error(error.response?.data);
+                toast.error(error.response?.data?.message || 'An error occurred.');
             })
-            .finally(() => {
-                setIsSavingPrices(false);
-            });
+            .finally(() => setIsSavingPrices(false));
     };
 
     const tableColSpan = 2 + activePriceCategories.length;
@@ -107,6 +127,7 @@ export default function Index({ auth, items, filters, success, activePriceCatego
             <div className="py-12">
                 <div className="mx-auto max-w-7xl sm:px-6 lg:px-8">
                     <div className="bg-white shadow-sm sm:rounded-lg p-6">
+                        {/* Header Controls */}
                         <div className="mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
                             <div className="flex items-center space-x-2">
                                 <div className="relative">
@@ -122,89 +143,97 @@ export default function Index({ auth, items, filters, success, activePriceCatego
                             </div>
                         </div>
 
-                        <div className="overflow-x-auto rounded-lg border">
-                            <table className="min-w-full divide-y divide-gray-200">
-                                <thead className="bg-gray-50">
-                                    <tr>
-                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                                        {activePriceCategories.map(category => (
-                                            <th key={category.key} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{category.label}</th>
-                                        ))}
-                                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {Object.keys(groupedItems).length > 0 ? (
-                                        Object.entries(groupedItems).map(([groupName, groupItems]) => (
-                                            <React.Fragment key={groupName}>
-                                                <tr className="bg-gray-100">
-                                                    <td colSpan={tableColSpan} className="px-4 py-2 text-left font-bold text-gray-700 cursor-pointer" onClick={() => toggleGroup(groupName)}>
-                                                        <FontAwesomeIcon icon={expandedGroups[groupName] ? faChevronUp : faChevronDown} className="mr-3" />
-                                                        {groupName} ({groupItems.length})
-                                                    </td>
-                                                </tr>
-                                                {expandedGroups[groupName] && groupItems.map((item) => (
-                                                    <tr key={item.id} className="hover:bg-gray-50">
-                                                        <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 pl-10">{item.name}</td>
-                                                        
-                                                        {activePriceCategories.map(category => (
-                                                            <td key={category.key} className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                                {editingItemId === item.id ? (
-                                                                    <input
-                                                                        type="number"
-                                                                        step="0.01"
-                                                                        value={currentPrices[category.key]}
-                                                                        onChange={(e) => handlePriceChange(category.key, e.target.value)}
-                                                                        className="w-24 rounded-md border-gray-300 shadow-sm text-sm"
-                                                                    />
-                                                                ) : (
-                                                                    <span>{parseFloat(item[category.key] || 0).toFixed(2)}</span>
-                                                                )}
-                                                            </td>
-                                                        ))}
+                        {/* --- TABLE CONTAINER WITH LOADING OVERLAY --- */}
+                        <div className="relative rounded-lg border">
+                            
+                            {/* Loading Overlay */}
+                            {isLoading && (
+                                <div className="absolute inset-0 bg-white bg-opacity-75 z-10 flex items-center justify-center backdrop-blur-[1px] transition-opacity duration-300">
+                                    <div className="flex flex-col items-center">
+                                        <FontAwesomeIcon icon={faSpinner} spin className="text-blue-600 text-4xl mb-2" />
+                                        <span className="text-blue-600 font-medium">Loading...</span>
+                                    </div>
+                                </div>
+                            )}
 
-                                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-center">
-                                                            <div className="flex items-center justify-center space-x-4">
-                                                                {editingItemId === item.id ? (
-                                                                    <>
-                                                                        <button onClick={() => handleSavePrices(item.id)} disabled={isSavingPrices} className="text-green-600 hover:text-green-800 disabled:opacity-50">
-                                                                            {isSavingPrices ? <FontAwesomeIcon icon={faSpinner} spin /> : <FontAwesomeIcon icon={faSave} />}
-                                                                        </button>
-                                                                        <button onClick={handleCancelEdit} className="text-red-600 hover:text-red-800">
-                                                                            <FontAwesomeIcon icon={faTimes} />
-                                                                        </button>
-                                                                    </>
-                                                                ) : (
-                                                                    <>
-                                                                        {/* UPDATED: The "Edit Prices" button is now always enabled */}
-                                                                        <button onClick={() => handleEditItem(item)} className="text-blue-600 hover:text-blue-800" title="Edit Prices">
-                                                                            <FontAwesomeIcon icon={faPencilAlt} />
-                                                                        </button>
-                                                                        <Link href={route("systemconfiguration0.items.edit", item.id)} className="text-yellow-600 hover:text-yellow-800" title="Edit Full Item">
-                                                                            <FontAwesomeIcon icon={faEdit} />
-                                                                        </Link>
-                                                                        <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-800" title="Delete Item">
-                                                                            <FontAwesomeIcon icon={faTrash} />
-                                                                        </button>
-                                                                    </>
-                                                                )}
-                                                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50">
+                                        <tr>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                                            {activePriceCategories.map(category => (
+                                                <th key={category.key} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{category.label}</th>
+                                            ))}
+                                            <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {Object.keys(groupedItems).length > 0 ? (
+                                            Object.entries(groupedItems).map(([groupName, groupItems]) => (
+                                                <React.Fragment key={groupName}>
+                                                    <tr className="bg-gray-100">
+                                                        <td colSpan={tableColSpan} className="px-4 py-2 text-left font-bold text-gray-700 cursor-pointer hover:bg-gray-200" onClick={() => toggleGroup(groupName)}>
+                                                            <FontAwesomeIcon icon={expandedGroups[groupName] ? faChevronUp : faChevronDown} className="mr-3" />
+                                                            {groupName} ({groupItems.length})
                                                         </td>
                                                     </tr>
-                                                ))}
-                                            </React.Fragment>
-                                        ))
-                                    ) : (
-                                        <tr><td colSpan={tableColSpan} className="text-center py-10 text-gray-500">No items found.</td></tr>
-                                    )}
-                                </tbody>
-                            </table>
+                                                    {expandedGroups[groupName] && groupItems.map((item) => (
+                                                        <tr key={item.id} className="hover:bg-gray-50">
+                                                            <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 pl-10">
+                                                                {item.name}
+                                                                {item.product_id && <span className="ml-2 text-xs text-teal-600 bg-teal-100 px-2 py-0.5 rounded-full">Stock</span>}
+                                                            </td>
+                                                            {activePriceCategories.map(category => (
+                                                                <td key={category.key} className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                                    {editingItemId === item.id ? (
+                                                                        <input
+                                                                            type="number"
+                                                                            step="0.01"
+                                                                            value={currentPrices[category.key]}
+                                                                            onChange={(e) => handlePriceChange(category.key, e.target.value)}
+                                                                            className="w-24 rounded-md border-gray-300 shadow-sm text-sm"
+                                                                        />
+                                                                    ) : (
+                                                                        <span>{parseFloat(item[category.key] || 0).toFixed(2)}</span>
+                                                                    )}
+                                                                </td>
+                                                            ))}
+                                                            <td className="px-4 py-4 whitespace-nowrap text-sm text-center">
+                                                                <div className="flex items-center justify-center space-x-4">
+                                                                    {editingItemId === item.id ? (
+                                                                        <>
+                                                                            <button onClick={() => handleSavePrices(item.id)} disabled={isSavingPrices} className="text-green-600 hover:text-green-800 disabled:opacity-50">
+                                                                                {isSavingPrices ? <FontAwesomeIcon icon={faSpinner} spin /> : <FontAwesomeIcon icon={faSave} />}
+                                                                            </button>
+                                                                            <button onClick={handleCancelEdit} className="text-red-600 hover:text-red-800"><FontAwesomeIcon icon={faTimes} /></button>
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            <button onClick={() => handleEditItem(item)} className="text-blue-600 hover:text-blue-800" title="Edit Prices"><FontAwesomeIcon icon={faPencilAlt} /></button>
+                                                                            <Link href={route("systemconfiguration0.items.edit", item.id)} className="text-yellow-600 hover:text-yellow-800" title="Edit Full Item"><FontAwesomeIcon icon={faEdit} /></Link>
+                                                                            <button onClick={() => handleDelete(item)} className="text-red-600 hover:text-red-800" title="Delete Item"><FontAwesomeIcon icon={faTrash} /></button>
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </React.Fragment>
+                                            ))
+                                        ) : (
+                                            <tr><td colSpan={tableColSpan} className="text-center py-10 text-gray-500">No items found.</td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
+                        {/* --- END TABLE CONTAINER --- */}
+
                         <Pagination class="mt-6" links={items.links} />
                     </div>
                 </div>
             </div>
-            <Modal isOpen={modalState.isOpen} onClose={handleModalClose} onConfirm={handleModalConfirm} title="Confirm Deletion" message="Are you sure you want to delete this item?" />
+            <Modal isOpen={modalState.isOpen} onClose={handleModalClose} onConfirm={handleModalConfirm} title="Confirm Deletion" message={modalState.itemToDelete ? `Are you sure you want to delete "${modalState.itemToDelete.name}"?` : "Are you sure you want to delete this item?"} />
         </AuthenticatedLayout>
     );
 }

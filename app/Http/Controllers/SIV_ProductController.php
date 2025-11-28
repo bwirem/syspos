@@ -15,6 +15,11 @@ use App\Models\IVNormalAdjustmentItem;
 use App\Models\IVPhysicalInventoryItem;
 use App\Models\IVRequistionItem;
 
+use App\Models\BILInvoiceItem;
+use App\Models\BILOrderItem;
+use App\Models\BILReceiptItem;
+use App\Models\BILSaleItem;
+
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -79,8 +84,12 @@ class SIV_ProductController extends Controller
         return inertia('SystemConfiguration/InventorySetup/Products/Index', [
             'products' => $products,
             'filters' => $request->only(['search']),
-            'success' => session('success'), // Pass success flash messages
-        ]);
+            'success' => session('success'), // Pass success flash messages          
+            'error' => session('error') ? [    
+                'message' => session('error'),
+                'time' => microtime(true) // Unique timestamp ensures React notices the change
+                ] : null,
+             ]);
     }
 
     /**
@@ -259,46 +268,58 @@ class SIV_ProductController extends Controller
      */
    
 
-    public function destroy(SIV_Product $siv_product)
+    /**
+     * Remove the specified product from storage.
+     */
+    public function destroy(SIV_Product $product)
     {
-        // 1. Check if the product is used in any transaction tables OR linked to BLS Items
-        
+        // 1. Check if the PRODUCT is used in Inventory transactions
         $isUsed = false;
+        if (IVIssueItem::where('product_id', $product->id)->exists()) $isUsed = true;
+        elseif (IVReceiveItem::where('product_id', $product->id)->exists()) $isUsed = true;
+        elseif (IVNormalAdjustmentItem::where('product_id', $product->id)->exists()) $isUsed = true;
+        elseif (IVPhysicalInventoryItem::where('product_id', $product->id)->exists()) $isUsed = true;
+        elseif (IVRequistionItem::where('product_id', $product->id)->exists()) $isUsed = true;
 
-        if (IVIssueItem::where('product_id', $siv_product->id)->exists()) {
-            $isUsed = true;
-        } elseif (IVReceiveItem::where('product_id', $siv_product->id)->exists()) {
-            $isUsed = true;
-        } elseif (IVNormalAdjustmentItem::where('product_id', $siv_product->id)->exists()) {
-            $isUsed = true;
-        } elseif (IVPhysicalInventoryItem::where('product_id', $siv_product->id)->exists()) {
-            $isUsed = true;
-        } elseif (IVRequistionItem::where('product_id', $siv_product->id)->exists()) {
-            $isUsed = true;
-        } elseif (BLSItem::where('product_id', $siv_product->id)->exists()) { 
-            // Added check for BLS Items
-            $isUsed = true;
-        }
-
-        // 2. If used, prevent deletion and redirect with error
         if ($isUsed) {
             return redirect()->route('systemconfiguration2.products.index')
-                ->with('error', 'Unable to delete: This product is currently associated with transactions or Sales Items (BLS).');
+                ->with('error', 'Unable to delete: This product is currently associated with inventory transactions.');
         }
 
-        // 3. Attempt deletion with a database safety net
+        // 2. Find Linked BLS Item and Check Billing Transactions
+        $linkedItem = BLSItem::where('product_id', $product->id)->first();
+
+        if ($linkedItem) {
+            $itemIsUsed = false;
+            if (BILInvoiceItem::where('item_id', $linkedItem->id)->exists()) $itemIsUsed = true;
+            elseif (BILOrderItem::where('item_id', $linkedItem->id)->exists()) $itemIsUsed = true;
+            elseif (BILReceiptItem::where('item_id', $linkedItem->id)->exists()) $itemIsUsed = true;
+            elseif (BILSaleItem::where('item_id', $linkedItem->id)->exists()) $itemIsUsed = true;
+
+            if ($itemIsUsed) {
+                return redirect()->route('systemconfiguration2.products.index')
+                    ->with('error', 'Unable to delete: The linked Sales Item is used in billing transactions.');
+            }
+        }
+
+        // 3. Attempt deletion of both Product and Linked Item
         try {
-            $siv_product->delete();
+            DB::transaction(function () use ($product, $linkedItem) {
+                // If there is a linked BLS Item, delete it first
+                if ($linkedItem) {
+                    $linkedItem->delete();
+                }
+                // Delete the Product
+                $product->delete();
+            });
         } catch (QueryException $e) {
-            // Catches any foreign key constraints defined in the database that weren't caught above
             return redirect()->route('systemconfiguration2.products.index')
                 ->with('error', 'Unable to delete: Database integrity constraint violation.');
         }
 
         return redirect()->route('systemconfiguration2.products.index')
-            ->with('success', 'Product deleted successfully.');
+            ->with('success', 'Product (and linked sales item) deleted successfully.');
     }
-
     /**
      * Search products for AJAX requests.
      */

@@ -8,7 +8,15 @@ use App\Models\BLSPriceCategory;
 use App\Models\BILInvoiceItem;
 use App\Models\BILOrderItem;
 use App\Models\BILReceiptItem;
-use App\Models\BILSaleItem;     
+use App\Models\BILSaleItem;    
+
+use App\Models\SIV_Product;
+use App\Models\IVIssueItem;
+use App\Models\IVReceiveItem;
+use App\Models\IVNormalAdjustmentItem;
+use App\Models\IVPhysicalInventoryItem;
+use App\Models\IVRequistionItem;
+use Illuminate\Support\Facades\DB; // Ensure DB is imported
 use Illuminate\Database\QueryException;
 
 
@@ -23,15 +31,16 @@ class BLSItemController extends Controller
      */
     public function index(Request $request)
     {
-        // ... (query logic remains the same)
-        $query = BLSItem::with('itemgroup');
+       // 1. UPDATE: Add 'product.category' to the with() clause
+        $query = BLSItem::with(['itemgroup', 'product.category']); 
+
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function($q) use ($search) {
                 $q->where('name', 'like', '%' . $search . '%')
-                  ->orWhereHas('itemgroup', function ($subQuery) use ($search) {
-                      $subQuery->where('name', 'like', '%' . $search . '%');
-                  });
+                ->orWhereHas('itemgroup', function ($subQuery) use ($search) {
+                    $subQuery->where('name', 'like', '%' . $search . '%');
+                });
             });
         }
         
@@ -72,6 +81,13 @@ class BLSItemController extends Controller
             'items' => $items,
             'filters' => $request->only(['search']),
             'success' => session('success'),
+            
+            // Ensure error is passed correctly as requested previously
+            'error' => session('error') ? [
+                'message' => session('error'),
+                'time' => microtime(true)
+            ] : null,
+
             'activePriceCategories' => $activePriceCategories,
         ]);
     }
@@ -187,42 +203,54 @@ class BLSItemController extends Controller
      */
     
     public function destroy(BLSItem $item)
-    {     
-        // 1. Check if the item is linked to stock (Existing Logic)
-        if ($item->product_id) {
-            return redirect()->route('systemconfiguration0.items.index')
-                ->with('error', 'Cannot delete item: It is linked to a stock product.');
-        }
-
-        // 2. Check if the item is used in any transactions
+    {
+        // 1. Check if the ITEM itself is used in Billing transactions
         $isUsed = false;
-
-        if (BILInvoiceItem::where('item_id', $item->id)->exists()) {
-            $isUsed = true;
-        } elseif (BILOrderItem::where('item_id', $item->id)->exists()) {
-            $isUsed = true;
-        } elseif (BILReceiptItem::where('item_id', $item->id)->exists()) {
-            $isUsed = true;
-        } elseif (BILSaleItem::where('item_id', $item->id)->exists()) {
-            $isUsed = true;
-        }
+        if (BILInvoiceItem::where('item_id', $item->id)->exists()) $isUsed = true;
+        elseif (BILOrderItem::where('item_id', $item->id)->exists()) $isUsed = true;
+        elseif (BILReceiptItem::where('item_id', $item->id)->exists()) $isUsed = true;
+        elseif (BILSaleItem::where('item_id', $item->id)->exists()) $isUsed = true;
 
         if ($isUsed) {
             return redirect()->route('systemconfiguration0.items.index')
-                ->with('error', 'Cannot delete item: It has been used in existing transactions (Sales, Orders, Invoices, or Receipts).');
+                ->with('error', 'Cannot delete item: It has been used in existing billing transactions.');
         }
 
-        // 3. Attempt deletion with safety net
+        // 2. Check if linked to a PRODUCT and if that product is used in Inventory transactions
+        if ($item->product_id) {
+            $productIsUsed = false;
+            if (IVIssueItem::where('product_id', $item->product_id)->exists()) $productIsUsed = true;
+            elseif (IVReceiveItem::where('product_id', $item->product_id)->exists()) $productIsUsed = true;
+            elseif (IVNormalAdjustmentItem::where('product_id', $item->product_id)->exists()) $productIsUsed = true;
+            elseif (IVPhysicalInventoryItem::where('product_id', $item->product_id)->exists()) $productIsUsed = true;
+            elseif (IVRequistionItem::where('product_id', $item->product_id)->exists()) $productIsUsed = true;
+
+            if ($productIsUsed) {
+                return redirect()->route('systemconfiguration0.items.index')
+                    ->with('error', 'Cannot delete item: The linked Inventory Product is used in inventory transactions.');
+            }
+        }
+
+        // 3. Attempt deletion of both Item and Linked Product
         try {
-            $item->delete();
+            DB::transaction(function () use ($item) {
+                // If there is a linked product, delete it first (or second, depending on FK constraints)
+                if ($item->product_id) {
+                    $linkedProduct = SIV_Product::find($item->product_id);
+                    if ($linkedProduct) {
+                        $linkedProduct->delete();
+                    }
+                }
+                // Delete the Item
+                $item->delete();
+            });
         } catch (QueryException $e) {
-            // This catches any DB-level foreign key constraints not covered above
             return redirect()->route('systemconfiguration0.items.index')
                 ->with('error', 'Unable to delete: Database integrity constraint violation.');
         }
 
         return redirect()->route('systemconfiguration0.items.index')
-            ->with('success', 'Item deleted successfully.');
+            ->with('success', 'Item (and linked stock product) deleted successfully.');
     }
 
 
