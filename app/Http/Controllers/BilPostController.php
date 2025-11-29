@@ -351,13 +351,15 @@ class BilPostController extends Controller
                 'message' => $msg,
             ]);
 
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // FIX: Re-throw validation exceptions so Laravel sends 422 JSON
+            throw $e;
         } catch (\Exception $e) {
-            Log::error('Error during payment/printing:', [
+            // Only catch unexpected server errors here
+            Log::error('Error payment:', [
                 'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'order_id' => $order?->id,
+                'trace' => $e->getTraceAsString()
             ]);
-            
             return response()->json(['message' => 'An unexpected error occurred: ' . $e->getMessage()], 500);
         }
     }

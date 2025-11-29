@@ -8,8 +8,9 @@ import axios from 'axios';
 
 import Modal from '../../Components/CustomModal.jsx';
 import InputField from '../../Components/CustomInputField.jsx';
+// 1. IMPORT TOAST
+import { toast } from 'react-toastify';
 
-// ... debounce and formatCurrency helpers ...
 const debounce = (func, delay) => {
     let timeout;
     return (...args) => {
@@ -106,15 +107,14 @@ export default function Create({ fromstore, priceCategories, auth, facilityOptio
     // Logic for Stock Modal
     const [pendingItem, setPendingItem] = useState(null);
     const [showStockModal, setShowStockModal] = useState(false);
-    const [availableAlternativeStores, setAvailableAlternativeStores] = useState([]); // Stores with stock > 0
+    const [availableAlternativeStores, setAvailableAlternativeStores] = useState([]);
     const [isCheckingStock, setIsCheckingStock] = useState(false);
 
+    // Modal state only for Confirmations now
     const [modalState, setModalState] = useState({ isOpen: false, message: '', isAlert: false, itemToRemoveIndex: null });
     const itemDropdownRef = useRef(null);
     const itemSearchInputRef = useRef(null);
 
-    // ... useEffects for Storage, Search, Totals (Unchanged) ...
-    // --- Load from Session Storage ---
     useEffect(() => {
         const savedData = sessionStorage.getItem(STORAGE_KEY);
         if (savedData) {
@@ -130,7 +130,6 @@ export default function Create({ fromstore, priceCategories, auth, facilityOptio
         }
     }, []);
 
-    // --- Search Items ---
     const fetchItems = useCallback((query) => {
         if (!query.trim() || !data.pricecategory_id) {
             setItemSearchResults([]);
@@ -146,7 +145,7 @@ export default function Create({ fromstore, priceCategories, auth, facilityOptio
             } 
         })
         .then((response) => setItemSearchResults(response.data.items?.slice(0, 10) || []))
-        .catch(() => showAlert('Failed to fetch items.'))
+        .catch(() => toast.error('Failed to fetch items.')) // UPDATED
         .finally(() => setIsItemSearchLoading(false));
     }, [data.pricecategory_id, data.store_id]);
 
@@ -157,7 +156,6 @@ export default function Create({ fromstore, priceCategories, auth, facilityOptio
         else setItemSearchResults([]);
     }, [itemSearchQuery, debouncedItemSearch]);
 
-    // --- Calculate Totals & Sync Form ---
     useEffect(() => {
         setData('orderitems', orderItems.map(item => ({
             item_id: item.item_id,
@@ -165,6 +163,7 @@ export default function Create({ fromstore, priceCategories, auth, facilityOptio
             quantity: parseFloat(item.quantity) || 0,
             price: parseFloat(item.price) || 0,
             source_store_id: item.source_store_id, 
+            source_store_name: item.source_store_name, 
             price_ref: item.price_ref 
         })));
         
@@ -190,13 +189,11 @@ export default function Create({ fromstore, priceCategories, auth, facilityOptio
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-
-    // --- Add Item Logic with Server-Side Stock Check ---
     const checkStockAndAdd = (selectedItem) => {
-        // 1. Price Validation
+        // Price Check
         const price = parseFloat(selectedItem.price) || 0;
         if (price <= 0) {
-            showAlert(`Cannot add "${selectedItem.name}". The price is zero.`);
+            toast.error(`Cannot add "${selectedItem.name}". The price is zero.`); // UPDATED
             setShowItemDropdown(false);
             return;
         }
@@ -204,24 +201,18 @@ export default function Create({ fromstore, priceCategories, auth, facilityOptio
         const defaultStore = fromstore.find(s => s.id == data.store_id);
         const allowNegative = facilityOptions?.allownegativestock; 
         const currentStock = parseFloat(selectedItem.stock_quantity) || 0;
-         
-       // CHECK: Is this an inventory item? (Has a linked product_id)
         const isInventoryItem = !!selectedItem.product_id; 
 
         if (isInventoryItem && !allowNegative && currentStock <= 0) {
-            // Item is out of stock in default store.
-            // We must now check which other stores have it.
             setPendingItem(selectedItem);
-            setAvailableAlternativeStores([]); // Reset before fetch
+            setAvailableAlternativeStores([]); 
             setIsCheckingStock(true);
-            setShowStockModal(true); // Open modal immediately showing loading state
+            setShowStockModal(true); 
             setShowItemDropdown(false);
 
-            // Fetch availability from backend
             axios.get(route('systemconfiguration0.items.availability', { item: selectedItem.id }))
                 .then(response => {
-                    const availableStoreIds = response.data; // Array of Store IDs
-                    // Filter the 'fromstore' list to only show stores that have stock AND are not the current default store
+                    const availableStoreIds = response.data; 
                     const filteredStores = fromstore.filter(s => 
                         s.id != data.store_id && availableStoreIds.includes(s.id)
                     );
@@ -229,7 +220,7 @@ export default function Create({ fromstore, priceCategories, auth, facilityOptio
                 })
                 .catch(error => {
                     console.error("Stock check failed", error);
-                    showAlert("Failed to check stock in other stores.");
+                    toast.error("Failed to check stock in other stores."); // UPDATED
                     setShowStockModal(false);
                 })
                 .finally(() => {
@@ -241,48 +232,36 @@ export default function Create({ fromstore, priceCategories, auth, facilityOptio
         addItemToCart(selectedItem, data.store_id, defaultStore?.name);
     };
 
-    // Update this function to fetch actual stock before adding
     const handleAlternativeStoreSelect = (storeId) => {
         const store = fromstore.find(s => s.id == storeId);
         
         if (store && pendingItem) {
-            // 1. Show loading state if desired, or just proceed
-            
-            // 2. Fetch the specific item details FOR THE SELECTED STORE to get accurate stock
             axios.get(route('systemconfiguration0.items.search'), { 
                 params: { 
-                    query: pendingItem.name, // Search by exact name
-                    store_id: store.id,      // Context of the alternative store
+                    query: pendingItem.name, 
+                    store_id: store.id,
                     pricecategory_id: data.pricecategory_id 
                 } 
             })
             .then(response => {
-                // Find the exact item in the results
                 const exactItem = response.data.items.find(i => i.id === pendingItem.id);
-                
                 if (exactItem) {
-                    // 3. Add to cart with the CORRECT stock for that store
                     addItemToCart(exactItem, store.id, store.name);
                 } else {
-                    // Fallback (rare)
                     addItemToCart(pendingItem, store.id, store.name);
                 }
-                
-                // 4. Reset states
                 setShowStockModal(false);
                 setPendingItem(null);
                 setAvailableAlternativeStores([]);
             })
             .catch(error => {
                 console.error("Failed to fetch stock for alternative store", error);
-                // Fallback: Add anyway, validation might be skipped or strict depending on logic
                 addItemToCart(pendingItem, store.id, store.name);
                 setShowStockModal(false);
             });
         }
     };
 
-    // 1. UPDATE addItemToCart to save stock info
     const addItemToCart = (item, sourceStoreId, sourceStoreName) => {
         setIsAddingItem(true);
         
@@ -296,9 +275,8 @@ export default function Create({ fromstore, priceCategories, auth, facilityOptio
             source_store_id: sourceStoreId,
             source_store_name: sourceStoreName,
             price_ref: priceCatName,
-            // --- NEW: Save stock info for validation ---
             stock_quantity: parseFloat(item.stock_quantity) || 0,
-            product_id: item.product_id // To identify inventory items
+            product_id: item.product_id 
         };
 
         setOrderItems((prevItems) => [...prevItems, newItem]);
@@ -312,67 +290,58 @@ export default function Create({ fromstore, priceCategories, auth, facilityOptio
         }, 150);
     };
 
-    // --- Handle Order Item Changes ---
     const handleOrderItemChange = (index, field, value) => {
-        // Use immutable state update pattern
         setOrderItems(currentItems => {
             const newItems = [...currentItems];
-            const item = { ...newItems[index] }; // Shallow copy the item being modified
+            const item = { ...newItems[index] }; 
             
             let parsedValue = parseFloat(value);
             if (isNaN(parsedValue) || parsedValue < 0) {
                 parsedValue = field === 'quantity' ? 1 : 0;
             }
 
-            // --- VALIDATION LOGIC ---
             if (field === 'quantity') {
                 const allowNegative = facilityOptions?.allownegativestock;
-                
-                // 1. Strict Check: Is it an inventory item?
                 const isInventoryItem = item.product_id !== null && item.product_id !== undefined && item.product_id !== 0;
-                
-                // 2. Data Check: Do we know the stock limit?
-                // (This is now reliable because handleAlternativeStoreSelect fetches it)
                 const hasStockData = item.stock_quantity !== undefined && item.stock_quantity !== null;
-
-                // 3. REMOVED: const isDefaultStoreSource = ... 
-                // We validate regardless of source store, as long as we have data.
 
                 if (isInventoryItem && !allowNegative && hasStockData) {
                     const maxStock = parseFloat(item.stock_quantity);
-                    
                     if (parsedValue > maxStock) {
-                        // Use Inertia/Global modal or Alert
-                        setModalState({ 
-                            isOpen: true, 
-                            message: `Cannot exceed available stock (${maxStock}) for "${item.item_name}" from ${item.source_store_name || 'Store'}.`, 
-                            isAlert: true 
-                        });
-                        parsedValue = maxStock; // Clamp value
+                        // UPDATED: Use Toast
+                        toast.error(`Cannot exceed available stock (${maxStock}) for "${item.item_name}" from ${item.source_store_name || 'Store'}.`);
+                        parsedValue = maxStock; 
                     }
                 }
             }
-            // ------------------------
 
             item[field] = parsedValue;
             newItems[index] = item;
             return newItems;
         });
     };
-    
+
     const removeOrderItem = (index) => setModalState({ isOpen: true, message: 'Remove this item?', isAlert: false, itemToRemoveIndex: index });
     const handleModalConfirm = () => {
         if (modalState.itemToRemoveIndex !== null) setOrderItems(orderItems.filter((_, idx) => idx !== modalState.itemToRemoveIndex));
         setModalState({ isOpen: false, message: '', isAlert: false, itemToRemoveIndex: null });
     };
     
-    const showAlert = (message) => setModalState({ isOpen: true, message: message, isAlert: true, itemToRemoveIndex: null });
-    
+    // handleProceed Validation
     const handleProceed = (destination) => {
-        if (!data.store_id || !data.pricecategory_id) { showAlert('Store and Price Category are required.'); return; }
-        if (orderItems.length === 0) { showAlert('Add at least one item.'); return; }
+        if (!data.store_id || !data.pricecategory_id) { 
+            toast.error('Store and Price Category are required.'); // UPDATED
+            return; 
+        }
+        if (orderItems.length === 0) { 
+            toast.error('Add at least one item.'); // UPDATED
+            return; 
+        }
 
-        const payload = { ...data, orderitems: orderItems };
+        const payload = {
+            ...data,
+            orderitems: orderItems 
+        };
 
         sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ orderItems, store_id: data.store_id, pricecategory_id: data.pricecategory_id }));
 
@@ -464,7 +433,6 @@ export default function Create({ fromstore, priceCategories, auth, facilityOptio
                                                     <tr key={index}>
                                                         <td className="px-4 py-2">
                                                             <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{item.item_name}</div>
-                                                            {/* Logic: Show badges only if data is mixed (unique > 1) */}
                                                             {(showStoreBadge || showPriceBadge) && (
                                                                 <div className="flex space-x-2 mt-1">
                                                                     {showStoreBadge && item.source_store_name && (
@@ -511,9 +479,9 @@ export default function Create({ fromstore, priceCategories, auth, facilityOptio
             <StockSelectionModal 
                 isOpen={showStockModal} 
                 onClose={() => { setShowStockModal(false); setPendingItem(null); setAvailableAlternativeStores([]); }} 
-                onConfirm={handleAlternativeStoreSelect}
-                item={pendingItem}
-                stores={availableAlternativeStores} // Passed the filtered list
+                onConfirm={handleAlternativeStoreSelect} 
+                item={pendingItem} 
+                stores={availableAlternativeStores} 
                 isLoading={isCheckingStock}
             />
         </AuthenticatedLayout>

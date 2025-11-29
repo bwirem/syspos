@@ -7,6 +7,8 @@ import '@fortawesome/fontawesome-svg-core/styles.css';
 import axios from 'axios';
 import Modal from '../../Components/CustomModal.jsx';
 import InputField from '../../Components/CustomInputField.jsx';
+// 1. IMPORT TOAST
+import { toast } from 'react-toastify';
 
 const debounce = (func, delay) => {
     let timeout; return (...args) => { if (timeout) clearTimeout(timeout); timeout = setTimeout(() => func(...args), delay); };
@@ -77,7 +79,7 @@ export default function Edit({ order, fromstore, auth, priceCategories, facility
             };
         });
     };
-
+   
     const { data, setData, errors, processing } = useForm({
         store_id: order.store_id,
         pricecategory_id: order.pricecategory_id || auth?.user?.pricecategory_id || null,
@@ -113,7 +115,7 @@ export default function Edit({ order, fromstore, auth, priceCategories, facility
             params: { query: query.trim(), pricecategory_id: data.pricecategory_id, store_id: data.store_id } 
         })
         .then((response) => setItemSearchResults(response.data.items?.slice(0, 10) || []))
-        .catch(() => setModalState({ isOpen: true, message: 'Failed to fetch items', isAlert: true }));
+        .catch(() => toast.error('Failed to fetch items')) // UPDATED
     }, [data.pricecategory_id, data.store_id]);
 
     const debouncedItemSearch = useMemo(() => debounce(fetchItems, 300), [fetchItems]);
@@ -139,10 +141,11 @@ export default function Edit({ order, fromstore, auth, priceCategories, facility
     const checkStockAndAdd = (selectedItem) => {
         const price = parseFloat(selectedItem.price) || 0;
         if (price <= 0) {
-             setModalState({ isOpen: true, message: `Cannot add "${selectedItem.name}". The price is zero.`, isAlert: true });
+             toast.error(`Cannot add "${selectedItem.name}". The price is zero.`); // UPDATED
             setShowItemDropdown(false);
             return;
         }
+
         const defaultStore = fromstore.find(s => s.id == data.store_id);
         const allowNegative = facilityOptions?.allownegativestock;
         const currentStock = parseFloat(selectedItem.stock_quantity) || 0;
@@ -154,54 +157,44 @@ export default function Edit({ order, fromstore, auth, priceCategories, facility
             setIsCheckingStock(true);
             setShowStockModal(true);
             setShowItemDropdown(false);
+
             axios.get(route('systemconfiguration0.items.availability', { item: selectedItem.id }))
                 .then(response => {
                     const availableStoreIds = response.data;
                     const filteredStores = fromstore.filter(s => s.id != data.store_id && availableStoreIds.includes(s.id));
                     setAvailableAlternativeStores(filteredStores);
                 })
-                .catch(error => { console.error(error); setModalState({ isOpen: true, message: "Failed to check stock.", isAlert: true }); setShowStockModal(false); })
+                .catch(error => { console.error(error); toast.error("Failed to check stock."); setShowStockModal(false); }) // UPDATED
                 .finally(() => setIsCheckingStock(false));
             return;
         }
         addItemToCart(selectedItem, data.store_id, defaultStore?.name);
     };
 
-    // Update this function to fetch actual stock before adding
     const handleAlternativeStoreSelect = (storeId) => {
         const store = fromstore.find(s => s.id == storeId);
         
         if (store && pendingItem) {
-            // 1. Show loading state if desired, or just proceed
-            
-            // 2. Fetch the specific item details FOR THE SELECTED STORE to get accurate stock
             axios.get(route('systemconfiguration0.items.search'), { 
                 params: { 
-                    query: pendingItem.name, // Search by exact name
-                    store_id: store.id,      // Context of the alternative store
+                    query: pendingItem.name, 
+                    store_id: store.id,
                     pricecategory_id: data.pricecategory_id 
                 } 
             })
             .then(response => {
-                // Find the exact item in the results
                 const exactItem = response.data.items.find(i => i.id === pendingItem.id);
-                
                 if (exactItem) {
-                    // 3. Add to cart with the CORRECT stock for that store
                     addItemToCart(exactItem, store.id, store.name);
                 } else {
-                    // Fallback (rare)
                     addItemToCart(pendingItem, store.id, store.name);
                 }
-                
-                // 4. Reset states
                 setShowStockModal(false);
                 setPendingItem(null);
                 setAvailableAlternativeStores([]);
             })
             .catch(error => {
                 console.error("Failed to fetch stock for alternative store", error);
-                // Fallback: Add anyway, validation might be skipped or strict depending on logic
                 addItemToCart(pendingItem, store.id, store.name);
                 setShowStockModal(false);
             });
@@ -227,47 +220,30 @@ export default function Edit({ order, fromstore, auth, priceCategories, facility
         setItemSearchQuery(''); setShowItemDropdown(false);
     };
 
-    // Handle quantity/price changes with validation
     const handleOrderItemChange = (index, field, value) => {
-        // Use immutable state update pattern
         setOrderItems(currentItems => {
             const newItems = [...currentItems];
-            const item = { ...newItems[index] }; // Shallow copy the item being modified
+            const item = { ...newItems[index] }; 
             
             let parsedValue = parseFloat(value);
             if (isNaN(parsedValue) || parsedValue < 0) {
                 parsedValue = field === 'quantity' ? 1 : 0;
             }
 
-            // --- VALIDATION LOGIC ---
             if (field === 'quantity') {
                 const allowNegative = facilityOptions?.allownegativestock;
-                
-                // 1. Strict Check: Is it an inventory item?
                 const isInventoryItem = item.product_id !== null && item.product_id !== undefined && item.product_id !== 0;
-                
-                // 2. Data Check: Do we know the stock limit?
-                // (This is now reliable because handleAlternativeStoreSelect fetches it)
                 const hasStockData = item.stock_quantity !== undefined && item.stock_quantity !== null;
-
-                // 3. REMOVED: const isDefaultStoreSource = ... 
-                // We validate regardless of source store, as long as we have data.
 
                 if (isInventoryItem && !allowNegative && hasStockData) {
                     const maxStock = parseFloat(item.stock_quantity);
-                    
                     if (parsedValue > maxStock) {
-                        // Use Inertia/Global modal or Alert
-                        setModalState({ 
-                            isOpen: true, 
-                            message: `Cannot exceed available stock (${maxStock}) for "${item.item_name}" from ${item.source_store_name || 'Store'}.`, 
-                            isAlert: true 
-                        });
-                        parsedValue = maxStock; // Clamp value
+                        // UPDATED: Use Toast
+                        toast.error(`Cannot exceed available stock (${maxStock}) for "${item.item_name}".`);
+                        parsedValue = maxStock;
                     }
                 }
             }
-            // ------------------------
 
             item[field] = parsedValue;
             newItems[index] = item;

@@ -2,12 +2,12 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, useForm, Link, router } from '@inertiajs/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlus, faMoneyBill, faTimesCircle, faSpinner } from '@fortawesome/free-solid-svg-icons';
+import { faPlus, faMoneyBill, faTimesCircle, faSpinner, faStore, faTag, faUserPlus } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
-import axios from 'axios'; // Required for handling JSON response
+import axios from 'axios'; 
 import Modal from '../../Components/CustomModal.jsx';
+import { toast } from 'react-toastify';
 
-// Helper for search debounce
 const debounce = (func, delay) => {
     let timeout;
     return (...args) => {
@@ -16,7 +16,6 @@ const debounce = (func, delay) => {
     };
 };
 
-// Helper for currency formatting
 const formatCurrency = (value) => {
     return parseFloat(value || 0).toLocaleString(undefined, {
         minimumFractionDigits: 2,
@@ -27,10 +26,8 @@ const formatCurrency = (value) => {
 const STORAGE_KEY = 'pendingOrderData'; 
 
 export default function ProcessPayment({ auth, orderData, facilityoption, paymentMethods }) {
-    // Destructure helper methods from useForm
-    // Note: We are NOT using the 'post' method from useForm because we need to handle JSON
     const { data, setData, errors, setError, clearErrors, reset } = useForm({
-        customer_id: null,
+        customer_id: orderData.customer_id || null, 
         stage: '3',
         sale_type: 'cash',
         payment_method: auth?.user?.paymenttype_id || '',
@@ -41,57 +38,97 @@ export default function ProcessPayment({ auth, orderData, facilityoption, paymen
         orderitems: orderData.orderitems || [],
     });
 
-    // Local state for submission loading
     const [isSubmitting, setIsSubmitting] = useState(false);
-
-    // UI States
+    const isProcessingRef = useRef(false);
     const [amountDisplay, setAmountDisplay] = useState(formatCurrency(orderData.total || 0));
     
-    // Customer Search States
+    const [showCustomerSelection, setShowCustomerSelection] = useState(false);
+
     const [customerSearchQuery, setCustomerSearchQuery] = useState('');
     const [customerSearchResults, setCustomerSearchResults] = useState([]);
     const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
     const [isCustomerSearchLoading, setIsCustomerSearchLoading] = useState(false);
     const customerDropdownRef = useRef(null);
 
-    // Modal States
     const [newCustomerModalOpen, setNewCustomerModalOpen] = useState(false);
-    const [newCustomer, setNewCustomer] = useState({
-        customer_type: 'individual', first_name: '', other_names: '', surname: '', company_name: '', email: '', phone: '',
-    });
+    const [newCustomer, setNewCustomer] = useState({ customer_type: 'individual', first_name: '', other_names: '', surname: '', company_name: '', email: '', phone: '', });
     const [newCustomerModalLoading, setNewCustomerModalLoading] = useState(false);   
     const [alertModal, setAlertModal] = useState({ isOpen: false, message: '' });
     const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [paymentConfirmationModal, setPaymentConfirmationModal] = useState({ isOpen: false });
 
-    // --- 1. DEFAULT CUSTOMER LOGIC ---
+    // Badges Logic
+    const showStoreBadge = useMemo(() => {
+        if (!data.orderitems || data.orderitems.length === 0) return false;
+        const uniqueStores = new Set(data.orderitems.map(item => item.source_store_name).filter(Boolean));
+        return uniqueStores.size > 1; 
+    }, [data.orderitems]);
+
+    const showPriceBadge = useMemo(() => {
+        if (!data.orderitems || data.orderitems.length === 0) return false;
+        const uniquePrices = new Set(data.orderitems.map(item => item.price_ref).filter(Boolean));
+        return uniquePrices.size > 1; 
+    }, [data.orderitems]);
+
+    // --- 1. UPDATED: Logic for Hiding/Showing Customer Section ---
     useEffect(() => {
-        if (data.sale_type === 'cash' && facilityoption?.default_customer_id) {
-            setData('customer_id', facilityoption.default_customer_id);
-            // Optional: If you want to show the name in the search box, you'd need to fetch it or pass it in props
-            // setCustomerSearchQuery('Cash Sale Customer'); 
+        if (data.sale_type === 'cash') {
+            // Check if we are currently using the default customer or no customer
+            const isDefaultOrEmpty = !data.customer_id || (facilityoption?.default_customer_id && data.customer_id === facilityoption.default_customer_id);
+
+            if (isDefaultOrEmpty) {
+                // If it was default, keep it default and hide section
+                if (facilityoption?.default_customer_id) {
+                    setData('customer_id', facilityoption.default_customer_id);
+                }
+                setShowCustomerSelection(false); 
+                setCustomerSearchQuery('');
+            } else {
+                // If a CUSTOM customer was selected, keep the section open and keep the ID
+                setShowCustomerSelection(true);
+            }
         } else {
-            // If switching to credit, force user to select a customer
-            if (data.sale_type !== 'cash') {
-                setData('customer_id', null);
+            // For Credit or Partial, always show section
+            setShowCustomerSelection(true);
+            
+            // If the current ID is the default "Cash Customer", clear it to force specific selection
+            if (facilityoption?.default_customer_id && data.customer_id === facilityoption.default_customer_id) {
+                setData('customer_id', null); 
                 setCustomerSearchQuery('');
             }
         }
     }, [data.sale_type, facilityoption]);
 
-    // --- 2. PAYMENT AMOUNT LOGIC ---
+    // --- 2. UPDATED: Logic for Paid Amount Resetting ---
     useEffect(() => {
         if (data.sale_type === 'credit') {
+            // Credit: Always 0
             setData('paid_amount', 0);
             setAmountDisplay(formatCurrency(0));
-        } else if (data.sale_type === 'partial') {
-            // Keep existing input or default to what was there
-        } else {
-            // Full Cash Payment
+        } else if (data.sale_type === 'cash') {
+            // Cash: Always full total
             setData('paid_amount', data.total);
             setAmountDisplay(formatCurrency(data.total));
-        }
+        } 
+        // Partial: Do NOTHING. Keep whatever value is currently in paid_amount.
+        // This prevents the rollback when switching from Cash (with edited amount) -> Partial.
     }, [data.sale_type, data.total]);
+
+    const handleCustomerToggle = (e) => {
+        const isChecked = e.target.checked;
+        setShowCustomerSelection(isChecked);
+
+        if (!isChecked && data.sale_type === 'cash' && facilityoption?.default_customer_id) {
+            setData('customer_id', facilityoption.default_customer_id);
+            setCustomerSearchQuery('');
+        } else if (isChecked) {
+            // If opening the box, clear ID if it was default to prompt search
+            if (data.customer_id === facilityoption?.default_customer_id) {
+                setData('customer_id', null);
+                setCustomerSearchQuery('');
+            }
+        }
+    };
 
     const handlePaidAmountChange = (e) => {
         const value = e.target.value;
@@ -99,7 +136,6 @@ export default function ProcessPayment({ auth, orderData, facilityoption, paymen
         setAmountDisplay(formatCurrency(value));
     };
 
-    // --- 3. CUSTOMER SEARCH LOGIC ---
     const fetchCustomers = useCallback((query) => {
         if (!query.trim()) { setCustomerSearchResults([]); return; }
         setIsCustomerSearchLoading(true);
@@ -131,7 +167,6 @@ export default function ProcessPayment({ auth, orderData, facilityoption, paymen
         setShowCustomerDropdown(false);
     };
 
-    // --- 4. NEW CUSTOMER LOGIC ---
     const handleNewCustomerClick = () => {
         setNewCustomerModalOpen(true);
         setNewCustomer({ customer_type: 'individual', first_name: '', other_names: '', surname: '', company_name: '', email: '', phone: '' });
@@ -159,102 +194,84 @@ export default function ProcessPayment({ auth, orderData, facilityoption, paymen
         }
     };
 
-    // --- 5. PAYMENT SUBMISSION LOGIC (AXIOS) ---
     const proceedWithSubmission = () => {
-        setIsSubmitting(true);
-        clearErrors(); // Clear previous validation errors
+        if (isProcessingRef.current) return; 
+
+        isProcessingRef.current = true; 
+        setIsSubmitting(true);          
+        clearErrors();
+
+        const toastId = toast.loading("Processing payment... Please wait.");
 
         axios.post(route('billing1.pay'), data)
             .then((response) => {
-                // --- SUCCESS SCENARIO ---
-                
-                // 1. Clear pending order from session storage
-                sessionStorage.removeItem(STORAGE_KEY);
+                toast.dismiss(toastId);
+                toast.success("Payment Successful!");
 
-                // 2. Handle Printing (Preview vs Silent)
-                // If the backend printed silently, invoice_url will be null.
-                // If the backend wants us to preview, invoice_url will be a string.
+                sessionStorage.removeItem(STORAGE_KEY);
                 if (response.data.invoice_url) {
                     window.open(response.data.invoice_url, '_blank');
                 }
-
-                // 3. Show Success Message
                 setShowSuccessModal(true);
-                reset(); // Reset form data
-
-                // 4. Redirect to Index Page after short delay
+                reset();
                 setTimeout(() => {
                     router.visit(route('billing1.index'));
                 }, 1500);
             })
             .catch((error) => {
-                // --- ERROR SCENARIO ---
+                isProcessingRef.current = false;
                 setIsSubmitting(false);
+                toast.dismiss(toastId);
 
                 if (error.response && error.response.status === 422) {
-                    // Server Validation Errors: Map them to the form
                     const serverErrors = error.response.data.errors;
+                    
+                    if (serverErrors.orderitems) {
+                        toast.error(serverErrors.orderitems[0]); 
+                    } else {
+                        toast.error('Please check the input fields for errors.');
+                    }
+
                     Object.keys(serverErrors).forEach((key) => {
                         setError(key, serverErrors[key][0]);
                     });
-                    setAlertModal({ isOpen: true, message: 'Please check the input fields for errors.' });
                 } else {
-                    // General/Server Error
-                    setAlertModal({ 
-                        isOpen: true, 
-                        message: error.response?.data?.message || 'An unexpected error occurred during payment processing.' 
-                    });
+                    toast.error(error.response?.data?.message || 'An unexpected error occurred.');
                 }
             });
     };
 
-    // Handle Partial Payment Confirmation
-    // Handle Partial Payment Confirmation
     const handlePaymentConfirmation = () => {
-        // 1. Close the confirmation modal
         setPaymentConfirmationModal({ isOpen: false });
-
-        // 2. Change sale type to 'partial'
-        // This will automatically trigger your existing useEffect to show the Customer Search section
+        // NOTE: The useEffect logic ensures paid_amount is NOT reset when type becomes 'partial'
         setData(data => ({
             ...data,
             sale_type: 'partial',
-            customer_id: null // Clear the default "Cash Customer" so they must pick a real one
+            // Do NOT clear customer_id here automatically if it was default,
+            // let useEffect handle logic, but usually partial implies a specific customer is needed.
+            // We force clear it if it was default to ensure they pick someone.
+            customer_id: (facilityoption?.default_customer_id && data.customer_id === facilityoption.default_customer_id) ? null : data.customer_id
         }));
-
-        // 3. Clear the search text box
-        setCustomerSearchQuery('');
-
-        // 4. Show a helpful message (Optional but recommended)
-        setAlertModal({ 
-            isOpen: true, 
-            message: 'Switched to Partial Payment. Please select the customer who owes the balance.' 
-        });
-
-        // REMOVED: setTimeout(() => proceedWithSubmission(), 100); 
-        // We do NOT submit yet. The user must now pick a customer and click "Confirm" manually.
+        
+        toast.info('Switched to Partial Payment. Please select the customer who owes the balance.');
     };
 
-    // Initial Submit Handler
     const submitPayment = (e) => {
         e.preventDefault();
         
-        // Basic Validation
-        if (!data.customer_id) {
-            setAlertModal({ isOpen: true, message: 'Please select a customer before proceeding.' });
-            return;
+        if (!data.customer_id) { 
+            toast.error('Please select a customer before proceeding.');
+            setShowCustomerSelection(true); 
+            return; 
         }
 
-        // Logic Check: Cash vs Partial
-        if (data.sale_type === 'cash' && parseFloat(data.paid_amount) < data.total) {
-            setPaymentConfirmationModal({ isOpen: true });
-            return;
+        if (data.sale_type === 'cash' && parseFloat(data.paid_amount) < data.total) { 
+            setPaymentConfirmationModal({ isOpen: true }); 
+            return; 
         }
 
-        // Proceed
         proceedWithSubmission();
     };
-
 
     return (
         <AuthenticatedLayout user={auth.user} header={<h2 className="text-xl font-semibold leading-tight text-gray-800 dark:text-gray-200">Process Order Payment</h2>}>
@@ -263,8 +280,7 @@ export default function ProcessPayment({ auth, orderData, facilityoption, paymen
                 <div className="mx-auto max-w-4xl sm:px-6 lg:px-8">
                     <div className="overflow-hidden bg-white dark:bg-gray-800 p-6 shadow-sm sm:rounded-lg">
                         <form onSubmit={submitPayment} className="space-y-6">                            
-
-                            {/* Order Summary Section */}
+                            
                             <section className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
                                 <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-3">Order Summary</h3>
                                 <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-md mb-4">
@@ -280,7 +296,23 @@ export default function ProcessPayment({ auth, orderData, facilityoption, paymen
                                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                                             {data.orderitems.map((item, index) => (
                                                 <tr key={index}>
-                                                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700 dark:text-gray-200">{item.item_name}</td>
+                                                    <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200">
+                                                        <div className="font-medium">{item.item_name}</div>
+                                                        {(showStoreBadge || showPriceBadge) && (
+                                                            <div className="flex space-x-2 mt-1">
+                                                                {showStoreBadge && item.source_store_name && (
+                                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                                                        <FontAwesomeIcon icon={faStore} className="mr-1" /> {item.source_store_name}
+                                                                    </span>
+                                                                )}
+                                                                {showPriceBadge && item.price_ref && (
+                                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                                                        <FontAwesomeIcon icon={faTag} className="mr-1" /> {item.price_ref}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </td>
                                                     <td className="px-4 py-2 whitespace-nowrap text-sm text-center text-gray-700 dark:text-gray-200">{item.quantity}</td>
                                                     <td className="px-4 py-2 whitespace-nowrap text-sm text-right text-gray-700 dark:text-gray-200">{formatCurrency(item.price)}</td>
                                                     <td className="px-4 py-2 whitespace-nowrap text-sm text-right text-gray-700 dark:text-gray-200">{formatCurrency(item.quantity * item.price)}</td>
@@ -299,7 +331,6 @@ export default function ProcessPayment({ auth, orderData, facilityoption, paymen
                                 </div>
                             </section>
                             
-                            {/* Payment Details Section */}
                             <section className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
                                 <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-3">Payment Details</h3>
                                 <div className="space-y-4">
@@ -346,95 +377,84 @@ export default function ProcessPayment({ auth, orderData, facilityoption, paymen
                                 </div>
                             </section>
 
-                             {/* Customer Details Section */}
-                            {data.sale_type !== 'cash' && (
-                            <section className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
-                                <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-3">Customer Details</h3>
-                                <label htmlFor="customer_search" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Select or Create Customer</label>
-                                <div className="flex items-center space-x-2">
-                                    <div className="relative flex-grow" ref={customerDropdownRef}>
-                                        <input
-                                            id="customer_search" type="text" placeholder="Search customer..."
-                                            value={customerSearchQuery}
-                                            onChange={(e) => setCustomerSearchQuery(e.target.value)}
-                                            onFocus={() => setShowCustomerDropdown(true)}
-                                            className={`w-full border p-2 rounded text-sm dark:bg-gray-700 dark:text-gray-200 ${errors.customer_id ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'}`}
-                                            autoComplete="off"
-                                        />
-                                        {isCustomerSearchLoading && <FontAwesomeIcon icon={faSpinner} spin className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500" />}
-                                        {showCustomerDropdown && (
-                                            <ul className="absolute z-20 mt-1 w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                                                {customerSearchResults.length > 0 ? customerSearchResults.map((c) => (
-                                                    <li key={c.id} onClick={() => selectCustomer(c)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer text-sm text-gray-700 dark:text-gray-200">
-                                                        {c.customer_type === 'company' ? c.company_name : `${c.first_name || ''} ${c.surname || ''}`.trim()} ({c.phone || c.email || 'No Contact'})
-                                                    </li>
-                                                )) : !isCustomerSearchLoading && <li className="p-2 text-gray-500 dark:text-gray-400 text-sm">No customers found.</li>}
-                                            </ul>
-                                        )}
-                                    </div>
-                                    <button type="button" onClick={handleNewCustomerClick} className="bg-green-500 hover:bg-green-600 text-white rounded p-2.5 flex items-center space-x-2 text-sm">
-                                        <FontAwesomeIcon icon={faPlus} /> <span className="hidden sm:inline">New</span>
-                                    </button>
+                            {data.sale_type === 'cash' && (
+                                <div className="flex items-center space-x-2 px-4">
+                                    <input 
+                                        type="checkbox" 
+                                        id="toggleCustomer" 
+                                        checked={showCustomerSelection} 
+                                        onChange={handleCustomerToggle}
+                                        className="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                                    />
+                                    <label htmlFor="toggleCustomer" className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
+                                        Add/Change Customer Details (Default: Walk-in)
+                                    </label>
                                 </div>
-                                {errors.customer_id && <p className="text-red-500 text-xs mt-1">{errors.customer_id}</p>}
-                            </section>
                             )}
 
-                            {/* Action Buttons */}
+                            {showCustomerSelection && (
+                                <section className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg animate-fade-in-down">
+                                    <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-3">Customer Details</h3>
+                                    <div className="flex items-center space-x-2">
+                                        <div className="relative flex-grow" ref={customerDropdownRef}>
+                                            <input
+                                                id="customer_search" type="text" placeholder="Search customer..."
+                                                value={customerSearchQuery}
+                                                onChange={(e) => setCustomerSearchQuery(e.target.value)}
+                                                onFocus={() => setShowCustomerDropdown(true)}
+                                                className={`w-full border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 ${errors.customer_id ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'}`}
+                                                autoComplete="off"
+                                            />
+                                            {isCustomerSearchLoading && <FontAwesomeIcon icon={faSpinner} spin className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" />}
+                                            {showCustomerDropdown && (
+                                                <ul className="absolute z-20 mt-1 w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                                                    {customerSearchResults.length > 0 ? customerSearchResults.map((c) => (
+                                                        <li key={c.id} onClick={() => selectCustomer(c)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer text-sm text-gray-700 dark:text-gray-200">
+                                                            {c.customer_type === 'company' ? c.company_name : `${c.first_name || ''} ${c.surname || ''}`.trim()} ({c.phone || c.email || 'No Contact'})
+                                                        </li>
+                                                    )) : !isCustomerSearchLoading && <li className="p-2 text-gray-500 dark:text-gray-400 text-sm">No customers found.</li>}
+                                                </ul>
+                                            )}
+                                        </div>
+                                        <button type="button" onClick={handleNewCustomerClick} className="bg-green-500 hover:bg-green-600 text-white rounded p-2.5 flex items-center space-x-2 text-sm">
+                                            <FontAwesomeIcon icon={faPlus} /> <span className="hidden sm:inline">New</span>
+                                        </button>
+                                    </div>
+                                    {errors.customer_id && <p className="text-red-500 text-xs mt-1">{errors.customer_id}</p>}
+                                </section>
+                            )}
+
                             <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
                                 <Link href={route('billing1.create')} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Back</Link>
-                                <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 flex items-center">
+                                <button 
+                                    type="submit" 
+                                    disabled={isSubmitting} 
+                                    className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 flex items-center"
+                                >
                                     <FontAwesomeIcon icon={isSubmitting ? faSpinner : faMoneyBill} spin={isSubmitting} className="mr-2" />
-                                    Confirm Payment
+                                    {isSubmitting ? 'Processing...' : 'Confirm Payment'}
                                 </button>
                             </div>
                         </form>
                     </div>
                 </div>
             </div>
-
-            {/* New Customer Modal */}
+            
             <Modal isOpen={newCustomerModalOpen} onClose={handleNewCustomerModalClose} onConfirm={handleNewCustomerModalConfirm} title="Create New Customer" confirmButtonText={newCustomerModalLoading ? <><FontAwesomeIcon icon={faSpinner} spin /> Saving...</> : 'Confirm'} confirmButtonDisabled={newCustomerModalLoading}>
                 <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
-                    <div><label htmlFor="customer_type" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Customer Type</label><select id="customer_type" value={newCustomer.customer_type} onChange={(e) => setNewCustomer(prev => ({ ...prev, customer_type: e.target.value }))} className="w-full border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200" disabled={newCustomerModalLoading}><option value="individual">Individual</option><option value="company">Company</option></select></div>
-                    {newCustomer.customer_type === 'individual' && (<div className="grid grid-cols-1 md:grid-cols-3 gap-4"><div><label htmlFor="first_name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">First Name</label><input type="text" id="first_name" value={newCustomer.first_name} onChange={(e) => setNewCustomer(prev => ({...prev, first_name: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200" disabled={newCustomerModalLoading} /></div><div><label htmlFor="other_names" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Other Names</label><input type="text" id="other_names" value={newCustomer.other_names} onChange={(e) => setNewCustomer(prev => ({...prev, other_names: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200" disabled={newCustomerModalLoading} /></div><div><label htmlFor="surname" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Surname</label><input type="text" id="surname" value={newCustomer.surname} onChange={(e) => setNewCustomer(prev => ({...prev, surname: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200" disabled={newCustomerModalLoading} /></div></div>)}
-                    {newCustomer.customer_type === 'company' && (<div><label htmlFor="company_name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Company Name</label><input type="text" id="company_name" value={newCustomer.company_name} onChange={(e) => setNewCustomer(prev => ({...prev, company_name: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200" disabled={newCustomerModalLoading} /></div>)}
-                    <div><label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label><input type="email" id="email" value={newCustomer.email} onChange={(e) => setNewCustomer(prev => ({...prev, email: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200" disabled={newCustomerModalLoading} /></div>
-                    <div><label htmlFor="phone" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Phone</label><input type="text" id="phone" value={newCustomer.phone} onChange={(e) => setNewCustomer(prev => ({...prev, phone: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200" disabled={newCustomerModalLoading} /></div>
+                    <div><label htmlFor="customer_type" className="block text-sm font-medium dark:text-gray-300">Customer Type</label><select value={newCustomer.customer_type} onChange={(e) => setNewCustomer(prev => ({ ...prev, customer_type: e.target.value }))} className="w-full border p-2 rounded text-sm dark:bg-gray-700" disabled={newCustomerModalLoading}><option value="individual">Individual</option><option value="company">Company</option></select></div>
+                    {newCustomer.customer_type === 'individual' && (<div className="grid grid-cols-1 md:grid-cols-3 gap-4"><div><label className="block text-sm font-medium dark:text-gray-300">First Name</label><input type="text" value={newCustomer.first_name} onChange={(e) => setNewCustomer(prev => ({...prev, first_name: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700" disabled={newCustomerModalLoading} /></div><div><label className="block text-sm font-medium dark:text-gray-300">Other Names</label><input type="text" value={newCustomer.other_names} onChange={(e) => setNewCustomer(prev => ({...prev, other_names: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700" disabled={newCustomerModalLoading} /></div><div><label className="block text-sm font-medium dark:text-gray-300">Surname</label><input type="text" value={newCustomer.surname} onChange={(e) => setNewCustomer(prev => ({...prev, surname: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700" disabled={newCustomerModalLoading} /></div></div>)}
+                    {newCustomer.customer_type === 'company' && (<div><label className="block text-sm font-medium dark:text-gray-300">Company Name</label><input type="text" value={newCustomer.company_name} onChange={(e) => setNewCustomer(prev => ({...prev, company_name: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700" disabled={newCustomerModalLoading} /></div>)}
+                    <div><label className="block text-sm font-medium dark:text-gray-300">Email</label><input type="email" value={newCustomer.email} onChange={(e) => setNewCustomer(prev => ({...prev, email: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700" disabled={newCustomerModalLoading} /></div>
+                    <div><label className="block text-sm font-medium dark:text-gray-300">Phone</label><input type="text" value={newCustomer.phone} onChange={(e) => setNewCustomer(prev => ({...prev, phone: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700" disabled={newCustomerModalLoading} /></div>
                 </form>
             </Modal>
-
-            {/* Success Modal */}
-            <Modal
-                isOpen={showSuccessModal}
-                title="Success"
-                isAlert={true}
-                hideCloseButton={true}
-            >
-                <div className="text-center">
-                    <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-                        Payment processed successfully! Redirecting...
-                    </p>
-                    <FontAwesomeIcon icon={faSpinner} spin size="2x" className="text-blue-500" />
-                </div>
+            <Modal isOpen={showSuccessModal} title="Success" isAlert={true} hideCloseButton={true}>
+                <div className="text-center"><p className="text-sm text-gray-600 dark:text-gray-300 mb-4">Payment processed successfully! Redirecting...</p><FontAwesomeIcon icon={faSpinner} spin size="2x" className="text-blue-500" /></div>
             </Modal>
-
-             {/* Payment Confirmation Modal */}
-            <Modal
-                isOpen={paymentConfirmationModal.isOpen}
-                onClose={() => setPaymentConfirmationModal({ isOpen: false })}
-                onConfirm={handlePaymentConfirmation}
-                title="Confirm Payment Type"
-                confirmButtonText="Proceed as Partial"
-            >
-                <p className="text-sm text-gray-600 dark:text-gray-300">
-                    The amount paid is less than the total due.
-                    <br /><br />
-                    Do you want to proceed by changing the Sale Type to 'Partial Payment'?
-                </p>
+            <Modal isOpen={paymentConfirmationModal.isOpen} onClose={() => setPaymentConfirmationModal({ isOpen: false })} onConfirm={handlePaymentConfirmation} title="Confirm Payment Type" confirmButtonText="Proceed as Partial">
+                <p className="text-sm text-gray-600 dark:text-gray-300">The amount paid is less than the total due.<br /><br />Do you want to proceed by changing the Sale Type to 'Partial Payment'?</p>
             </Modal>
-            
-            {/* General Alert Modal */}
             <Modal isOpen={alertModal.isOpen} onClose={() => setAlertModal({ isOpen: false, message: '' })} onConfirm={() => setAlertModal({ isOpen: false, message: '' })} title="Alert" message={alertModal.message} isAlert={true} confirmButtonText="OK" />
         </AuthenticatedLayout>
     );
