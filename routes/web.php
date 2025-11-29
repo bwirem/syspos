@@ -674,6 +674,10 @@ Route::middleware('auth')->group(function () {
             
             // --- NEW ROUTE FOR QUICK PRICE UPDATE ---
             Route::patch('/{item}/update-prices', [BLSItemController::class, 'updatePrices'])->name('update-prices');
+           
+            // Add this specific route
+            Route::get('/{item}/availability', [BLSItemController::class, 'checkAvailability'])->name('availability');
+                    
         });
 
          // --- customers Routes ---

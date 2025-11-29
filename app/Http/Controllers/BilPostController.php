@@ -7,6 +7,8 @@ use App\Http\Controllers\Traits\GeneratesUniqueNumbers;
 use App\Services\InventoryService; // Import the service
 
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
+
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -80,6 +82,7 @@ class BilPostController extends Controller
         return inertia('BilPosts/Create', [
             'fromstore' => SIV_Store::all(),
             'priceCategories' => $this->fetchPriceCategories(),
+            'facilityOptions' => FacilityOption::first(),
         ]);
     }
 
@@ -94,11 +97,17 @@ class BilPostController extends Controller
             'store_id' => 'required|integer|exists:siv_stores,id',
             'pricecategory_id' => 'required|string',
             'total' => 'required|numeric|min:0',
+           
             'orderitems' => 'required|array|min:1',
             'orderitems.*.item_id' => 'required|integer|exists:bls_items,id',
             'orderitems.*.item_name' => 'required|string',
             'orderitems.*.quantity' => 'required|numeric|min:0.01',
             'orderitems.*.price' => 'required|numeric|min:0',
+
+            // New fields for Multi-Store and Price Category tracking
+            'orderitems.*.source_store_id' => 'nullable|integer', 
+            'orderitems.*.source_store_name' => 'nullable|string', // Kept for display in the view
+            'orderitems.*.price_ref' => 'nullable|string',
         ]);
 
         return inertia('BilPosts/SaveOrderConfirmation', [
@@ -118,13 +127,45 @@ class BilPostController extends Controller
     /**
      * Show the form for editing the specified order.
      */
-    public function edit(BILOrder $order)
+   public function edit(BILOrder $order)
     {
+        // 1. Load relationships
+        // 'orderitems.item' loads the BLSItem, which contains the 'product_id'
         $order->load(['customer', 'store', 'orderitems.item']);
+
+        // 2. Manually inject 'stock_quantity' for each item so frontend validation works
+        $order->orderitems->each(function ($orderItem) use ($order) {
+            
+            // Default to null/0
+            $orderItem->stock_quantity = 0;
+
+            // Only fetch stock if the item exists and is linked to inventory (has product_id)
+            if ($orderItem->item && $orderItem->item->product_id) {
+                
+                // Determine the context: Did this item come from a specific store or the default?
+                $targetStoreId = $orderItem->source_store_id ?? $order->store_id;
+                
+                // Construct the dynamic column name (e.g., 'qty_1')
+                $qtyColumn = 'qty_' . (int)$targetStoreId;
+
+                // Query the inventory control table directly
+                $stockRecord = DB::table('iv_productcontrol')
+                    ->where('product_id', $orderItem->item->product_id)
+                    ->select($qtyColumn)
+                    ->first();
+
+                // If record exists, assign the value to the object
+                if ($stockRecord && isset($stockRecord->$qtyColumn)) {
+                    $orderItem->stock_quantity = (float) $stockRecord->$qtyColumn;
+                }
+            }
+        });
+
         return inertia('BilPosts/Edit', [
             'order' => $order,
             'fromstore' => SIV_Store::all(),
             'priceCategories' => $this->fetchPriceCategories(),
+            'facilityOptions' => FacilityOption::first(),
         ]);
     }
 
@@ -161,9 +202,15 @@ class BilPostController extends Controller
             'pricecategory_id' => 'required|string',
             'total' => 'required|numeric|min:0',
             'orderitems' => 'required|array|min:1',
+            
             'orderitems.*.item_id' => 'required|integer|exists:bls_items,id',
+            'orderitems.*.item_name' => 'required|string', 
             'orderitems.*.quantity' => 'required|numeric|min:0.01',
             'orderitems.*.price' => 'required|numeric|min:0',
+            
+            'orderitems.*.source_store_id' => 'nullable|integer',
+            'orderitems.*.source_store_name' => 'nullable|string',
+            'orderitems.*.price_ref' => 'nullable|string',
         ]);
 
         return inertia('BilPosts/ProcessPayment', [
@@ -208,6 +255,8 @@ class BilPostController extends Controller
             'orderitems.*.item_id' => 'required|integer|exists:bls_items,id',
             'orderitems.*.quantity' => 'required|numeric|min:0.01',
             'orderitems.*.price' => 'required|numeric|min:0',
+            'orderitems.*.source_store_id' => 'nullable|integer', 
+
             'payment_method' => 'nullable|integer|exists:bls_paymenttypes,id',
             'paid_amount' => 'nullable|numeric|min:0',
             'total' => 'required|numeric|min:0',
@@ -438,70 +487,140 @@ class BilPostController extends Controller
     }
 
     /**
-     * Creates an inventory requisition to be processed by the stores department.
+     * Modified: Creates inventory requisitions.
+     * Logic: Automatic stock deduction (Stage 4) ONLY happens for the User's Default Store.
+     * Items from other stores create a pending request (Stage 3).
      */
+    
     private function createInventoryRequisition(array $data, Carbon $transdate, $orderItems, BILSale $sale): void
     {
         $inventoryService = new InventoryService();
-        // Check facility option for affecting stock at cashier
-        $facilityOptions = FacilityOption::first();
-        $affectstockatcashier = $facilityOptions?->affectstockatcashier ?? true;
         
-        $stage = 3;// Ready for inventory issue
-        if ($affectstockatcashier) {
-            $stage = 4; // Directly issued
-        }
+        // 1. Get Global Config
+        $facilityOptions = FacilityOption::first();
+        $globalAutoIssue = $facilityOptions?->affectstockatcashier ?? true;
+        $allowNegative = $facilityOptions?->allownegativestock ?? false;
+        
+        // 2. Get User's Default Store
+        $userDefaultStoreId = Auth::user()->store_id;
 
+        // Eager load relationships
+        $orderItems->load('item.product');
 
-        $requisition = IVRequistion::create([
-            'sale_id' => $sale->id, 
-            'transdate' => $transdate,
-            'tostore_id' => $data['customer_id'],
-            'tostore_type' => StoreType::Customer->value,
-            'fromstore_id' => $data['store_id'],
-            'stage' => $stage, 
-            'total' => 0,
-            'user_id' => Auth::id(),
-        ]);
+        // 3. Group items by their source store
+        $groupedItems = $orderItems->groupBy(function ($item) use ($data) {
+            return $item->source_store_id ?? $data['store_id'];
+        });
 
-        $requisitionItemsData = [];
-        foreach ($orderItems->load('item.product') as $orderItem) {
-            if ($product = $orderItem->item->product) {
-                $requisitionItemsData[] = [
-                    'product_id' => $product->id,
-                    'quantity' => $orderItem->quantity,
-                    'price' => $product->costprice, // Use cost price for inventory value
-                ];
+        foreach ($groupedItems as $storeId => $items) {            
+           
+            // --- Backend Stock Validation ---
+            if (!$allowNegative) {
+                // 1. Group items by product_id and sum the quantities
+                // This handles cases where barcode scanning adds multiple lines for the same item
+                $aggregatedItems = $items->groupBy(function ($item) {
+                    return $item->item->product_id;
+                })->map(function ($group) {
+                    return [
+                        'product_id' => $group->first()->item->product_id,
+                        'item_name'  => $group->first()->item_name,
+                        'total_qty'  => $group->sum('quantity')
+                    ];
+                });
+
+                // 2. Validate the aggregated totals
+                foreach ($aggregatedItems as $aggItem) {
+                    // Skip service items (no product_id)
+                    if (!$aggItem['product_id']) {
+                        continue;
+                    }
+
+                    $qtyColumn = 'qty_' . (int)$storeId;
+                    
+                    // Fetch current stock
+                    $currentStock = DB::table('iv_productcontrol')
+                        ->where('product_id', $aggItem['product_id'])
+                        ->value($qtyColumn);
+
+                    $currentStock = (float)($currentStock ?? 0);
+                    $requestedQty = (float)$aggItem['total_qty'];
+
+                    if ($requestedQty > $currentStock) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            'orderitems' => ["Insufficient stock for '{$aggItem['item_name']}'. Available: {$currentStock}, Requested Total: {$requestedQty}."]
+                        ]);
+                    }
+                }
+            }           
+            // -------------------------------------
+
+            // 4. Check if this group belongs to the User's Default Store
+            $isDefaultStore = ($storeId == $userDefaultStoreId);
+
+            // 5. Determine Stage
+            $stage = 3; 
+            if ($globalAutoIssue && $isDefaultStore) {
+                $stage = 4;
+            }
+
+            // Create Requisition (Initial total 0)
+            $requisition = IVRequistion::create([
+                'sale_id' => $sale->id, 
+                'transdate' => $transdate,
+                'tostore_id' => $data['customer_id'],
+                'tostore_type' => StoreType::Customer->value,
+                'fromstore_id' => $storeId,
+                'stage' => $stage, 
+                'total' => 0,
+                'user_id' => Auth::id(),
+            ]);
+
+            $requisitionItemsData = [];
+            $calculatedTotal = 0; // Initialize Total Variable
+
+            foreach ($items as $orderItem) {
+                if ($product = $orderItem->item->product) {
+                    
+                    // Safe cast to float to ensure math works
+                    $qty = (float) $orderItem->quantity;
+                    $cost = (float) $product->costprice;
+
+                    // Add to running total immediately
+                    $calculatedTotal += ($qty * $cost);
+
+                    $requisitionItemsData[] = [
+                        'product_id' => $product->id,
+                        'quantity' => $qty,
+                        'price' => $cost, 
+                    ];
+                }
+            }
+
+            if (!empty($requisitionItemsData)) {
+                $requisition->requistionitems()->createMany($requisitionItemsData);
+                
+                // Update with the calculated total from the loop
+                $requisition->total = $calculatedTotal;
+                $requisition->saveQuietly(); 
+
+                // 6. Issue Stock Logic
+                if ($globalAutoIssue && $isDefaultStore) {
+                    $deliveryNo = $this->generateUniqueNumber(IVIssue::class, 'delivery_no', 'ISS');
+                    $customer = BLSCustomer::find($data['customer_id']); 
+                    $tostore_name = $customer ? ($customer->company_name ?? trim("{$customer->first_name} {$customer->surname}")) : 'Guest';
+                    
+                    $inventoryService->issue(
+                        $storeId,
+                        $data['customer_id'],
+                        StoreType::Customer->value,
+                        $tostore_name,
+                        $requisitionItemsData,
+                        $deliveryNo,
+                        null 
+                    );
+                }
             }
         }
-
-        $requisition->requistionitems()->createMany($requisitionItemsData);
-
-        $costTotal = $requisition->requistionitems()->sum(DB::raw('quantity * price'));
-        $requisition->update(['total' => $costTotal]);
-
-        
-        
-        if (!$affectstockatcashier) {
-            return; // Skip inventory issue if not affecting stock at cashier
-        }
-
-        // Generate a unique delivery number
-        $deliveryNo = $this->generateUniqueNumber(IVIssue::class, 'delivery_no', 'ISS');
-        $tostore_type = StoreType::Customer->value;
-        $customer = BLSCustomer::find($data['customer_id']); 
-        $tostore_name = $customer->company_name ?? trim("{$customer->first_name} {$customer->surname}");
-         
-         // Perform the issuance
-        $inventoryService->issue(
-            $data['store_id'],
-            $data['customer_id'],
-            $tostore_type,
-            $tostore_name,
-            $requisitionItemsData,
-            $deliveryNo,
-            null // Expiry date is not handled in this part of the form
-        );
     }
 
     /**

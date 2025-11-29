@@ -46,6 +46,9 @@ trait HandlesOrdering
             'orderitems.*.item_id' => 'required|exists:bls_items,id',
             'orderitems.*.quantity' => 'required|numeric|min:1', // Quantity should be at least 1
             'orderitems.*.price' => 'required|numeric|min:0',
+            // New fields for Multi-Store and Price Category tracking
+            'orderitems.*.source_store_id' => 'nullable|integer',             
+            'orderitems.*.price_ref' => 'nullable|string',
         ]);
 
         DB::transaction(function () use ($validated) {
@@ -83,6 +86,9 @@ trait HandlesOrdering
             'orderitems.*.item_id' => 'required|exists:bls_items,id',
             'orderitems.*.quantity' => 'required|numeric|min:1', // Quantity should be at least 1
             'orderitems.*.price' => 'required|numeric|min:0',
+            // New fields for Multi-Store and Price Category tracking
+            'orderitems.*.source_store_id' => 'nullable|integer',             
+            'orderitems.*.price_ref' => 'nullable|string',
         ]);
 
         DB::transaction(function () use ($validated, $order) {
@@ -103,6 +109,8 @@ trait HandlesOrdering
                         'item_id' => $itemData['item_id'],
                         'quantity' => $itemData['quantity'],
                         'price' => $itemData['price'],
+                        'source_store_id' => $itemData['source_store_id'] ?? null,
+                        'price_ref' => $itemData['price_ref'] ?? null,
                     ]
                 );
             }

@@ -10,6 +10,7 @@ use App\Models\BILOrderItem;
 use App\Models\BILReceiptItem;
 use App\Models\BILSaleItem;    
 
+use App\Models\SIV_Store;
 use App\Models\SIV_Product;
 use App\Models\IVIssueItem;
 use App\Models\IVReceiveItem;
@@ -18,6 +19,7 @@ use App\Models\IVPhysicalInventoryItem;
 use App\Models\IVRequistionItem;
 use Illuminate\Support\Facades\DB; // Ensure DB is imported
 use Illuminate\Database\QueryException;
+
 
 
 use Illuminate\Http\Request;
@@ -276,16 +278,38 @@ class BLSItemController extends Controller
     public function search(Request $request)
     {
         $query = $request->input('query');
-        $priceCategoryId = $request->input('pricecategory_id', 'price1'); // default to price1 if not provided
+        $priceCategoryId = $request->input('pricecategory_id', 'price1'); 
+        $storeId = $request->input('store_id', null); // Get the store_id from the request
 
-        // Ensure only price1, price2, price3, or price4 is allowed
+        // Ensure only allowed price columns are used
         if (!in_array($priceCategoryId, ['price1', 'price2', 'price3', 'price4'])) {
             $priceCategoryId = 'price1';
         }
 
-        $items = BLSItem::where('name', 'like', '%' . $query . '%')
-            ->select('id', 'name', "$priceCategoryId as price")
-            ->get();
+        // Start building the query on BLSItem
+        $itemsQuery = BLSItem::where('bls_items.name', 'like', '%' . $query . '%')
+            ->select(
+                'bls_items.id', 
+                'bls_items.name', 
+                'bls_items.product_id', // Useful to have for reference
+                "bls_items.$priceCategoryId as price"
+            );
+
+        // Append Stock Quantity Logic
+        if ($storeId && is_numeric($storeId) && (int)$storeId > 0) {
+            // Construct dynamic column name based on store ID (e.g., qty_1, qty_2)
+            $qtyColumn = 'iv_productcontrol.qty_' . (int)$storeId;
+
+            // Join with inventory control to get stock
+            // We link BLSItem to Inventory Control via the product_id field
+            $itemsQuery->leftJoin('iv_productcontrol', 'iv_productcontrol.product_id', '=', 'bls_items.product_id')
+                       ->addSelect(\DB::raw("COALESCE($qtyColumn, 0) as stock_quantity"));
+        } else {
+            // Default stock to 0 if no store is selected
+            $itemsQuery->addSelect(\DB::raw('0 as stock_quantity'));
+        }
+
+        $items = $itemsQuery->take(10)->get();
 
         return response()->json(['items' => $items]);
     }
@@ -323,6 +347,43 @@ class BLSItemController extends Controller
             'success' => true,
             'message' => 'Prices updated successfully.',
         ]);
+    }
+
+    /**
+     * Check which stores have stock > 0 for a specific item.
+     * Used by the Point of Sale when default store is empty.
+     */
+    public function checkAvailability($itemId)
+    {
+        $item = BLSItem::find($itemId);
+
+        // If item doesn't exist or isn't linked to inventory product, return empty
+        if (!$item || !$item->product_id) {
+            return response()->json([]);
+        }
+
+        $stores = SIV_Store::all();
+        
+        // Fetch the inventory control record for this product
+        $productControl = DB::table('iv_productcontrol')
+                            ->where('product_id', $item->product_id)
+                            ->first();
+
+        $availableStoreIds = [];
+
+        if ($productControl) {
+            foreach ($stores as $store) {
+                // Construct the column name (e.g., qty_1, qty_2)
+                $col = 'qty_' . $store->id;
+
+                // Check if the column exists in the result and has positive stock
+                if (isset($productControl->$col) && (float)$productControl->$col > 0) {
+                    $availableStoreIds[] = $store->id;
+                }
+            }
+        }
+
+        return response()->json($availableStoreIds);
     }
 
 }
