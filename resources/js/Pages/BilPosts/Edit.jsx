@@ -261,6 +261,8 @@ export default function Edit({ order, fromstore, auth, priceCategories, facility
                 quantity: parseFloat(item.quantity) || 0,
                 price: parseFloat(item.price) || 0,
                 source_store_id: item.source_store_id,
+                // --- ADD THIS LINE ---
+                source_store_name: item.source_store_name, 
                 price_ref: item.price_ref
             })),
         };

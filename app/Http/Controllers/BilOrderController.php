@@ -6,6 +6,8 @@ use App\Http\Controllers\Traits\HandlesOrdering; // Import the trait
 use App\Models\BILOrder;
 use App\Models\SIV_Store;
 use Illuminate\Http\Request;
+use App\Models\FacilityOption;
+use Illuminate\Support\Facades\DB;
 
 class BilOrderController extends Controller
 {
@@ -53,6 +55,7 @@ class BilOrderController extends Controller
         return inertia('BilOrders/Create', [
             'fromstore' => SIV_Store::all(),
             'priceCategories' => $this->fetchPriceCategories(), // Use trait method
+            'facilityOptions' => FacilityOption::first(), // Passed for stock validation settings
         ]);
     }
 
@@ -66,17 +69,48 @@ class BilOrderController extends Controller
         return redirect()->route('billing0.index')->with('success', 'Order created successfully.');
     }
 
+        
     /**
      * Show the form for editing the specified order.
      */
     public function edit(BILOrder $order)
     {
-        $order->load(['customer', 'store', 'orderitems.item']);
+        // 1. Load relationships, including sourceStore for badge display
+        $order->load(['customer', 'store', 'orderitems.item', 'orderitems.sourceStore']);
+
+        // 2. Manually inject 'stock_quantity' for each item so frontend validation works
+        $order->orderitems->each(function ($orderItem) use ($order) {
+            
+            // Default to 0
+            $orderItem->stock_quantity = 0;
+
+            // Only fetch stock if the item exists and is linked to inventory (has product_id)
+            if ($orderItem->item && $orderItem->item->product_id) {
+                
+                // Determine the context: Did this item come from a specific store or the default?
+                $targetStoreId = $orderItem->source_store_id ?? $order->store_id;
+                
+                // Construct the dynamic column name (e.g., 'qty_1')
+                $qtyColumn = 'qty_' . (int)$targetStoreId;
+
+                // Query the inventory control table directly
+                // Using value() is slightly cleaner/faster for a single column
+                $stockValue = DB::table('iv_productcontrol')
+                    ->where('product_id', $orderItem->item->product_id)
+                    ->value($qtyColumn);
+
+                // If record exists, assign the value to the object
+                if ($stockValue !== null) {
+                    $orderItem->stock_quantity = (float) $stockValue;
+                }
+            }
+        });
 
         return inertia('BilOrders/Edit', [
             'order' => $order,
             'fromstore' => SIV_Store::all(),
             'priceCategories' => $this->fetchPriceCategories(), // Use trait method
+            'facilityOptions' => FacilityOption::first(), // Passed for stock validation settings
         ]);
     }
 

@@ -25,6 +25,13 @@ class BILOrderItem extends Model
     {
         return $this->belongsTo(BLSItem::class, 'item_id', 'id');
     }
+
+    // --- ADD THIS RELATIONSHIP ---
+    public function sourceStore()
+    {
+        return $this->belongsTo(SIV_Store::class, 'source_store_id', 'id');
+    }
+   
    
     /**
      * Calculate the total price for this order item.

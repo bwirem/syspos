@@ -2,12 +2,13 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, useForm, Link } from '@inertiajs/react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlus, faSave, faTimesCircle, faSpinner } from '@fortawesome/free-solid-svg-icons';
+import { faPlus, faSave, faTimesCircle, faSpinner, faStore, faTag } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
 import axios from 'axios';
 import Modal from '../../Components/CustomModal.jsx';
+// 1. IMPORT TOAST
+import { toast } from 'react-toastify';
 
-// Reusable helper functions
 const debounce = (func, delay) => {
     let timeout;
     return (...args) => {
@@ -22,19 +23,18 @@ const formatCurrency = (value) => {
     });
 };
 
-const STORAGE_KEY = 'pendingOrderData'; // Use the same key as in Create.jsx
+const STORAGE_KEY = 'pendingOrderData'; 
 
 export default function SaveOrderConfirmation({ auth, orderData }) {
     const { data, setData, post, errors, processing, reset } = useForm({
         customer_id: null,
-        stage: '3', // Default save stage
+        stage: '3', 
         store_id: orderData.store_id || null,
         pricecategory_id: orderData.pricecategory_id || null,
         total: orderData.total || 0,
         orderitems: orderData.orderitems || [],
     });
 
-    // --- Customer Logic ---
     const [customerSearchQuery, setCustomerSearchQuery] = useState('');
     const [customerSearchResults, setCustomerSearchResults] = useState([]);
     const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
@@ -46,11 +46,20 @@ export default function SaveOrderConfirmation({ auth, orderData }) {
         customer_type: 'individual', first_name: '', other_names: '', surname: '', company_name: '', email: '', phone: '',
     });
     const [newCustomerModalLoading, setNewCustomerModalLoading] = useState(false);
-    // --- End Customer Logic ---
 
-    const [alertModal, setAlertModal] = useState({ isOpen: false, message: '' });
+    // --- 2. BADGE LOGIC ---
+    const showStoreBadge = useMemo(() => {
+        if (!data.orderitems || data.orderitems.length === 0) return false;
+        const uniqueStores = new Set(data.orderitems.map(item => item.source_store_name).filter(Boolean));
+        return uniqueStores.size > 1; 
+    }, [data.orderitems]);
 
-    // --- Customer Functions ---
+    const showPriceBadge = useMemo(() => {
+        if (!data.orderitems || data.orderitems.length === 0) return false;
+        const uniquePrices = new Set(data.orderitems.map(item => item.price_ref).filter(Boolean));
+        return uniquePrices.size > 1; 
+    }, [data.orderitems]);
+
     const fetchCustomers = useCallback((query) => {
         if (!query.trim()) {
             setCustomerSearchResults([]);
@@ -59,7 +68,7 @@ export default function SaveOrderConfirmation({ auth, orderData }) {
         setIsCustomerSearchLoading(true);
         axios.get(route('systemconfiguration0.customers.search'), { params: { query } })
             .then((response) => setCustomerSearchResults(response.data.customers?.slice(0, 10) || []))
-            .catch(() => setAlertModal({ isOpen: true, message: 'Failed to fetch customers.' }))
+            .catch(() => toast.error('Failed to fetch customers.')) // UPDATED
             .finally(() => setIsCustomerSearchLoading(false));
     }, []);
 
@@ -108,31 +117,31 @@ export default function SaveOrderConfirmation({ auth, orderData }) {
                 selectCustomer(response.data);
                 setTimeout(() => handleNewCustomerModalClose(), 500);
             } else {
-                setAlertModal({ isOpen: true, message: response.data?.message || 'Error creating new customer!' });
+                toast.error(response.data?.message || 'Error creating new customer!'); // UPDATED
             }
         } catch (error) {
-            setAlertModal({ isOpen: true, message: error.response?.data?.message || 'Failed to create new customer.' });
+            toast.error(error.response?.data?.message || 'Failed to create new customer.'); // UPDATED
         } finally {
             setNewCustomerModalLoading(false);
         }
     };
-    // --- End Customer Functions ---
 
     const submitOrder = (e) => {
         e.preventDefault();
         if (!data.customer_id) {
-            setAlertModal({ isOpen: true, message: 'Please select a customer before saving the order.' });
+            toast.error('Please select a customer before saving the order.'); // UPDATED
             return;
         }
+        
         post(route('billing1.store'), {
             onSuccess: () => {
-                sessionStorage.removeItem(STORAGE_KEY); // <-- CLEAR STORAGE ON SUCCESS
-                //alert('Order saved successfully!');
+                sessionStorage.removeItem(STORAGE_KEY); 
                 reset();
+                toast.success('Order saved successfully!');
             },
             onError: (formErrors) => {
                 const errorMessages = Object.values(formErrors).join('\n');
-                setAlertModal({ isOpen: true, message: `Failed to save order:\n${errorMessages || 'Please check your input.'}` });
+                toast.error(`Failed to save order: ${errorMessages || 'Please check your input.'}`); // UPDATED
             }
         });
     };
@@ -145,7 +154,6 @@ export default function SaveOrderConfirmation({ auth, orderData }) {
                     <div className="overflow-hidden bg-white dark:bg-gray-800 p-6 shadow-sm sm:rounded-lg">
                         <form onSubmit={submitOrder} className="space-y-6">                           
                             
-                            {/* Order Summary Section */}
                             <section className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
                                 <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-3">Order Summary</h3>
                                 <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-md mb-4">
@@ -161,10 +169,27 @@ export default function SaveOrderConfirmation({ auth, orderData }) {
                                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                                             {data.orderitems.map((item, index) => (
                                                 <tr key={index}>
-                                                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700 dark:text-gray-200">{item.item_name}</td>
-                                                    <td className="px-4 py-2 whitespace-nowrap text-sm text-center text-gray-700 dark:text-gray-200">{item.quantity}</td>
-                                                    <td className="px-4 py-2 whitespace-nowrap text-sm text-right text-gray-700 dark:text-gray-200">{formatCurrency(item.price)}</td>
-                                                    <td className="px-4 py-2 whitespace-nowrap text-sm text-right text-gray-700 dark:text-gray-200">{formatCurrency(item.quantity * item.price)}</td>
+                                                    <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200">
+                                                        {/* --- UPDATED UI FOR BADGES --- */}
+                                                        <div className="font-medium">{item.item_name}</div>
+                                                        {(showStoreBadge || showPriceBadge) && (
+                                                            <div className="flex space-x-2 mt-1">
+                                                                {showStoreBadge && item.source_store_name && (
+                                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                                                        <FontAwesomeIcon icon={faStore} className="mr-1" /> {item.source_store_name}
+                                                                    </span>
+                                                                )}
+                                                                {showPriceBadge && item.price_ref && (
+                                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                                                        <FontAwesomeIcon icon={faTag} className="mr-1" /> {item.price_ref}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-2 text-center text-sm">{item.quantity}</td>
+                                                    <td className="px-4 py-2 text-right text-sm">{formatCurrency(item.price)}</td>
+                                                    <td className="px-4 py-2 text-right text-sm">{formatCurrency(item.quantity * item.price)}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -204,7 +229,7 @@ export default function SaveOrderConfirmation({ auth, orderData }) {
                                             value={customerSearchQuery}
                                             onChange={(e) => setCustomerSearchQuery(e.target.value)}
                                             onFocus={() => setShowCustomerDropdown(true)}
-                                            className={`w-full border p-2 rounded text-sm dark:bg-gray-700 dark:text-gray-200 ${errors.customer_id ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'}`}
+                                            className={`w-full border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 ${errors.customer_id ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'}`}
                                             autoComplete="off"
                                         />
                                         {isCustomerSearchLoading && <FontAwesomeIcon icon={faSpinner} spin className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500" />}
@@ -212,9 +237,9 @@ export default function SaveOrderConfirmation({ auth, orderData }) {
                                             <ul className="absolute z-20 mt-1 w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
                                                 {customerSearchResults.length > 0 ? customerSearchResults.map((c) => (
                                                     <li key={c.id} onClick={() => selectCustomer(c)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer text-sm text-gray-700 dark:text-gray-200">
-                                                        {c.customer_type === 'company' ? c.company_name : `${c.first_name || ''} ${c.surname || ''}`.trim()} ({c.phone || c.email || 'No Contact'})
+                                                        {c.customer_type === 'company' ? c.company_name : `${c.first_name || ''} ${c.surname || ''}`.trim()}
                                                     </li>
-                                                )) : !isCustomerSearchLoading && <li className="p-2 text-gray-500 dark:text-gray-400 text-sm">No customers found.</li>}
+                                                )) : <li className="p-2 text-sm text-gray-500">No customers found.</li>}
                                             </ul>
                                         )}
                                     </div>
@@ -225,7 +250,6 @@ export default function SaveOrderConfirmation({ auth, orderData }) {
                                 {errors.customer_id && <p className="text-red-500 text-xs mt-1">{errors.customer_id}</p>}
                             </section>
 
-                            {/* Action Buttons */}
                             <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
                                 <Link href={route('billing1.create')} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500">Back</Link>
                                 <button type="submit" disabled={processing} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center">
@@ -237,28 +261,16 @@ export default function SaveOrderConfirmation({ auth, orderData }) {
                     </div>
                 </div>
             </div>
-
-            {/* New Customer Modal */}
+            
             <Modal isOpen={newCustomerModalOpen} onClose={handleNewCustomerModalClose} onConfirm={handleNewCustomerModalConfirm} title="Create New Customer" confirmButtonText={newCustomerModalLoading ? <><FontAwesomeIcon icon={faSpinner} spin /> Saving...</> : 'Confirm'} confirmButtonDisabled={newCustomerModalLoading}>
                 <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
-                    <div><label htmlFor="customer_type" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Customer Type</label><select id="customer_type" value={newCustomer.customer_type} onChange={(e) => setNewCustomer(prev => ({ ...prev, customer_type: e.target.value }))} className="w-full border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200" disabled={newCustomerModalLoading}><option value="individual">Individual</option><option value="company">Company</option></select></div>
-                    {newCustomer.customer_type === 'individual' && (<div className="grid grid-cols-1 md:grid-cols-3 gap-4"><div><label htmlFor="first_name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">First Name</label><input type="text" id="first_name" value={newCustomer.first_name} onChange={(e) => setNewCustomer(prev => ({...prev, first_name: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200" disabled={newCustomerModalLoading} /></div><div><label htmlFor="other_names" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Other Names</label><input type="text" id="other_names" value={newCustomer.other_names} onChange={(e) => setNewCustomer(prev => ({...prev, other_names: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200" disabled={newCustomerModalLoading} /></div><div><label htmlFor="surname" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Surname</label><input type="text" id="surname" value={newCustomer.surname} onChange={(e) => setNewCustomer(prev => ({...prev, surname: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200" disabled={newCustomerModalLoading} /></div></div>)}
-                    {newCustomer.customer_type === 'company' && (<div><label htmlFor="company_name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Company Name</label><input type="text" id="company_name" value={newCustomer.company_name} onChange={(e) => setNewCustomer(prev => ({...prev, company_name: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200" disabled={newCustomerModalLoading} /></div>)}
-                    <div><label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label><input type="email" id="email" value={newCustomer.email} onChange={(e) => setNewCustomer(prev => ({...prev, email: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200" disabled={newCustomerModalLoading} /></div>
-                    <div><label htmlFor="phone" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Phone</label><input type="text" id="phone" value={newCustomer.phone} onChange={(e) => setNewCustomer(prev => ({...prev, phone: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200" disabled={newCustomerModalLoading} /></div>
+                    <div><label htmlFor="customer_type" className="block text-sm font-medium dark:text-gray-300">Customer Type</label><select value={newCustomer.customer_type} onChange={(e) => setNewCustomer(prev => ({ ...prev, customer_type: e.target.value }))} className="w-full border p-2 rounded text-sm dark:bg-gray-700" disabled={newCustomerModalLoading}><option value="individual">Individual</option><option value="company">Company</option></select></div>
+                    {newCustomer.customer_type === 'individual' && (<div className="grid grid-cols-1 md:grid-cols-3 gap-4"><div><label className="block text-sm font-medium dark:text-gray-300">First Name</label><input type="text" value={newCustomer.first_name} onChange={(e) => setNewCustomer(prev => ({...prev, first_name: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700" disabled={newCustomerModalLoading} /></div><div><label className="block text-sm font-medium dark:text-gray-300">Other Names</label><input type="text" value={newCustomer.other_names} onChange={(e) => setNewCustomer(prev => ({...prev, other_names: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700" disabled={newCustomerModalLoading} /></div><div><label className="block text-sm font-medium dark:text-gray-300">Surname</label><input type="text" value={newCustomer.surname} onChange={(e) => setNewCustomer(prev => ({...prev, surname: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700" disabled={newCustomerModalLoading} /></div></div>)}
+                    {newCustomer.customer_type === 'company' && (<div><label className="block text-sm font-medium dark:text-gray-300">Company Name</label><input type="text" value={newCustomer.company_name} onChange={(e) => setNewCustomer(prev => ({...prev, company_name: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700" disabled={newCustomerModalLoading} /></div>)}
+                    <div><label className="block text-sm font-medium dark:text-gray-300">Email</label><input type="email" value={newCustomer.email} onChange={(e) => setNewCustomer(prev => ({...prev, email: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700" disabled={newCustomerModalLoading} /></div>
+                    <div><label className="block text-sm font-medium dark:text-gray-300">Phone</label><input type="text" value={newCustomer.phone} onChange={(e) => setNewCustomer(prev => ({...prev, phone: e.target.value}))} className="w-full border p-2 rounded text-sm dark:bg-gray-700" disabled={newCustomerModalLoading} /></div>
                 </form>
             </Modal>
-            
-            {/* *****FIXED ALERT MODAL***** */}
-            <Modal
-                isOpen={alertModal.isOpen}
-                onClose={() => setAlertModal({ isOpen: false, message: '' })}
-                onConfirm={() => setAlertModal({ isOpen: false, message: '' })} // Set onConfirm to close the modal
-                title="Alert"
-                message={alertModal.message}
-                isAlert={true}
-                confirmButtonText="OK" // Change button text to be more intuitive
-            />
         </AuthenticatedLayout>
     );
 }

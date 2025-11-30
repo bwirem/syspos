@@ -127,16 +127,28 @@ class BilPostController extends Controller
     /**
      * Show the form for editing the specified order.
      */
-   public function edit(BILOrder $order)
+    public function edit(BILOrder $order)
     {
         // 1. Load relationships
-        // 'orderitems.item' loads the BLSItem, which contains the 'product_id'
-        $order->load(['customer', 'store', 'orderitems.item']);
+        // Added 'orderitems.sourceStore' to efficiently fetch store names
+        $order->load(['customer', 'store', 'orderitems.item', 'orderitems.sourceStore']);
 
-        // 2. Manually inject 'stock_quantity' for each item so frontend validation works
+        // 2. Inject 'stock_quantity' and 'source_store_name'
         $order->orderitems->each(function ($orderItem) use ($order) {
             
-            // Default to null/0
+            // --- A. INJECT SOURCE STORE NAME ---
+            if ($orderItem->sourceStore) {
+                // If the item has a specific source store saved, use its name
+                $orderItem->source_store_name = $orderItem->sourceStore->name;
+            } elseif ($order->store) {
+                // Fallback: If no specific source is set, it implies the Order's default store
+                $orderItem->source_store_name = $order->store->name;
+            } else {
+                $orderItem->source_store_name = 'Unknown Store';
+            }
+
+            // --- B. STOCK QUANTITY LOGIC ---
+            // Default to 0
             $orderItem->stock_quantity = 0;
 
             // Only fetch stock if the item exists and is linked to inventory (has product_id)
