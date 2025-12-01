@@ -1,28 +1,28 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { Head, Link, useForm, router as inertiaRouter } from "@inertiajs/react";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"; // Correct import
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
     faSearch,
     faPlus,
     faEdit,
     faTrash,
-    faFilter, // Optional: if you plan to use it for more complex filter UIs
-} from "@fortawesome/free-solid-svg-icons"; // Icons used
-import "@fortawesome/fontawesome-svg-core/styles.css"; // Font Awesome CSS
+    faTimesCircle,
+} from "@fortawesome/free-solid-svg-icons";
+import "@fortawesome/fontawesome-svg-core/styles.css";
+import { toast } from 'react-toastify';
 
-import Modal from '@/Components/CustomModal.jsx'; // Assuming @ alias for your components directory
+import Modal from '@/Components/CustomModal.jsx';
 
-const DEBOUNCE_DELAY = 300; // milliseconds for debounce
+const DEBOUNCE_DELAY = 300;
 
-export default function Index({ auth, requisitions = { data: [] }, filters = {}, fromstoreList = [] }) {
+export default function Index({ auth, requisitions = { data: [] }, filters = {}, fromstoreList = [], flash }) {
     const {
         data: filterData,
         setData: setFilterData,
-        // 'get' from useForm is not directly used for filter fetching in this approach
-        delete: deleteRequisitionAction, // Renamed for clarity
-        processing, // For loading states on delete
-        // errors: formErrors, // Not typically populated by GET filters from useForm
+        delete: deleteRequisitionAction,
+        processing,
+        clearErrors,
     } = useForm({
         search: filters.search || "",
         fromstore: filters.fromstore || "",
@@ -30,12 +30,23 @@ export default function Index({ auth, requisitions = { data: [] }, filters = {},
 
     const [modalState, setModalState] = useState({
         isOpen: false,
+        title: 'Alert',
         message: '',
-        isAlert: false,
         requisitionToDeleteId: null,
+        onConfirmAction: null,
     });
 
     const filterTimeoutRef = useRef(null);
+
+    // Handle Flash Messages using Toast
+    useEffect(() => {
+        if (flash?.success) {
+            toast.success(flash.success);
+        }
+        if (flash?.error) {
+            toast.error(flash.error);
+        }
+    }, [flash]);
 
     // Effect for fetching data when filters change (debounced)
     useEffect(() => {
@@ -45,11 +56,11 @@ export default function Index({ auth, requisitions = { data: [] }, filters = {},
         filterTimeoutRef.current = setTimeout(() => {
             inertiaRouter.get(
                 route("inventory0.index"),
-                { // Data to send with the GET request
+                { 
                     search: filterData.search,
                     fromstore: filterData.fromstore,
                 },
-                { // Options
+                { 
                     preserveState: true,
                     preserveScroll: true,
                     replace: true,
@@ -72,59 +83,61 @@ export default function Index({ auth, requisitions = { data: [] }, filters = {},
         setFilterData("fromstore", e.target.value);
     }, [setFilterData]);
 
+    const resetFilters = () => {
+        setFilterData({
+            search: "",
+            fromstore: "",
+        });
+        clearErrors();
+    };
+
+    const handleModalClose = useCallback(() => {
+        setModalState({ isOpen: false, title: 'Alert', message: '', requisitionToDeleteId: null, onConfirmAction: null });
+    }, []);
+
     const handleDeleteClick = useCallback((id, toStoreName) => {
         setModalState({
             isOpen: true,
+            title: 'Confirm Deletion',
             message: `Are you sure you want to delete the requisition for "${toStoreName || 'this store'}"? This action cannot be undone.`,
-            isAlert: false,
             requisitionToDeleteId: id,
+            onConfirmAction: () => confirmDelete(),
         });
     }, []);
 
-    const handleModalClose = useCallback(() => {
-        setModalState({ isOpen: false, message: '', isAlert: false, requisitionToDeleteId: null });
-    }, []);
-
-    const showAlert = useCallback((message) => {
-        setModalState({
-            isOpen: true,
-            message: message,
-            isAlert: true,
-            requisitionToDeleteId: null,
-        });
-    }, []);
-
-    const handleModalConfirm = useCallback(() => {
+    const confirmDelete = () => {
         if (modalState.requisitionToDeleteId) {
             deleteRequisitionAction(route("inventory0.destroy", modalState.requisitionToDeleteId), {
                 preserveScroll: true,
                 onSuccess: () => {
                     handleModalClose();
-                    // Optionally use Inertia flash messages for success notification
-                    // showAlert("Requisition deleted successfully."); // This would show a modal
+                    toast.success("Requisition deleted successfully.");
                 },
                 onError: (errorResponse) => {
                     console.error("Failed to delete requisition:", errorResponse);
-                    // Try to get a specific error message if backend provides one
-                    const messageFromServer = errorResponse?.message || (typeof errorResponse === 'object' ? Object.values(errorResponse).join(' ') : errorResponse);
-                    showAlert(`Failed to delete requisition: ${messageFromServer || 'Please try again.'}`);
+                    const messageFromServer = errorResponse?.message || (typeof errorResponse === 'object' ? Object.values(errorResponse).join(' ') : errorResponse) || 'Please try again.';
+                    
+                    handleModalClose();
+                    toast.error(`Failed to delete requisition: ${messageFromServer}`);
                 },
             });
         }
-    }, [deleteRequisitionAction, modalState.requisitionToDeleteId, handleModalClose, showAlert]);
+    };
 
     const formatCurrency = (amount, currencyCodeParam = 'TZS') => {
         const parsedAmount = parseFloat(amount);
         if (isNaN(parsedAmount)) {
-            return 'N/A'; // Or some other placeholder for invalid numbers
+            return 'N/A';
         }
-        return parsedAmount.toLocaleString(undefined, { // Use user's locale for number part
+        return parsedAmount.toLocaleString(undefined, {
             style: 'currency',
-            currency: currencyCodeParam, // Actual currency code (e.g., TZS, USD)
+            currency: currencyCodeParam,
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
         });
     };
+
+    const hasActiveFilters = filterData.search || filterData.fromstore;
 
     return (
         <AuthenticatedLayout
@@ -136,16 +149,20 @@ export default function Index({ auth, requisitions = { data: [] }, filters = {},
                 <div className="mx-auto max-w-7xl sm:px-6 lg:px-8">
                     <div className="overflow-hidden bg-white shadow-sm sm:rounded-lg">
                         <div className="p-6 text-gray-900">
-                            <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <div>
-                                        <label htmlFor="fromstore-filter" className="sr-only">Filter by From Store</label>
+                            {/* Filters Section */}
+                            <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-end">
+                                <div className="flex flex-wrap items-center gap-4">
+                                    {/* From Store Filter */}
+                                    <div className="w-full sm:w-auto">
+                                        <label htmlFor="fromstore-filter" className="block text-sm font-medium text-gray-700 mb-1">
+                                            Filter by From Store
+                                        </label>
                                         <select
                                             id="fromstore-filter"
                                             name="fromstore"
                                             value={filterData.fromstore}
                                             onChange={handleFromStoreChange}
-                                            className="block w-full rounded-md border-gray-300 py-2 pl-3 pr-10 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:w-auto"
+                                            className="block w-full rounded-md border-gray-300 py-2 pl-3 pr-10 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"
                                         >
                                             <option value="">All From Stores</option>
                                             {fromstoreList.map((store) => (
@@ -153,23 +170,44 @@ export default function Index({ auth, requisitions = { data: [] }, filters = {},
                                             ))}
                                         </select>
                                     </div>
-                                    <div className="relative">
-                                        <label htmlFor="search-filter" className="sr-only">Search by To Store</label>
-                                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                                            <FontAwesomeIcon icon={faSearch} className="h-4 w-4 text-gray-400" aria-hidden="true" />
+
+                                    {/* Search Filter */}
+                                    <div className="w-full sm:w-auto relative">
+                                        <label htmlFor="search-filter" className="block text-sm font-medium text-gray-700 mb-1">
+                                            Search To Store
+                                        </label>
+                                        <div className="relative">
+                                            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                                <FontAwesomeIcon icon={faSearch} className="h-4 w-4 text-gray-400" aria-hidden="true" />
+                                            </div>
+                                            <input
+                                                id="search-filter"
+                                                type="text"
+                                                name="search"
+                                                placeholder="Search by name..."
+                                                value={filterData.search}
+                                                onChange={handleSearchChange}
+                                                className="block w-full rounded-md border-gray-300 py-2 pl-10 pr-3 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:w-64"
+                                            />
                                         </div>
-                                        <input
-                                            id="search-filter"
-                                            type="text"
-                                            name="search"
-                                            placeholder="Search by to-store name"
-                                            value={filterData.search}
-                                            onChange={handleSearchChange}
-                                            className="block w-full rounded-md border-gray-300 py-2 pl-10 pr-3 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:w-64"
-                                        />
                                     </div>
+
+                                    {/* Reset Filters */}
+                                    {hasActiveFilters && (
+                                        <div className="flex items-end pb-1">
+                                            <button
+                                                onClick={resetFilters}
+                                                className="rounded-md bg-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-300 flex items-center"
+                                                title="Reset all filters"
+                                            >
+                                                <FontAwesomeIcon icon={faTimesCircle} className="mr-1.5 h-4 w-4" />
+                                                Reset
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
 
+                                {/* Create Button */}
                                 <Link
                                     href={route("inventory0.create")}
                                     className="inline-flex items-center justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
@@ -178,10 +216,12 @@ export default function Index({ auth, requisitions = { data: [] }, filters = {},
                                 </Link>
                             </div>
 
+                            {/* Table Section */}
                             <div className="overflow-x-auto rounded-lg border border-gray-200">
                                 <table className="min-w-full divide-y divide-gray-200 bg-white">
                                     <thead className="bg-gray-50">
                                         <tr>
+                                            <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Date</th>
                                             <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">From Store</th>
                                             <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">To Store</th>
                                             <th scope="col" className="px-4 py-3.5 text-right text-sm font-semibold text-gray-900">Total Value</th>                                            
@@ -192,11 +232,17 @@ export default function Index({ auth, requisitions = { data: [] }, filters = {},
                                         {requisitions.data && requisitions.data.length > 0 ? (
                                             requisitions.data.map((requisition) => (
                                                 <tr key={requisition.id} className="hover:bg-gray-50">
+                                                    <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">
+                                                        {new Date(requisition.created_at).toLocaleDateString()}
+                                                    </td>                                                   
                                                     <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-700">
                                                         {requisition.fromstore?.name || "N/A"}
                                                     </td>
                                                     <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-700">
-                                                        {requisition.tostore?.name || "N/A"}
+                                                        {requisition.tostore?.name || 
+                                                         (requisition.tostore?.customer_type === 'individual' 
+                                                            ? `${requisition.tostore?.first_name || ''} ${requisition.tostore?.surname || ''}` 
+                                                            : requisition.tostore?.company_name) || "N/A"}
                                                     </td>
                                                     <td className="whitespace-nowrap px-4 py-4 text-right text-sm text-gray-700">
                                                         {formatCurrency(requisition.total, requisition.currency_code)}
@@ -206,23 +252,20 @@ export default function Index({ auth, requisitions = { data: [] }, filters = {},
                                                             <Link
                                                                 href={route("inventory0.edit", requisition.id)}
                                                                 className="flex items-center rounded bg-sky-500 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-sky-600"
-                                                                title={requisition.status === 'pending' ? "Edit Requisition" : "Preview Requisition"}
+                                                                title="Edit Requisition"
                                                             >
                                                                 <FontAwesomeIcon icon={faEdit} className="mr-1.5 h-3 w-3" />
-                                                                {requisition.status === 'pending' ? 'Edit' : 'Preview'}
+                                                                Edit
                                                             </Link>
-                                                            {/* Show Delete button only if status allows (e.g., 'pending') */}
-                                                            {requisition.status === 'pending' && (
-                                                                <button
-                                                                    onClick={() => handleDeleteClick(requisition.id, requisition.tostore?.name)}
-                                                                    className="flex items-center rounded bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-red-700"
-                                                                    disabled={processing && modalState.requisitionToDeleteId === requisition.id}
-                                                                    title="Delete Requisition"
-                                                                >
-                                                                    <FontAwesomeIcon icon={faTrash} className="mr-1.5 h-3 w-3" />
-                                                                    Delete
-                                                                </button>
-                                                            )}
+                                                            <button
+                                                                onClick={() => handleDeleteClick(requisition.id, requisition.tostore?.name)}
+                                                                className="flex items-center rounded bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-red-700"
+                                                                disabled={processing && modalState.requisitionToDeleteId === requisition.id}
+                                                                title="Delete Requisition"
+                                                            >
+                                                                <FontAwesomeIcon icon={faTrash} className="mr-1.5 h-3 w-3" />
+                                                                Delete
+                                                            </button>
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -237,20 +280,21 @@ export default function Index({ auth, requisitions = { data: [] }, filters = {},
                                     </tbody>
                                 </table>
                             </div>
-                            {/* TODO: Add Pagination if requisitions.links exists (e.g., <Pagination links={requisitions.links} />) */}
+                            {/* Pagination would go here */}
                         </div>
                     </div>
                 </div>
             </div>
+            
+            {/* Modal for Confirmation only */}
             <Modal
                 isOpen={modalState.isOpen}
                 onClose={handleModalClose}
-                onConfirm={modalState.isAlert ? null : handleModalConfirm}
-                title={modalState.isAlert ? "Alert" : "Confirm Deletion"}
+                onConfirm={modalState.onConfirmAction}
+                title={modalState.title}
                 message={modalState.message}
-                isAlert={modalState.isAlert}
                 isProcessing={processing && modalState.requisitionToDeleteId !== null}
-                confirmButtonText={modalState.isAlert ? "OK" : (processing ? "Deleting..." : "Confirm Delete")}
+                confirmButtonText={processing ? "Deleting..." : "Confirm Delete"}
             />
         </AuthenticatedLayout>
     );

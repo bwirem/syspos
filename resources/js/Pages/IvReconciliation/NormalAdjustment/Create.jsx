@@ -5,6 +5,8 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTimesCircle, faTrash, faSave, faCheck, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
 import axios from 'axios';
+import { toast } from 'react-toastify';
+
 import Modal from '@/Components/CustomModal.jsx';
 
 // Utility function for debouncing
@@ -16,16 +18,16 @@ const debounce = (func, delay) => {
     };
 };
 
-const defaultArray = []; // For props that should be arrays
+const defaultArray = [];
 
-export default function CreateNormalAdjustment({ auth, stores: initialStores = defaultArray, adjustmentreasons: initialAdjustmentReasons = defaultArray }) {
+export default function CreateNormalAdjustment({ auth, stores: initialStores = defaultArray, adjustmentreasons: initialAdjustmentReasons = defaultArray, facilityOptions }) {
     const { data, setData, post, errors, processing, reset, clearErrors, setError } = useForm({
         store_id: '',
         adjustment_reason_id: '',
         total: 0,
-        stage: 1, // Default to Draft (1)
+        stage: 1, 
         normaladjustmentitems: [],
-        remarks: '', // Standard remarks field
+        remarks: '', 
     });
 
     // Item Search State
@@ -35,60 +37,59 @@ export default function CreateNormalAdjustment({ auth, stores: initialStores = d
     const [isItemSearchLoading, setIsItemSearchLoading] = useState(false);
     const itemSearchContainerRef = useRef(null);
     const itemSearchInputRef = useRef(null);
+    
+    // Track initial mount to prevent clearing items on first load
+    const isInitialMount = useRef(true);
 
-    // UI Feedback Modal (for item removal, general alerts)
-    const [uiFeedbackModal, setUiFeedbackModal] = useState({
-        isOpen: false, message: '', isAlert: true, title: 'Alert', confirmText: 'OK',
-        onConfirmAction: null,
-    });
-
-    // Commit Confirmation Modal (for final submission with remarks)
+    // Commit Confirmation Modal
     const [commitConfirmationModal, setCommitConfirmationModal] = useState({
         isOpen: false, isLoading: false, isSuccess: false,
     });
 
-
-    const showAppModal = (title, message, isAlert = true, confirmText = 'OK', onConfirmCallback = null) => {
-        setUiFeedbackModal({
-            isOpen: true, title, message, isAlert, confirmText,
-            onConfirmAction: onConfirmCallback || (() => setUiFeedbackModal(prev => ({ ...prev, isOpen: false }))),
-        });
-    };
-
     // Fetch Items
     const fetchData = useCallback(async (endpoint, query, setLoading, setResults, setShowDropdown, entityName) => {
         if (!query.trim()) { setResults([]); setShowDropdown(false); return; }
+        
+        // Prevent searching if store is not selected (Critical for correct stock data)
+        if (!data.store_id) {
+            toast.warn("Please select a store first.");
+            setResults([]); setShowDropdown(false); return;
+        }
+
         setLoading(true);
 
-        // --- Start of Changes ---
-
-        // 1. Build the params object for the request.
         const params = { query };
-
-        // 2. Conditionally add store_id to params only if it has a value.
-        //    This makes the request cleaner and avoids sending 'store_id: null'.
         if (data.store_id) {
             params.store_id = data.store_id;
         }
 
         try {
-
-          
-
-
             const response = await axios.get(route(endpoint), { params } );
-            
             setResults(response.data[entityName]?.slice(0, 10) || []);
             setShowDropdown(true);
         } catch (error) {
             console.error(`Error fetching ${entityName}:`, error);
-            showAppModal('Fetch Error', `Failed to fetch ${entityName}.`);
+            toast.error(`Failed to fetch ${entityName}.`);
             setResults([]); setShowDropdown(false);
         } finally { setLoading(false); }
-    },  [data.store_id]); // showAppModal is stable
+    },  [data.store_id]); 
 
     const fetchItems = useCallback((query) => fetchData('systemconfiguration2.products.search', query, setIsItemSearchLoading, setItemSearchResults, setShowItemDropdown, 'products'), [fetchData]);
     const debouncedItemSearch = useMemo(() => debounce(fetchItems, 350), [fetchItems]);
+
+    // --- EFFECT: Clear items on Store Change ---
+    useEffect(() => {
+        if (isInitialMount.current) {
+            isInitialMount.current = false;
+            return;
+        }
+        
+        if (data.normaladjustmentitems.length > 0) {
+            setData('normaladjustmentitems', []);
+            toast.info('Store changed. Item list cleared to ensure stock accuracy.');
+        }
+    }, [data.store_id]);
+    // -------------------------------------------
 
     useEffect(() => {
         if (itemSearchQuery.trim()) {
@@ -104,10 +105,9 @@ export default function CreateNormalAdjustment({ auth, stores: initialStores = d
             (sum, item) => sum + (parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0),
             0
         );
-        setData('total', calculatedTotal); // setData from useForm is stable
+        setData('total', calculatedTotal); 
     }, [data.normaladjustmentitems, setData]);
 
-    // Handle click outside item dropdown
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (itemSearchContainerRef.current && !itemSearchContainerRef.current.contains(event.target)) {
@@ -122,10 +122,32 @@ export default function CreateNormalAdjustment({ auth, stores: initialStores = d
         setData('normaladjustmentitems', data.normaladjustmentitems.map((item, i) => {
             if (i === index) {
                 let processedValue = value;
-                if (field === 'quantity') { // Quantity can be positive or negative
+                
+                if (field === 'quantity') { 
                     const parsedValue = parseFloat(value);
                     processedValue = isNaN(parsedValue) ? '' : parsedValue;
-                } else if (field === 'price') { // Price should be non-negative
+
+                    // --- STOCK VALIDATION ---
+                    // Rule: If negative quantity (deduction), absolute value cannot exceed available stock.
+                    const allowNegative = facilityOptions?.allownegativestock ?? false;
+                    const hasStockData = item.stock_quantity !== undefined && item.stock_quantity !== null;
+
+                    // Check if: Negative Stock Disallowed AND Stock Data Exists AND User input is negative
+                    if (!allowNegative && hasStockData && parsedValue < 0) {
+                        const currentStock = parseFloat(item.stock_quantity);
+                        const deductionAmount = Math.abs(parsedValue);
+
+                        if (deductionAmount > currentStock) {
+                            toast.error(`Insufficient stock for "${item.item_name}". Available: ${currentStock}, Trying to deduct: ${deductionAmount}`, {
+                                autoClose: 5000
+                            });
+                            // Prevent the change (reset to 0 or previous value if tracked)
+                            processedValue = 0; 
+                        }
+                    }
+                    // ------------------------
+
+                } else if (field === 'price') { 
                     const parsedValue = parseFloat(value);
                     processedValue = isNaN(parsedValue) ? '' : Math.max(0, parsedValue);
                 }
@@ -138,31 +160,30 @@ export default function CreateNormalAdjustment({ auth, stores: initialStores = d
     const addNormalAdjustmentItem = (selectedItem) => {
         if (!selectedItem || !selectedItem.id) return;
         if (data.normaladjustmentitems.some(item => item.item_id === selectedItem.id)) {
-            showAppModal('Item Already Added', `"${selectedItem.name}" is already in the list. Please adjust its quantity.`);
+            toast.info(`"${selectedItem.name}" is already in the list.`);
             return;
         }
+        
         const newItem = {
             _listId: `adjitem-${Date.now()}-${Math.random().toString(16).slice(2)}`,
             item_name: selectedItem.name,
             item_id: selectedItem.id,
-            quantity: '', // Start empty, user inputs +/-
+            quantity: '', // Start empty
             price: parseFloat(selectedItem.price) || 0,
+            // IMPORTANT: Persist stock_quantity from search result
+            stock_quantity: selectedItem.stock_quantity !== undefined ? parseFloat(selectedItem.stock_quantity) : 0
         };
+        
         setData('normaladjustmentitems', [...data.normaladjustmentitems, newItem]);
         setItemSearchQuery(''); setItemSearchResults([]); setShowItemDropdown(false);
         itemSearchInputRef.current?.focus();
     };
 
     const confirmRemoveNormalAdjustmentItem = (indexToRemove) => {
-        showAppModal(
-            'Confirm Removal',
-            `Remove "${data.normaladjustmentitems[indexToRemove]?.item_name || 'this item'}"?`,
-            false, 'Yes, Remove',
-            () => { // onConfirmCallback
-                setData('normaladjustmentitems', data.normaladjustmentitems.filter((_, idx) => idx !== indexToRemove));
-                setUiFeedbackModal(prev => ({ ...prev, isOpen: false }));
-            }
-        );
+        if(window.confirm(`Remove "${data.normaladjustmentitems[indexToRemove]?.item_name || 'this item'}"?`)) {
+             setData('normaladjustmentitems', data.normaladjustmentitems.filter((_, idx) => idx !== indexToRemove));
+             toast.success("Item removed.");
+        }
     };
     
     const validateAdjustmentForm = (isSubmitting = false) => {
@@ -170,16 +191,16 @@ export default function CreateNormalAdjustment({ auth, stores: initialStores = d
         let isValid = true;
         if (!data.store_id) {
             setError('store_id', 'Please select a store.');
-            if (isValid) showAppModal("Validation Error", "Please select a store.");
+            toast.error("Please select a store.");
             isValid = false;
         }
         if (!data.adjustment_reason_id) {
             setError('adjustment_reason_id', 'Please select an adjustment reason.');
-            if (isValid) showAppModal("Validation Error", "Please select an adjustment reason.");
+            if (isValid) toast.error("Please select an adjustment reason.");
             isValid = false;
         }
         if (data.normaladjustmentitems.length === 0) {
-            if (isValid) showAppModal("Validation Error", "Please add at least one item to adjust.");
+            if (isValid) toast.error("Please add at least one item to adjust.");
             isValid = false;
         }
 
@@ -198,13 +219,12 @@ export default function CreateNormalAdjustment({ auth, stores: initialStores = d
             }
         });
         
-        if (itemLineError && isValid) { // If no other major errors, but item lines have issues
-             showAppModal("Validation Error", "All items must have a valid, non-zero quantity and a non-negative price.");
+        if (itemLineError && isValid) { 
+             toast.error("All items must have a valid, non-zero quantity and a non-negative price.");
         }
         
         if (isSubmitting && !data.remarks.trim()) {
             setError('remarks', 'Remarks are required for committing the adjustment.');
-            // This error will be shown in the commit modal, no need for showAppModal here
             isValid = false;
         }
         return isValid;
@@ -213,56 +233,47 @@ export default function CreateNormalAdjustment({ auth, stores: initialStores = d
 
     const handleSaveDraft = (e) => {
         e.preventDefault();
-        // For draft, remarks are optional, so pass false to isSubmitting
         if (!validateAdjustmentForm(false)) return;
 
-        setData(prevData => ({ ...prevData, stage: 1 })); // Ensure stage is 1 for draft
+        setData(prevData => ({ ...prevData, stage: 1 })); 
 
-        post(route('inventory3.normal-adjustment.store'), { // ADJUST ROUTE NAME
+        post(route('inventory3.normal-adjustment.store'), { 
             preserveScroll: true,
             onSuccess: () => {
-                showAppModal("Success", "Stock adjustment saved as draft successfully!");
-                // Optionally reset parts of the form or redirect
+                toast.success("Stock adjustment saved as draft successfully!");
             },
             onError: (pageErrors) => {
                 console.error("Save draft errors:", pageErrors);
-                const errorMsg = Object.values(pageErrors).flat().join(' ') || 'Failed to save draft.';
-                showAppModal("Save Error", errorMsg);
+                toast.error("Failed to save draft. Please check errors.");
             },
         });
     };
 
     const openCommitConfirmationModal = () => {
-        // Validate form but don't check for remarks yet (that's done in the modal)
         if (!validateAdjustmentForm(false)) return;
 
-        setData(prevData => ({ ...prevData, stage: 2, remarks: '' })); // Set stage for commit, clear remarks for modal
+        setData(prevData => ({ ...prevData, stage: 2, remarks: '' })); 
         setCommitConfirmationModal({ isOpen: true, isLoading: false, isSuccess: false });
     };
 
     const handleCommitWithRemarks = () => {
-        // Now validate with remarks check
         if (!data.remarks.trim()) {
             setError('remarks', 'Remarks are required for committing the adjustment.');
-            // Error will be shown in the modal due to setError call
             return; 
         }
         clearErrors('remarks');
 
-
         setCommitConfirmationModal(prev => ({ ...prev, isLoading: true }));
-        post(route('inventory3.normal-adjustment.store'), { // ADJUST ROUTE NAME
+        post(route('inventory3.normal-adjustment.store'), { 
             preserveScroll: true,
             onSuccess: () => {
                 setCommitConfirmationModal({ isOpen: true, isLoading: false, isSuccess: true });
-                // `reset()` will clear the form. Decide if this is desired or redirect.
+                toast.success("Stock adjustment committed successfully!");
             },
             onError: (pageErrors) => {
                 setCommitConfirmationModal(prev => ({ ...prev, isLoading: false, isSuccess: false }));
                 console.error("Commit errors:", pageErrors);
-                const errorMsg = pageErrors.message || Object.values(pageErrors).flat().join(' ') || 'Commit failed.';
-                 // Store general commit error to display in modal if needed
-                setData(prevData => ({ ...prevData, errors: { ...prevData.errors, commitError: errorMsg } }));
+                toast.error("Commit failed. Please check errors.");
             },
         });
     };
@@ -282,7 +293,7 @@ export default function CreateNormalAdjustment({ auth, stores: initialStores = d
             <div className="py-12">
                 <div className="mx-auto max-w-5xl sm:px-6 lg:px-8">
                     <div className="bg-white p-6 shadow-sm sm:rounded-lg">
-                        <form className="space-y-6"> {/* Removed onSubmit here, handled by buttons */}
+                        <form className="space-y-6"> 
                             <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
                                 {/* Store Select */}
                                 <div>
@@ -333,7 +344,7 @@ export default function CreateNormalAdjustment({ auth, stores: initialStores = d
                                 </div>
                             </div>
 
-                            {/* Remarks Field (used primarily for commit, but can be filled for draft too) */}
+                            {/* Remarks Field */}
                             <div>
                                 <label htmlFor="remarks" className="block text-sm font-medium leading-6 text-gray-900">
                                     Remarks <span className="text-gray-500">(Optional for Draft, Required for Commit)</span>
@@ -344,12 +355,9 @@ export default function CreateNormalAdjustment({ auth, stores: initialStores = d
                                         onChange={(e) => setData('remarks', e.target.value)}
                                         className={`block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ${errors.remarks ? 'ring-red-500' : 'ring-gray-300'} placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6`}
                                     ></textarea>
-                                    {/* Remarks error specifically for commit is handled in the modal, but general backend error could appear here */}
                                     {errors.remarks && <p className="mt-1 text-sm text-red-600">{errors.remarks}</p>}
                                 </div>
                             </div>
-
-                            {/* REMOVED STAGE DISPLAY FIELD */}
 
                             {/* Item Search & Add */}
                             <div className="border-t border-gray-200 pt-6">
@@ -451,7 +459,7 @@ export default function CreateNormalAdjustment({ auth, stores: initialStores = d
 
                             {/* Actions */}
                             <div className="mt-8 flex items-center justify-end gap-x-4 border-t border-gray-200 pt-6">
-                                <Link href={route('inventory3.normal-adjustment.index')} // Update this route
+                                <Link href={route('inventory3.normal-adjustment.index')} 
                                     className="rounded-md bg-gray-200 px-3.5 py-2.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-400">
                                     <FontAwesomeIcon icon={faTimesCircle} className="mr-2" />Cancel
                                 </Link>
@@ -463,26 +471,11 @@ export default function CreateNormalAdjustment({ auth, stores: initialStores = d
                                         <><FontAwesomeIcon icon={faSave} className="mr-2" />Save Draft</>
                                     )}
                                 </button>
-                                {/* <button type="button" onClick={openCommitConfirmationModal} disabled={processing && data.stage === 2}
-                                    className="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50 flex items-center justify-center">
-                                    <FontAwesomeIcon icon={faCheck} className="mr-2"/>Commit Adjustment
-                                </button> */}
                             </div>
                         </form>
                     </div>
                 </div>
             </div>
-
-            {/* General UI Feedback Modal */}
-            <Modal
-                isOpen={uiFeedbackModal.isOpen}
-                onClose={() => setUiFeedbackModal(prev => ({ ...prev, isOpen: false }))}
-                onConfirm={uiFeedbackModal.onConfirmAction}
-                title={uiFeedbackModal.title}
-                message={uiFeedbackModal.message}
-                isAlert={uiFeedbackModal.isAlert}
-                confirmButtonText={uiFeedbackModal.confirmText}
-            />
 
             {/* Modal for Final Commit with Remarks */}
             <Modal
@@ -490,17 +483,17 @@ export default function CreateNormalAdjustment({ auth, stores: initialStores = d
                 onClose={() => {
                     if (commitConfirmationModal.isSuccess) {
                         setCommitConfirmationModal({ isOpen: false, isLoading: false, isSuccess: false });
-                        inertiaRouter.visit(route('inventory3.normal-adjustment.index')); // ADJUST ROUTE
+                        inertiaRouter.visit(route('inventory3.normal-adjustment.index')); 
                     } else {
                         setCommitConfirmationModal({ isOpen: false, isLoading: false, isSuccess: false });
                         if (data.stage === 2 && !commitConfirmationModal.isLoading) {
-                             setData(prevData => ({ ...prevData, stage: 1 })); // Revert stage
+                             setData(prevData => ({ ...prevData, stage: 1 })); 
                         }
                     }
                 }}
                 onConfirm={commitConfirmationModal.isSuccess ? () => {
                     setCommitConfirmationModal({ isOpen: false, isLoading: false, isSuccess: false });
-                    inertiaRouter.visit(route('inventory3.normal-adjustment.index')); // ADJUST ROUTE
+                    inertiaRouter.visit(route('inventory3.normal-adjustment.index')); 
                 } : handleCommitWithRemarks}
                 title={commitConfirmationModal.isSuccess ? "Adjustment Committed" : "Commit Stock Adjustment"}
                 confirmButtonText={
@@ -531,7 +524,7 @@ export default function CreateNormalAdjustment({ auth, stores: initialStores = d
                                 value={data.remarks}
                                 onChange={(e) => {
                                     setData('remarks', e.target.value);
-                                    if (e.target.value.trim()) clearErrors('remarks'); // Clear error as user types
+                                    if (e.target.value.trim()) clearErrors('remarks'); 
                                 }}
                                 disabled={commitConfirmationModal.isLoading}
                             />

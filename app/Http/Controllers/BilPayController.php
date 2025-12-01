@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Barryvdh\DomPDF\Facade\Pdf; // Import PDF
 use Carbon\Carbon;
 
 use App\Models\{
@@ -14,10 +15,13 @@ use App\Models\{
     BILDebtorLog,
     BILInvoice,
     BILInvoiceLog,
-    BILInvoicePayment,
+    BILInvoicePayment, // The receipt model
     BILInvoicePaymentDetail,
     BILCollection,
-    BLSPaymentType
+    BLSPaymentType,
+    UserGroupPrinter, // Import Printer Config
+    FacilityOption,   // Import Facility Option
+    BLSCustomer
 };
 
 use App\Enums\{
@@ -59,15 +63,13 @@ class BilPayController extends Controller
 
     /**
      * Show the form for paying a specific debtor's invoices.
-     * --- THIS IS THE RESTORED ORIGINAL METHOD ---
      */
     public function edit(BILDebtor $debtor)
     {
-        // Eager load the customer, and then eager load the payable invoices ON the customer.
         $debtor->load(['customer' => function ($query) {
             $query->with(['invoices' => function ($invoiceQuery) {
                 $invoiceQuery->where('balancedue', '>', 0)
-                             ->where('voided', '!=', 1) // Or use `where('voided', false)`
+                             ->where('voided', '!=', 1)
                              ->where('status', '!=', InvoiceStatus::Cancelled->value)
                              ->orderBy('transdate', 'asc');
             }]);
@@ -94,12 +96,96 @@ class BilPayController extends Controller
         ]);
 
         try {
-            DB::transaction(function () use ($validated) {
-                $this->payInvoices($validated);
+            // 1. Database Transaction (Save Payment)
+            // We capture the Receipt Number returned by payInvoices
+            $receiptNo = DB::transaction(function () use ($validated) {
+                return $this->payInvoices($validated);
             });
+            
+            // Store receipt number in session for the Preview route
+            session(['latest_receipt_no' => $receiptNo]);
 
-            return redirect()->route('billing2.index')
-                             ->with('success', 'Payment processed successfully.');
+            // ============================================================
+            // 2. PRINTING LOGIC START
+            // ============================================================
+            
+            // Get Context: Current User Group & Machine Name
+            $userGroupId = Auth::user()->usergroup_id;
+            $machineName = gethostname(); 
+
+            // Query Configuration
+            // Note: We use 'receipt' or 'invoice' depending on your DB config. 
+            // Assuming 'receipt' for debt payments, but strictly matching logic to PostController:
+            $printerConfig = UserGroupPrinter::where('usergroup_id', $userGroupId)
+                ->where('documenttypecode', 'receipt') // Changed to receipt, or use 'invoice' if you share the printer
+                ->where('autoprint', true) 
+                ->where(function ($query) use ($machineName) {
+                    $query->where('machinename', $machineName)
+                          ->orWhere('machinename', '')
+                          ->orWhereNull('machinename');
+                })
+                ->orderByRaw('LENGTH(machinename) DESC') 
+                ->first();
+
+            $shouldPrintSilently = false;
+            $targetPrinterName = null;
+
+            if ($printerConfig) {
+                $targetPrinterName = $printerConfig->printername;
+                $shouldPrintSilently = !$printerConfig->printtoscreen;
+            }
+
+            // ------------------------------------------------------------
+            // HANDLE SILENT BACKEND PRINTING
+            // ------------------------------------------------------------
+            if ($shouldPrintSilently) {
+                
+                // A. Prepare Data for PDF
+                $paymentRecord = BILInvoicePayment::with([
+                                    'items.invoice.items.item', 
+                                    'customer'
+                                ])->where('receiptno', $receiptNo)->first();
+
+                // B. Generate PDF
+                // Note: You need to create 'pdfs.payment_receipt' or reuse your invoice view
+                $pdf = Pdf::loadView('pdfs.payment_receipt', [
+                    'payment' => $paymentRecord,
+                    'facility' => $facility,
+                ]);
+
+                // C. Save to Temp File
+                $fileName = 'receipt_' . $receiptNo . '_' . time() . '.pdf';
+                $directory = storage_path('app/public/temp_receipts');
+                
+                if (!file_exists($directory)) {
+                    mkdir($directory, 0755, true);
+                }
+                
+                $filePath = $directory . '/' . $fileName;
+                $pdf->save($filePath);
+
+                // D. Send to Printer (SumatraPDF)
+                $this->printToBackendPrinter($filePath, $targetPrinterName);
+            }
+
+            // ============================================================
+            // 3. RETURN RESPONSE
+            // ============================================================
+
+            // If silent print, url is null. If preview needed, return route.
+            $receiptUrl = $shouldPrintSilently ? null : route('billing2.receipt_preview');
+            
+            $msg = 'Payment processed successfully.';
+            if ($shouldPrintSilently) {
+                $msg .= ' Sent to printer: ' . $targetPrinterName;
+            }
+
+            // Return JSON so frontend can handle the logic (redirect or open window)
+            return response()->json([
+                'success' => true,
+                'invoice_url' => $receiptUrl, // Frontend looks for this
+                'message' => $msg,
+            ]);
 
         } catch (\Exception $e) {
             Log::error('Error during invoice payment processing:', [
@@ -108,14 +194,16 @@ class BilPayController extends Controller
                 'request_data' => $request->all(),
             ]);
 
-            return back()->with('error', 'An unexpected error occurred during payment processing.');
+            // Return JSON error for consistency
+            return response()->json(['message' => 'An unexpected error occurred: ' . $e->getMessage()], 500);
         }
     }
 
     /**
      * Handles the business logic of applying a payment across multiple invoices.
+     * Returns the Receipt Number.
      */
-    private function payInvoices(array $data): void
+    private function payInvoices(array $data): string
     {
         $transdate = Carbon::now();
         $customerId = $data['customer_id'];
@@ -174,5 +262,59 @@ class BilPayController extends Controller
                 'transtype' => BillingTransTypes::Payment->value, 'transdescription' => 'Payment', 'user_id' => Auth::id(),
             ]);
         }
+
+        return $receiptNo; // Return the generated receipt number
+    }
+
+    /**
+     * Helper: Executes the printing command
+     */
+    private function printToBackendPrinter($filePath, $printerName)
+    {
+        $printerExe = public_path('SumatraPDF.exe');
+        
+        if (!file_exists($printerExe)) {
+            Log::error("SumatraPDF.exe not found at: " . $printerExe);
+            return; 
+        }
+
+        if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+            // WINDOWS FIX: start /B "" "Path" Arguments
+            $command = "start /B \"\" \"{$printerExe}\" -print-to \"{$printerName}\" -silent \"{$filePath}\"";
+            pclose(popen($command, "r"));
+        } else {
+            // Linux/Mac fallback
+            $linuxCmd = "lp -d \"{$printerName}\" \"{$filePath}\"";
+            exec($linuxCmd);
+        }
+    }
+
+    /**
+     * Preview the Receipt (Used if not silent printing)
+     */
+    public function receiptPreview()
+    {
+        $receiptNo = session('latest_receipt_no');
+        
+        if (!$receiptNo) {
+            return redirect()->route('billing2.index')->with('error', 'No receipt to display.');
+        }
+       
+        $paymentRecord = BILInvoicePayment::with([
+                            'items.invoice.items.item', 
+                            'customer'
+                        ])->where('receiptno', $receiptNo)->first();                       
+
+        $facility = FacilityOption::first();
+
+        // Ensure you have this view created 'pdfs.payment_receipt'
+        $pdf = Pdf::loadView('pdfs.payment_receipt', [
+            'payment' => $paymentRecord,
+            'facility' => $facility,
+        ]);
+
+        return response($pdf->output(), 200)
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'inline; filename="receipt_' . $receiptNo . '.pdf"');
     }
 }

@@ -5,8 +5,9 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTimesCircle, faTrash, faSave, faCheck, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
 import axios from 'axios';
+import { toast } from 'react-toastify'; 
 
-import Modal from '../../Components/CustomModal.jsx'; // Assuming path is correct
+import Modal from '../../Components/CustomModal.jsx';
 
 // Utility function for debouncing
 const debounce = (func, delay) => {
@@ -19,7 +20,7 @@ const debounce = (func, delay) => {
 
 const defaultStores = [];
 
-export default function Edit({ auth, requistion, fromstore: initialFromStore, tostore: initialToStore }) {
+export default function Edit({ auth, requistion, fromstore: initialFromStore, tostore: initialToStore, facilityOptions }) {
     const fromstore = Array.isArray(initialFromStore) ? initialFromStore : defaultStores;
     const tostore = Array.isArray(initialToStore) ? initialToStore : defaultStores;
 
@@ -36,6 +37,9 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
             item_id: item.item_id || item.item?.id || null,
             quantity: parseInt(item.quantity) || 1,
             price: parseFloat(item.price) || 0,
+            stock_quantity: item.stock_quantity !== undefined && item.stock_quantity !== null 
+                ? parseFloat(item.stock_quantity) 
+                : 0
         })) || [],
     });
 
@@ -45,17 +49,9 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
     const [isItemSearchLoading, setIsItemSearchLoading] = useState(false);
     const itemDropdownRef = useRef(null);
     const itemSearchInputRef = useRef(null);
-    const isInitialMount = useRef(true); // +++ ADDED +++ To track initial render
-
-    const [uiFeedbackModal, setUiFeedbackModal] = useState({
-        isOpen: false,
-        message: '',
-        isAlert: true,
-        itemIndexToRemove: null,
-        onConfirmAction: null,
-        title: 'Alert',
-        confirmText: 'OK'
-    });
+    
+    // Track initial mount to prevent store change logic from firing on load
+    const isInitialMount = useRef(true); 
 
     const [submitConfirmationModal, setSubmitConfirmationModal] = useState({
         isOpen: false,
@@ -63,19 +59,7 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
         isSuccess: false
     });
     
-    const showGeneralAlert = (title, message) => {
-        setUiFeedbackModal({
-            isOpen: true,
-            title: title,
-            message: message,
-            isAlert: true,
-            confirmText: 'OK',
-            onConfirmAction: () => setUiFeedbackModal(prev => ({ ...prev, isOpen: false, itemIndexToRemove: null, onConfirmAction: null })),
-            itemIndexToRemove: null
-        });
-    };
-
-    // --- MODIFIED ---: Replaced the old fetchItems with the more robust fetchData pattern
+    // --- Data Fetching ---
     const fetchData = useCallback(async (endpoint, query, setLoading, setResults, setShowDropdown, entityName) => {
         if (!query.trim()) {
             setResults([]);
@@ -86,12 +70,10 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
 
         const params = { query };
 
-        // This is the key change: conditionally add the from_store_id to the request
         if (data.from_store_id) {
             params.store_id = data.from_store_id;
         } else {
-            // Prevent search if no store is selected
-            showGeneralAlert("Selection Required", "Please select a 'From Store' before searching for items.");
+            toast.warn("Please select a 'From Store' before searching for items.");
             setLoading(false);
             setResults([]);
             setShowDropdown(false);
@@ -104,38 +86,33 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
             setShowDropdown(true);
         } catch (error) {
             console.error(`Error fetching ${entityName}:`, error);
-            showGeneralAlert('Fetch Error', `Failed to fetch ${entityName}.`);
+            toast.error(`Failed to fetch ${entityName}.`);
             setResults([]);
             setShowDropdown(false);
         } finally {
             setLoading(false);
         }
-    }, [data.from_store_id]); // Dependency on from_store_id is crucial
+    }, [data.from_store_id]); 
 
-    // --- MODIFIED ---: Simplified fetchItems to use the new generic fetchData
     const fetchItems = useCallback((query) => fetchData('systemconfiguration2.products.search', query, setIsItemSearchLoading, setItemSearchResults, setShowItemDropdown, 'products'), [fetchData]);
-
     const debouncedItemSearch = useMemo(() => debounce(fetchItems, 350), [fetchItems]);
 
-    // +++ ADDED +++: Effect to clear items when the source store changes to ensure data accuracy.
+    // --- Effects ---
+
+    // Clear items if the source store changes (to prevent stock mismatch)
     useEffect(() => {
-        // We use a ref to prevent this from running on the initial component mount
         if (isInitialMount.current) {
             isInitialMount.current = false;
             return;
         }
         
-        // If the store is changed and there are items in the list, clear them.
         if (data.requistionitems.length > 0) {
             setData('requistionitems', []);
-            showGeneralAlert(
-                'Store Changed',
-                'The "From Store" has been changed. To ensure stock accuracy, the item list has been cleared. Please re-add any necessary items.'
-            );
+            toast.info('The "From Store" has been changed. Item list cleared to ensure stock accuracy.');
         }
     }, [data.from_store_id]);
 
-
+    // Search debounce effect
     useEffect(() => {
         if (itemSearchQuery.trim()) {
             debouncedItemSearch(itemSearchQuery);
@@ -144,7 +121,7 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
         }
     }, [itemSearchQuery, debouncedItemSearch]);
 
-
+    // Recalculate total
     useEffect(() => {
         const calculatedTotal = data.requistionitems.reduce(
             (sum, item) => sum + (parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0),
@@ -155,6 +132,7 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
         }
     }, [data.requistionitems, data.total, setData]);
 
+    // Click outside dropdown
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (itemDropdownRef.current && !itemDropdownRef.current.contains(event.target)) {
@@ -165,29 +143,56 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    // --- Item Management Logic ---
+
     const handleRequistionItemChange = (index, field, value) => {
         setData(prevData => {
-            const updatedItems = prevData.requistionitems.map((item, i) => {
-                if (i === index) {
-                    let processedValue = value;
-                    if (field === 'quantity' || field === 'price') {
-                        const parsedValue = parseFloat(value);
-                        if (field === 'quantity') {
-                            processedValue = isNaN(parsedValue) || parsedValue < 1 ? 1 : parseInt(parsedValue, 10);
-                        } else {
-                            processedValue = isNaN(parsedValue) || parsedValue < 0 ? 0 : parsedValue;
-                        }
+            const updatedItems = [...prevData.requistionitems];
+            const item = { ...updatedItems[index] };
+
+            let processedValue = value;
+            const parsedValue = parseFloat(value);
+
+            if (field === 'quantity') {
+                processedValue = isNaN(parsedValue) || parsedValue < 1 ? 1 : parseInt(parsedValue, 10);
+
+                // --- Stock Validation ---
+                const allowNegative = facilityOptions?.allownegativestock ?? false;
+                const hasStockData = item.stock_quantity !== undefined && item.stock_quantity !== null;
+                
+                if (!allowNegative && hasStockData) {
+                    const maxStock = parseFloat(item.stock_quantity);
+                    if (processedValue > maxStock) {
+                        toast.error(`Insufficient stock for "${item.item_name}". Available: ${maxStock}`);
+                        processedValue = maxStock > 0 ? maxStock : 1; 
                     }
-                    return { ...item, [field]: processedValue };
                 }
-                return item;
-            });
+
+            } else if (field === 'price') {
+                processedValue = isNaN(parsedValue) || parsedValue < 0 ? 0 : parsedValue;
+            }
+            
+            item[field] = processedValue;
+            updatedItems[index] = item;
+
             return { ...prevData, requistionitems: updatedItems };
         });
     };
 
     const addRequistionItemFromSelection = (selectedItem) => {
-        if (!selectedItem || !selectedItem.id) {
+        if (!selectedItem || !selectedItem.id) return;
+
+        // --- Initial Stock Validation ---
+        const allowNegative = facilityOptions?.allownegativestock ?? false;
+        const currentStock = parseFloat(selectedItem.stock_quantity) || 0;
+
+        if (!allowNegative && currentStock <= 0) {
+            toast.error(`"${selectedItem.name}" is out of stock in the selected store.`);
+            return;
+        }
+
+        if (data.requistionitems.some(item => item.item_id === selectedItem.id)) {
+            toast.warning(`"${selectedItem.name}" is already in the list.`);
             return;
         }
 
@@ -198,12 +203,8 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
             quantity: 1,
             price: parseFloat(selectedItem.price) || 0,
             id: null,
+            stock_quantity: currentStock 
         };
-
-        if (data.requistionitems.some(item => item.item_id === newItem.item_id)) {
-            showGeneralAlert('Item Already Added', `"${newItem.item_name}" is already in the list. You can adjust its quantity.`);
-            return;
-        }
 
         setData(prevData => ({
             ...prevData,
@@ -216,79 +217,55 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
         itemSearchInputRef.current?.focus();
     };
 
-    const handleRemoveItemConfirmed = (indexToRemove) => {
-        if (indexToRemove !== null && typeof indexToRemove === 'number') {
+    const removeRequistionItem = (index) => {
+        if(window.confirm(`Remove "${data.requistionitems[index]?.item_name}"?`)) {
             setData(prevData => {
-                const itemBeingRemoved = prevData.requistionitems[indexToRemove];
-                if (!itemBeingRemoved) {
-                    return prevData;
-                }
-                const updatedItems = prevData.requistionitems.filter((_, idx) => idx !== indexToRemove);
+                const updatedItems = prevData.requistionitems.filter((_, idx) => idx !== index);
                 return { ...prevData, requistionitems: updatedItems };
             });
+            toast.success("Item removed.");
         }
-
-        setUiFeedbackModal(prev => ({
-            ...prev,
-            isOpen: false,
-            itemIndexToRemove: null,
-            message: '',
-            isAlert: true,
-            onConfirmAction: null,
-            title: 'Alert',
-            confirmText: 'OK'
-        }));
-    };
-
-    const confirmRemoveRequistionItem = (index) => {
-        setUiFeedbackModal({
-            isOpen: true,
-            message: `Are you sure you want to remove "${data.requistionitems[index]?.item_name || 'this item'}"?`,
-            isAlert: false,
-            itemIndexToRemove: index,
-            onConfirmAction: () => handleRemoveItemConfirmed(index),
-            title: 'Confirm Removal',
-            confirmText: 'Yes, Remove'
-        });
     };
     
+    // --- Submission Logic ---
+
     const handleSaveChanges = (e) => {
         e.preventDefault();
         clearErrors();
 
-        if (!data.from_store_id) { showGeneralAlert("Validation Error", "Please select 'From Store'."); return; }
-        if (!data.to_store_id) { showGeneralAlert("Validation Error", "Please select 'To Store'."); return; }
-        if (data.requistionitems.length === 0) { showGeneralAlert("Validation Error", "Please add at least one item."); return; }
+        if (!data.from_store_id) { toast.error("Please select 'From Store'."); return; }
+        if (!data.to_store_id) { toast.error("Please select 'To Store'."); return; }
+        if (data.from_store_id == data.to_store_id) { toast.error("From Store and To Store cannot be the same."); return; } // +++ Added Check
+        if (data.requistionitems.length === 0) { toast.error("Please add at least one item."); return; }
 
         const hasInvalidItems = data.requistionitems.some(item =>
             !item.item_name || !item.item_id || !(item.quantity > 0) || !(item.price >= 0)
         );
         if (hasInvalidItems) {
-            showGeneralAlert("Validation Error", "Some items have invalid details. Please correct them.");
+            toast.error("Some items have invalid details. Please correct them.");
             return;
         }
 
         put(route('inventory0.update', requistion.id), {
             preserveScroll: true,
-            onSuccess: () => {
-                showGeneralAlert("Success", "Requisition updated successfully!");
-            },
+            onSuccess: () => toast.success("Requisition updated successfully!"),
             onError: (pageErrors) => {
                 console.error("Update errors:", pageErrors);
-                showGeneralAlert("Update Error", pageErrors.message || 'Failed to update requisition. Please check for errors.');
+                toast.error(pageErrors.message || "Failed to update requisition.");
             },
         });
     };
 
     const openSubmitConfirmationModal = () => {
         clearErrors();
-        if (!data.from_store_id) { showGeneralAlert("Validation Error", "Please select 'From Store'."); return; }
-        if (!data.to_store_id) { showGeneralAlert("Validation Error", "Please select 'To Store'."); return; }
-        if (data.requistionitems.length === 0) { showGeneralAlert("Validation Error", "Please add at least one item before submitting."); return; }
+        if (!data.from_store_id) { toast.error("Please select 'From Store'."); return; }
+        if (!data.to_store_id) { toast.error("Please select 'To Store'."); return; }
+        if (data.from_store_id == data.to_store_id) { toast.error("From Store and To Store cannot be the same."); return; } // +++ Added Check
+        if (data.requistionitems.length === 0) { toast.error("Please add at least one item."); return; }
 
         const hasInvalidItems = data.requistionitems.some(item => !(item.quantity > 0) || !(item.price >= 0) || !item.item_id);
         if (hasInvalidItems) {
-            showGeneralAlert("Validation Error", "Some items have invalid quantities, prices, or were not selected from search. Please correct them.");
+            toast.error("Some items have invalid details. Please correct them.");
             return;
         }
 
@@ -298,7 +275,7 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
 
     const handleSubmitWithRemarks = () => {
         if (!data.remarks.trim()) {
-            setData(prev => ({ ...prev, errors: { ...prev.errors, remarks: 'Remarks are required for submission.' } }));
+            setData(prev => ({ ...prev, errors: { ...prev.errors, remarks: 'Remarks are required.' } }));
             return;
         }
         clearErrors('remarks');
@@ -309,10 +286,11 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
             onSuccess: () => {
                 setSubmitConfirmationModal({ isOpen: true, isLoading: false, isSuccess: true });
                 reset();
+                toast.success("Requisition Submitted!");
             },
             onError: (pageErrors) => {
                 setSubmitConfirmationModal(prev => ({ ...prev, isLoading: false, isSuccess: false }));
-                console.error("Submission errors:", pageErrors);
+                toast.error("Submission failed.");
             },
         });
     };
@@ -352,13 +330,29 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
                                             id="from_store_id"
                                             name="from_store_id"
                                             value={data.from_store_id}
-                                            onChange={(e) => setData("from_store_id", e.target.value)}
+                                            // +++ Logic Change: Clear To Store if it equals new From Store +++
+                                            onChange={(e) => {
+                                                const newVal = e.target.value;
+                                                setData(prev => ({
+                                                    ...prev,
+                                                    from_store_id: newVal,
+                                                    to_store_id: newVal == prev.to_store_id ? '' : prev.to_store_id
+                                                }));
+                                            }}
                                             className={`block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 ${errors.from_store_id ? "ring-red-500" : ""}`}
                                             disabled={data.stage > 1}
                                         >
                                             <option value="">Select From Store...</option>
                                             {fromstore.map(store => (
-                                                <option key={store.id} value={store.id}>{store.name}</option>
+                                                <option 
+                                                    key={store.id} 
+                                                    value={store.id}
+                                                    // +++ Disable if selected in To Store +++
+                                                    disabled={String(store.id) === String(data.to_store_id)}
+                                                    className={String(store.id) === String(data.to_store_id) ? "text-gray-400 bg-gray-100" : ""}
+                                                >
+                                                    {store.name} {String(store.id) === String(data.to_store_id) ? "(Selected as Destination)" : ""}
+                                                </option>
                                             ))}
                                         </select>
                                         {errors.from_store_id && <p className="mt-1 text-sm text-red-600">{errors.from_store_id}</p>}
@@ -373,21 +367,38 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
                                             id="to_store_id"
                                             name="to_store_id"
                                             value={data.to_store_id}
-                                            onChange={(e) => setData("to_store_id", e.target.value)}
+                                            // +++ Logic Change: Prevent selection if same as From Store +++
+                                            onChange={(e) => {
+                                                const newVal = e.target.value;
+                                                if (newVal == data.from_store_id) {
+                                                    toast.error("Source and Destination cannot be the same.");
+                                                    return;
+                                                }
+                                                setData("to_store_id", newVal);
+                                            }}
                                             className={`block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 ${errors.to_store_id ? "ring-red-500" : ""}`}
                                             disabled={data.stage > 1}
                                         >
                                             <option value="">Select To Store...</option>
                                             {tostore.map(store => (
-                                                <option key={store.id} value={store.id}>{store.name}</option>
+                                                <option 
+                                                    key={store.id} 
+                                                    value={store.id}
+                                                    // +++ Disable if selected in From Store +++
+                                                    disabled={String(store.id) === String(data.from_store_id)}
+                                                    className={String(store.id) === String(data.from_store_id) ? "text-gray-400 bg-gray-100" : ""}
+                                                >
+                                                    {store.name} {String(store.id) === String(data.from_store_id) ? "(Selected as Source)" : ""}
+                                                </option>
                                             ))}
                                         </select>
                                         {errors.to_store_id && <p className="mt-1 text-sm text-red-600">{errors.to_store_id}</p>}
                                     </div>
                                 </div>
                             </div>
+                            
+                            {/* ... (Rest of the component) ... */}
 
-                            {/* Item Search & Add */}
                             <div className="border-t border-gray-200 pt-6">
                                 <label htmlFor="item-search" className="block text-sm font-medium leading-6 text-gray-900">
                                     Add Items to Requisition
@@ -492,7 +503,7 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
                                                         {data.stage <= 1 && (
                                                             <button
                                                                 type="button"
-                                                                onClick={() => confirmRemoveRequistionItem(index)}
+                                                                onClick={() => removeRequistionItem(index)}
                                                                 className="text-red-500 hover:text-red-700"
                                                                 title="Remove item"
                                                             >
@@ -521,7 +532,7 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
                             <div className="mt-8 flex items-center justify-end gap-x-4 border-t border-gray-200 pt-6">
                                 <Link
                                     href={route('inventory0.index')}
-                                    className="rounded-md bg-gray-200 px-3.5 py-2.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-400"
+                                    className="rounded-md bg-gray-200 px-3.5 py-2.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-300"
                                 >
                                     <FontAwesomeIcon icon={faTimesCircle} className="mr-2" />
                                     Cancel
@@ -531,7 +542,7 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
                                         type="button"
                                         onClick={handleSaveChanges}
                                         disabled={processing}
-                                        className="rounded-md bg-slate-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-600 disabled:opacity-50"
+                                        className="rounded-md bg-slate-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-500 disabled:opacity-50"
                                     >
                                         <FontAwesomeIcon icon={faSave} className="mr-2" />
                                         {processing ? 'Saving...' : 'Save Changes'}
@@ -542,7 +553,7 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
                                         type="button"
                                         onClick={openSubmitConfirmationModal}
                                         disabled={processing || data.requistionitems.length === 0}
-                                        className="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50"
+                                        className="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
                                     >
                                         <FontAwesomeIcon icon={faCheck} className="mr-2"/>
                                         Submit Requisition
@@ -554,29 +565,7 @@ export default function Edit({ auth, requistion, fromstore: initialFromStore, to
                 </div>
             </div>
 
-            {/* General UI Feedback Modal */}
-            <Modal
-                isOpen={uiFeedbackModal.isOpen}
-                onClose={() => {
-                    console.log('[Modal onClose] Closing UI feedback modal.');
-                    setUiFeedbackModal(prev => ({ ...prev, isOpen: false, itemIndexToRemove: null, onConfirmAction: null }));
-                }}
-                onConfirm={() => {
-                    console.log('[Modal onConfirm] Confirming action for UI feedback modal.');
-                    if (uiFeedbackModal.onConfirmAction) {
-                        uiFeedbackModal.onConfirmAction(); // This will execute `() => handleRemoveItemConfirmed(index)`
-                    } else {
-                        console.warn('[Modal onConfirm] onConfirmAction was null. Closing modal.');
-                        setUiFeedbackModal(prev => ({ ...prev, isOpen: false, itemIndexToRemove: null, onConfirmAction: null }));
-                    }
-                }}
-                title={uiFeedbackModal.title}
-                message={uiFeedbackModal.message}
-                isAlert={uiFeedbackModal.isAlert}
-                confirmButtonText={uiFeedbackModal.confirmText}
-            />
-
-            {/* Submit Confirmation Modal */}
+            {/* Modal for Final Submission with Remarks */}
             <Modal
                 isOpen={submitConfirmationModal.isOpen}
                 onClose={() => {

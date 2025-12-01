@@ -5,8 +5,9 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTimesCircle, faTrash, faSave, faCheck, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
 import axios from 'axios';
+import { toast } from 'react-toastify';
 
-import Modal from '../../Components/CustomModal.jsx'; // Assuming path is correct
+import Modal from '../../Components/CustomModal.jsx'; 
 
 // Utility function for debouncing
 const debounce = (func, delay) => {
@@ -48,15 +49,7 @@ export default function Edit({ auth, receive, fromstore: initialFromStore, tosto
     const itemDropdownRef = useRef(null);
     const itemSearchInputRef = useRef(null);
 
-    const [uiFeedbackModal, setUiFeedbackModal] = useState({
-        isOpen: false,
-        message: '',
-        isAlert: true,
-        itemIndexToRemove: null, // Can still be used for display purposes in the modal message if needed
-        onConfirmAction: null,
-        title: 'Alert',
-        confirmText: 'OK'
-    });
+    // Removed uiFeedbackModal state as we use toast now
 
     const [submitConfirmationModal, setSubmitConfirmationModal] = useState({
         isOpen: false,
@@ -85,11 +78,11 @@ export default function Edit({ auth, receive, fromstore: initialFromStore, tosto
             console.error('Error fetching products:', error);
             setItemSearchResults([]);
             setShowItemDropdown(false);
-            showGeneralAlert('Fetch Error', 'Failed to fetch products. Please try again later.');
+            toast.error('Failed to fetch products. Please try again later.');
         } finally {
             setIsItemSearchLoading(false);
         }
-    }, []); // Empty dependency array as showGeneralAlert is stable if defined outside or properly memoized
+    }, []); 
 
     const debouncedItemSearch = useMemo(() => debounce(fetchItems, 350), [fetchItems]);
 
@@ -139,9 +132,7 @@ export default function Edit({ auth, receive, fromstore: initialFromStore, tosto
     };
 
     const addReceiveItemFromSelection = (selectedItem) => {
-        console.log("Adding item from selection:", selectedItem);
         if (!selectedItem || !selectedItem.id) {
-            console.warn("Add item: Invalid selected item provided.");
             return;
         }
 
@@ -155,7 +146,7 @@ export default function Edit({ auth, receive, fromstore: initialFromStore, tosto
         };
 
         if (data.receiveitems.some(item => item.item_id === newItem.item_id)) {
-            showGeneralAlert('Item Already Added', `"${newItem.item_name}" is already in the list. You can adjust its quantity.`);
+            toast.info(`"${newItem.item_name}" is already in the list.`);
             return;
         }
 
@@ -170,106 +161,53 @@ export default function Edit({ auth, receive, fromstore: initialFromStore, tosto
         itemSearchInputRef.current?.focus();
     };
 
-    // MODIFIED: handleRemoveItemConfirmed now accepts indexToRemove
-    const handleRemoveItemConfirmed = (indexToRemove) => {
-        console.log('[handleRemoveItemConfirmed] Called with index:', indexToRemove);
-
-        if (indexToRemove !== null && typeof indexToRemove === 'number') {
-            console.log('[handleRemoveItemConfirmed] Valid index to remove:', indexToRemove);
-            setData(prevData => {
-                console.log('[handleRemoveItemConfirmed] prevData.receiveitems (before filter):', JSON.parse(JSON.stringify(prevData.receiveitems)));
-                const itemBeingRemoved = prevData.receiveitems[indexToRemove];
-                if (!itemBeingRemoved) {
-                    console.error(`[handleRemoveItemConfirmed] No item found at index ${indexToRemove} in prevData.receiveitems!`);
-                    return prevData;
-                }
-                console.log('[handleRemoveItemConfirmed] Item detail being removed:', JSON.parse(JSON.stringify(itemBeingRemoved)));
-                const updatedItems = prevData.receiveitems.filter((_, idx) => idx !== indexToRemove);
-                console.log('[handleRemoveItemConfirmed] updatedItems (after filter):', JSON.parse(JSON.stringify(updatedItems)));
+    const removeReceiveItem = (index) => {
+        if(window.confirm(`Are you sure you want to remove "${data.receiveitems[index]?.item_name || 'this item'}"?`)) {
+             setData(prevData => {
+                const updatedItems = prevData.receiveitems.filter((_, idx) => idx !== index);
                 return { ...prevData, receiveitems: updatedItems };
             });
-            console.log('[handleRemoveItemConfirmed] setData call initiated.');
-        } else {
-            console.warn('[handleRemoveItemConfirmed] indexToRemove was invalid. Value:', indexToRemove);
+            toast.success("Item removed.");
         }
-
-        setUiFeedbackModal(prev => ({
-            ...prev,
-            isOpen: false,
-            itemIndexToRemove: null,
-            message: '',
-            isAlert: true,
-            onConfirmAction: null,
-            title: 'Alert',
-            confirmText: 'OK'
-        }));
-        console.log('[handleRemoveItemConfirmed] uiFeedbackModal state after action and reset.');
-    };
-
-    // MODIFIED: confirmRemoveReceiveItem now passes index via closure to onConfirmAction
-    const confirmRemoveReceiveItem = (index) => {
-        console.log('[confirmRemoveReceiveItem] Index to confirm removal for:', index);
-        console.log('[confirmRemoveReceiveItem] Item object:', data.receiveitems[index]);
-        setUiFeedbackModal({
-            isOpen: true,
-            message: `Are you sure you want to remove "${data.receiveitems[index]?.item_name || 'this item'}"?`,
-            isAlert: false,
-            itemIndexToRemove: index, // Still useful for the message, but not primary for action
-            onConfirmAction: () => handleRemoveItemConfirmed(index), // Pass index here
-            title: 'Confirm Removal',
-            confirmText: 'Yes, Remove'
-        });
-    };
-
-    const showGeneralAlert = (title, message) => {
-        setUiFeedbackModal({
-            isOpen: true,
-            title: title,
-            message: message,
-            isAlert: true,
-            confirmText: 'OK',
-            onConfirmAction: () => setUiFeedbackModal(prev => ({ ...prev, isOpen: false, itemIndexToRemove: null, onConfirmAction: null })),
-            itemIndexToRemove: null
-        });
     };
 
     const handleSaveChanges = (e) => {
         e.preventDefault();
         clearErrors();
 
-        if (!data.from_store_id) { showGeneralAlert("Validation Error", "Please select 'From Store'."); return; }
-        if (!data.to_store_id) { showGeneralAlert("Validation Error", "Please select 'To Store'."); return; }
-        if (data.receiveitems.length === 0) { showGeneralAlert("Validation Error", "Please add at least one item."); return; }
+        if (!data.from_store_id) { toast.error("Please select 'From Store'."); return; }
+        if (!data.to_store_id) { toast.error("Please select 'To Store'."); return; }
+        if (data.receiveitems.length === 0) { toast.error("Please add at least one item."); return; }
 
         const hasInvalidItems = data.receiveitems.some(item =>
             !item.item_name || !item.item_id || !(item.quantity > 0) || !(item.price >= 0)
         );
         if (hasInvalidItems) {
-            showGeneralAlert("Validation Error", "Some items have invalid details. Please correct them.");
+            toast.error("Some items have invalid details. Please correct them.");
             return;
         }
 
         put(route('inventory2.update', receive.id), {
             preserveScroll: true,
             onSuccess: () => {
-                showGeneralAlert("Success", "Receipt updated successfully!");
+                toast.success("Receipt updated successfully!");
             },
             onError: (pageErrors) => {
                 console.error("Update errors:", pageErrors);
-                showGeneralAlert("Update Error", pageErrors.message || 'Failed to update receipt. Please check for errors.');
+                toast.error("Failed to update receipt. Please check for errors.");
             },
         });
     };
 
     const openSubmitConfirmationModal = () => {
         clearErrors();
-        if (!data.from_store_id) { showGeneralAlert("Validation Error", "Please select 'From Store'."); return; }
-        if (!data.to_store_id) { showGeneralAlert("Validation Error", "Please select 'To Store'."); return; }
-        if (data.receiveitems.length === 0) { showGeneralAlert("Validation Error", "Please add at least one item before submitting."); return; }
+        if (!data.from_store_id) { toast.error("Please select 'From Store'."); return; }
+        if (!data.to_store_id) { toast.error("Please select 'To Store'."); return; }
+        if (data.receiveitems.length === 0) { toast.error("Please add at least one item before submitting."); return; }
 
         const hasInvalidItems = data.receiveitems.some(item => !(item.quantity > 0) || !(item.price >= 0) || !item.item_id);
         if (hasInvalidItems) {
-            showGeneralAlert("Validation Error", "Some items have invalid quantities, prices, or were not selected from search. Please correct them.");
+            toast.error("Some items have invalid details. Please correct them.");
             return;
         }
 
@@ -279,7 +217,7 @@ export default function Edit({ auth, receive, fromstore: initialFromStore, tosto
 
     const handleSubmitWithRemarks = () => {
         if (!data.remarks.trim()) {
-            setData(prev => ({ ...prev, errors: { ...prev.errors, remarks: 'Remarks are required for submission.' } }));
+            setData(prev => ({ ...prev, errors: { ...prev.errors, remarks: 'Remarks are required.' } }));
             return;
         }
         clearErrors('remarks');
@@ -290,23 +228,24 @@ export default function Edit({ auth, receive, fromstore: initialFromStore, tosto
             onSuccess: () => {
                 setSubmitConfirmationModal({ isOpen: true, isLoading: false, isSuccess: true });
                 reset();
+                toast.success("Receipt Submitted!");
             },
             onError: (pageErrors) => {
                 setSubmitConfirmationModal(prev => ({ ...prev, isLoading: false, isSuccess: false }));
-                console.error("Submission errors:", pageErrors);
+                toast.error("Submission failed.");
             },
         });
     };
 
     const openCommitConfirmationModal = () => {
         clearErrors();
-        if (!data.from_store_id) { showGeneralAlert("Validation Error", "Please select 'From Store'."); return; }
-        if (!data.to_store_id) { showGeneralAlert("Validation Error", "Please select 'To Store'."); return; }
-        if (data.receiveitems.length === 0) { showGeneralAlert("Validation Error", "Please add at least one item before committing."); return; }
+        if (!data.from_store_id) { toast.error("Please select 'From Store'."); return; }
+        if (!data.to_store_id) { toast.error("Please select 'To Store'."); return; }
+        if (data.receiveitems.length === 0) { toast.error("Please add at least one item before committing."); return; }
 
         const hasInvalidItems = data.receiveitems.some(item => !(item.quantity > 0) || !(item.price >= 0) || !item.item_id);
         if (hasInvalidItems) {
-            showGeneralAlert("Validation Error", "Some items have invalid details. Please correct them before committing.");
+            toast.error("Some items have invalid details. Please correct them.");
             return;
         }
         
@@ -316,7 +255,7 @@ export default function Edit({ auth, receive, fromstore: initialFromStore, tosto
 
     const handleCommitReceipt = () => {
         if (!data.remarks.trim()) {
-            setData(prev => ({ ...prev, errors: { ...prev.errors, remarks: 'Remarks are required for commitment.' } }));
+            setData(prev => ({ ...prev, errors: { ...prev.errors, remarks: 'Remarks are required.' } }));
             return;
         }
         clearErrors('remarks');
@@ -327,10 +266,11 @@ export default function Edit({ auth, receive, fromstore: initialFromStore, tosto
             onSuccess: () => {
                 setCommitConfirmationModal({ isOpen: true, isLoading: false, isSuccess: true });
                 reset();
+                toast.success("Receipt Committed!");
             },
             onError: (pageErrors) => {
                 setCommitConfirmationModal(prev => ({ ...prev, isLoading: false, isSuccess: false }));
-                console.error("Commit errors:", pageErrors);
+                toast.error("Commit failed.");
             },
         });
     };
@@ -565,7 +505,7 @@ export default function Edit({ auth, receive, fromstore: initialFromStore, tosto
                                                         {data.stage <= 1 && (
                                                             <button
                                                                 type="button"
-                                                                onClick={() => confirmRemoveReceiveItem(index)}
+                                                                onClick={() => removeReceiveItem(index)}
                                                                 className="text-red-500 hover:text-red-700"
                                                                 title="Remove item"
                                                             >
@@ -607,7 +547,7 @@ export default function Edit({ auth, receive, fromstore: initialFromStore, tosto
                                         className="rounded-md bg-slate-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-600 disabled:opacity-50"
                                     >
                                         <FontAwesomeIcon icon={faSave} className="mr-2" />
-                                        {processing ? 'Saving...' : 'Save Changes'}
+                                        {processing ? 'Saving...' : 'Save Draft'}
                                     </button>
                                 )}
                                 {data.stage === 1 && (
@@ -638,28 +578,6 @@ export default function Edit({ auth, receive, fromstore: initialFromStore, tosto
                     </div>
                 </div>
             </div>
-
-            {/* General UI Feedback Modal */}
-            <Modal
-                isOpen={uiFeedbackModal.isOpen}
-                onClose={() => {
-                    console.log('[Modal onClose] Closing UI feedback modal.');
-                    setUiFeedbackModal(prev => ({ ...prev, isOpen: false, itemIndexToRemove: null, onConfirmAction: null }));
-                }}
-                onConfirm={() => {
-                    console.log('[Modal onConfirm] Confirming action for UI feedback modal.');
-                    if (uiFeedbackModal.onConfirmAction) {
-                        uiFeedbackModal.onConfirmAction(); // This will execute `() => handleRemoveItemConfirmed(index)`
-                    } else {
-                        console.warn('[Modal onConfirm] onConfirmAction was null. Closing modal.');
-                        setUiFeedbackModal(prev => ({ ...prev, isOpen: false, itemIndexToRemove: null, onConfirmAction: null }));
-                    }
-                }}
-                title={uiFeedbackModal.title}
-                message={uiFeedbackModal.message}
-                isAlert={uiFeedbackModal.isAlert}
-                confirmButtonText={uiFeedbackModal.confirmText}
-            />
 
             {/* Submit Confirmation Modal */}
             <Modal

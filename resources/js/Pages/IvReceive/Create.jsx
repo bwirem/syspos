@@ -1,12 +1,13 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, useForm, Link, router as inertiaRouter } from '@inertiajs/react'; // inertiaRouter might not be needed if not manually navigating
+import { Head, useForm, Link, router as inertiaRouter } from '@inertiajs/react'; 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimesCircle, faTrash, faSave, faSpinner, faPlus } from '@fortawesome/free-solid-svg-icons';
+import { faTimesCircle, faTrash, faSave, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
 import axios from 'axios';
+import { toast } from 'react-toastify'; 
 
-import Modal from '@/Components/CustomModal.jsx'; // Ensure this path is correct
+import Modal from '@/Components/CustomModal.jsx'; 
 
 // Utility function for debouncing
 const debounce = (func, delay) => {
@@ -19,7 +20,7 @@ const debounce = (func, delay) => {
 
 const defaultStores = [];
 
-export default function Create({ auth, fromstore: initialFromStore = defaultStores, tostore: initialToStore = defaultStores, flash }) { // Added flash to props
+export default function Create({ auth, fromstore: initialFromStore = defaultStores, tostore: initialToStore = defaultStores, flash }) { 
     const fromstore = Array.isArray(initialFromStore) ? initialFromStore : defaultStores;
     const tostore = Array.isArray(initialToStore) ? initialToStore : defaultStores;
 
@@ -28,7 +29,7 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
         from_store_id: '',
         to_store_id: '',        
         total: 0,
-        stage: 1, // Always defaults to 1 (Draft) on create
+        stage: 1, 
         delivery_no: '',
         remarks: '',
         receiveitems: [],
@@ -41,28 +42,17 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
     const itemDropdownRef = useRef(null);
     const itemSearchInputRef = useRef(null);
 
-    const [uiFeedbackModal, setUiFeedbackModal] = useState({
-        isOpen: false,
-        message: '',
-        isAlert: true,
-        itemIndexToRemove: null,
-        onConfirmAction: null,
-        title: 'Alert',
-        confirmText: 'OK'
-    });
+    // Removed uiFeedbackModal state as we are using toast now
 
-    // Flash message handling (though typically the redirected page handles this)
+    // Flash message handling
     useEffect(() => {
         if (flash?.success) {
-            // This might not be seen if redirect is immediate
-            showGeneralAlert('Success', flash.success);
+            toast.success(flash.success);
         }
         if (flash?.error) {
-            // This would be for errors if not redirecting, or initial load errors
-            showGeneralAlert('Error', flash.error);
+            toast.error(flash.error);
         }
     }, [flash]);
-
 
     const fetchItems = useCallback(async (query) => {
         if (!query.trim()) {
@@ -79,11 +69,11 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
             console.error('Error fetching products:', error);
             setItemSearchResults([]);
             setShowItemDropdown(false);
-            showGeneralAlert("Fetch Error", "Could not load items. Please try again.");
+            toast.error("Could not load items. Please try again.");
         } finally {
             setIsItemSearchLoading(false);
         }
-    }, []); // showGeneralAlert is stable
+    }, []); 
 
     const debouncedItemSearch = useMemo(() => debounce(fetchItems, 350), [fetchItems]);
 
@@ -142,7 +132,7 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
             price: parseFloat(selectedItem.price) || 0,
         };
         if (data.receiveitems.some(item => item.item_id === newItem.item_id)) {
-            showGeneralAlert('Item Already Added', `"${newItem.item_name}" is already in the list. You can adjust its quantity.`);
+            toast.info(`"${newItem.item_name}" is already in the list.`);
             return;
         }
         setData(prevData => ({
@@ -155,72 +145,35 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
         itemSearchInputRef.current?.focus();
     };
 
-    const handleRemoveItemConfirmed = (indexToRemove) => {
-        if (indexToRemove !== null && typeof indexToRemove === 'number') {
+    const removeReceiveItem = (index) => {
+        if (window.confirm(`Are you sure you want to remove "${data.receiveitems[index]?.item_name || 'this item'}"?`)) {
             setData(prevData => {
-                const updatedItems = prevData.receiveitems.filter((_, idx) => idx !== indexToRemove);
+                const updatedItems = prevData.receiveitems.filter((_, idx) => idx !== index);
                 return { ...prevData, receiveitems: updatedItems };
             });
+            toast.success("Item removed.");
         }
-        setUiFeedbackModal(prev => ({
-            ...prev,
-            isOpen: false,
-            itemIndexToRemove: null,
-            onConfirmAction: null,
-        }));
-    };
-
-    const confirmRemoveReceiveItem = (index) => {
-        setUiFeedbackModal({
-            isOpen: true,
-            message: `Are you sure you want to remove "${data.receiveitems[index]?.item_name || 'this item'}"?`,
-            isAlert: false,
-            itemIndexToRemove: index,
-            onConfirmAction: () => handleRemoveItemConfirmed(index),
-            title: 'Confirm Removal',
-            confirmText: 'Yes, Remove'
-        });
-    };
-
-    const showGeneralAlert = (title, message, type = 'info') => { // Added type parameter
-        setUiFeedbackModal({
-            isOpen: true, title: title, message: message, isAlert: true, confirmText: 'OK',
-            type: type, // Pass type to modal
-            onConfirmAction: () => setUiFeedbackModal(prev => ({ ...prev, isOpen: false })),
-            itemIndexToRemove: null
-        });
     };
 
     const handleSaveDraft = (e) => {
         e.preventDefault();
         clearErrors();
         
-        // Set stage to 1 directly in form data for submission
         setData('stage', 1); 
 
-        // Perform validation after setting stage, so data object is up-to-date for post
-        // (though stage isn't typically validated by frontend here for save draft)
-        if (!data.from_store_id) { showGeneralAlert("Validation Error", "Please select 'From Store'.", 'error'); return; }
-        if (!data.to_store_id) { showGeneralAlert("Validation Error", "Please select 'To Store'.", 'error'); return; }
-        if (!data.delivery_no) { showGeneralAlert("Validation Error", "Please enter 'Delivery Note Number'.", 'error'); return; }
-        if (data.receiveitems.length === 0) { showGeneralAlert("Validation Error", "Please add at least one item.", 'error'); return; }
+        if (!data.from_store_id) { toast.error("Please select 'From Store'."); return; }
+        if (!data.to_store_id) { toast.error("Please select 'To Store'."); return; }
+        if (!data.delivery_no) { toast.error("Please enter 'Delivery Note Number'."); return; }
+        if (data.receiveitems.length === 0) { toast.error("Please add at least one item."); return; }
 
-        // The `post` method from `useForm` will use the current `data` state,
-        // which now includes `stage: 1` because of `setData('stage', 1)` above.
         post(route('inventory2.store'), {
             preserveScroll: true,
             onSuccess: () => {
-                // If the backend redirects (e.g., to the edit page),
-                // this Create.jsx component will be unmounted.
-                // The flash message set by the backend (`with('success', ...)`)
-                // will be received by the new page (e.g., Edit.jsx).
-                // No need to call reset() or showGeneralAlert() here for success
-                // if a redirect is happening.
+                toast.success("Receipt draft saved successfully!");
             },
             onError: (pageErrors) => {
                 console.error("Save draft errors:", pageErrors);
-                const errorMsg = pageErrors.message || Object.values(pageErrors).flat().join(' ') || 'Failed to save draft.';
-                showGeneralAlert("Save Error", errorMsg, 'error');
+                toast.error("Failed to save draft. Please check the form.");
             },
         });
     };
@@ -257,7 +210,7 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
             <div className="py-12">
                 <div className="mx-auto max-w-5xl sm:px-6 lg:px-8">
                     <div className="bg-white p-6 shadow-sm sm:rounded-lg">
-                        <form onSubmit={handleSaveDraft} className="space-y-6"> {/* Added form tag and onSubmit */}
+                        <form onSubmit={handleSaveDraft} className="space-y-6"> 
                             {/* Store Selection */}
                             <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
                                 <div>
@@ -379,11 +332,6 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
                                                 </button>
                                             )}
                                         </div>
-                                        {/* Optionally, add a button for adding items if no search is needed, though search is more common */}
-                                        {/* <button type="button" className="relative -ml-px inline-flex items-center gap-x-1.5 rounded-r-md px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
-                                            <FontAwesomeIcon icon={faPlus} className="-ml-0.5 h-5 w-5 text-gray-400" aria-hidden="true" />
-                                            Add
-                                        </button> */}
                                     </div>
                                     {showItemDropdown && itemSearchQuery.trim() && (
                                         <ul className="absolute top-full left-0 z-20 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
@@ -453,7 +401,7 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
                                                     <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-center text-sm font-medium sm:pr-3">
                                                         <button
                                                             type="button"
-                                                            onClick={() => confirmRemoveReceiveItem(index)}
+                                                            onClick={() => removeReceiveItem(index)}
                                                             className="text-red-500 hover:text-red-700"
                                                             title="Remove item"
                                                         >
@@ -486,7 +434,7 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
                                     <FontAwesomeIcon icon={faTimesCircle} className="mr-2" />
                                     Cancel
                                 </Link>
-                                <button // Changed to type="submit" to work with form onSubmit
+                                <button 
                                     type="submit"
                                     disabled={processing}
                                     className="rounded-md bg-slate-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-600 disabled:opacity-50"
@@ -495,30 +443,10 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
                                     {processing ? 'Saving...' : 'Save Draft'}
                                 </button>
                             </div>
-                        </form> {/* Added closing form tag */}
+                        </form>
                     </div>
                 </div>
             </div>
-
-            {/* General UI Feedback Modal */}
-            <Modal
-                isOpen={uiFeedbackModal.isOpen}
-                onClose={() => {
-                    setUiFeedbackModal(prev => ({ ...prev, isOpen: false, itemIndexToRemove: null, onConfirmAction: null }));
-                }}
-                onConfirm={() => {
-                    if (uiFeedbackModal.onConfirmAction) {
-                        uiFeedbackModal.onConfirmAction();
-                    } else {
-                        setUiFeedbackModal(prev => ({ ...prev, isOpen: false, itemIndexToRemove: null, onConfirmAction: null }));
-                    }
-                }}
-                title={uiFeedbackModal.title}
-                message={uiFeedbackModal.message}
-                isAlert={uiFeedbackModal.isAlert}
-                type={uiFeedbackModal.type} // Ensure type is passed to Modal
-                confirmButtonText={uiFeedbackModal.confirmText}
-            />
         </AuthenticatedLayout>
     );
 }

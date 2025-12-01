@@ -5,7 +5,9 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTimesCircle, faTrash, faSave, faCheck, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
 import axios from 'axios';
-import Modal from '@/Components/CustomModal.jsx'; // Ensure this path is correct
+import { toast } from 'react-toastify';
+
+import Modal from '@/Components/CustomModal.jsx'; 
 
 const debounce = (func, delay) => {
     let timeoutId;
@@ -17,12 +19,12 @@ const debounce = (func, delay) => {
 
 const defaultArray = [];
 
-export default function EditNormalAdjustment({ auth, normaladjustment, stores: initialStores = defaultArray, adjustmentreasons: initialAdjustmentReasons = defaultArray }) {
+export default function EditNormalAdjustment({ auth, normaladjustment, stores: initialStores = defaultArray, adjustmentreasons: initialAdjustmentReasons = defaultArray, facilityOptions }) {
     const { data, setData, put, errors, processing, reset, clearErrors, setError } = useForm({
         store_id: normaladjustment.store_id || '',
         adjustment_reason_id: normaladjustment.adjustmentreason_id || '',
         total: parseFloat(normaladjustment.total) || 0,
-        stage: normaladjustment.stage || 1, // Current stage of the record
+        stage: normaladjustment.stage || 1, 
         remarks: normaladjustment.remarks || '',
         normaladjustmentitems: normaladjustment.normaladjustmentitems?.map(item => ({
             id: item.id,
@@ -31,12 +33,13 @@ export default function EditNormalAdjustment({ auth, normaladjustment, stores: i
             item_id: item.item_id || item.item?.id || null,
             quantity: item.quantity === null || item.quantity === undefined ? '' : String(item.quantity),
             price: parseFloat(item.price) || 0,
+            // Initialize stock_quantity to null for existing items to skip validation unless fetched
+            stock_quantity: null
         })) || [],
         _method: 'PUT',
         deleted_item_ids: [],
     });
 
-    // isEditable is now derived directly from data.stage, which is updated by useEffect when normaladjustment prop changes.
     const isEditable = data.stage === 1;
 
     // Item Search State
@@ -46,37 +49,53 @@ export default function EditNormalAdjustment({ auth, normaladjustment, stores: i
     const [isItemSearchLoading, setIsItemSearchLoading] = useState(false);
     const itemSearchContainerRef = useRef(null);
     const itemSearchInputRef = useRef(null);
-
-    // UI Feedback Modal
-    const [uiFeedbackModal, setUiFeedbackModal] = useState({
-        isOpen: false, message: '', isAlert: true, title: 'Alert', confirmText: 'OK',
-        onConfirmAction: null,
-    });
+    
+    // Track initial mount to prevent clearing items on first load
+    const isInitialMount = useRef(true);
 
     // Commit Confirmation Modal
     const [commitConfirmationModal, setCommitConfirmationModal] = useState({
         isOpen: false, isLoading: false, isSuccess: false,
     });
 
-    const showAppModal = (title, message, isAlert = true, confirmText = 'OK', onConfirmCallback = null) => {
-        setUiFeedbackModal({
-            isOpen: true, title, message, isAlert, confirmText,
-            onConfirmAction: onConfirmCallback || (() => setUiFeedbackModal(prev => ({ ...prev, isOpen: false }))),
-        });
-    };
-
     const fetchItems = useCallback(async (query) => {
         if (!query.trim() || !isEditable) { setItemSearchResults([]); setShowItemDropdown(false); return; }
+        
+        // Prevent searching if store is not selected (Critical for correct stock data)
+        if (!data.store_id) {
+            toast.warn("Please select a store first.");
+            setResults([]); setShowDropdown(false); return;
+        }
+
         setIsItemSearchLoading(true);
         try {
             const response = await axios.get(route('systemconfiguration2.products.search'), { params: { query, store_id: data.store_id } });
             setItemSearchResults(response.data.products?.slice(0, 10) || []);
             setShowItemDropdown(true);
-        } catch (error) { console.error('Error fetching products:', error); showAppModal('Fetch Error', 'Failed to fetch products.'); setItemSearchResults([]); setShowItemDropdown(false); }
+        } catch (error) { 
+            console.error('Error fetching products:', error); 
+            toast.error('Failed to fetch products.'); 
+            setItemSearchResults([]); setShowItemDropdown(false); 
+        }
         finally { setIsItemSearchLoading(false); }
-    }, [isEditable]);
+    }, [isEditable, data.store_id]);
 
     const debouncedItemSearch = useMemo(() => debounce(fetchItems, 350), [fetchItems]);
+
+    // --- EFFECT: Clear items on Store Change ---
+    useEffect(() => {
+        if (isInitialMount.current) {
+            isInitialMount.current = false;
+            return;
+        }
+        
+        // In Edit mode, changing store usually requires clearing to ensure data integrity
+        if (data.normaladjustmentitems.length > 0) {
+            setData('normaladjustmentitems', []);
+            toast.info('Store changed. Item list cleared to ensure stock accuracy.');
+        }
+    }, [data.store_id]);
+    // -------------------------------------------
 
     useEffect(() => {
         if (itemSearchQuery.trim() && isEditable) {
@@ -103,15 +122,13 @@ export default function EditNormalAdjustment({ auth, normaladjustment, stores: i
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Re-initialize form data when `normaladjustment` prop changes.
-    // This is crucial for reflecting server-side state after updates.
     useEffect(() => {
-        reset(); // Clears previous form state including errors and `processing`
+        reset(); 
         setData({
             store_id: normaladjustment.store_id || '',
             adjustment_reason_id: normaladjustment.adjustmentreason_id || '',
             total: parseFloat(normaladjustment.total) || 0,
-            stage: normaladjustment.stage || 1, // This will correctly update `isEditable`
+            stage: normaladjustment.stage || 1, 
             remarks: normaladjustment.remarks || '',
             normaladjustmentitems: normaladjustment.normaladjustmentitems?.map(item => ({
                 id: item.id,
@@ -120,11 +137,12 @@ export default function EditNormalAdjustment({ auth, normaladjustment, stores: i
                 item_id: item.item_id || item.item?.id || null,
                 quantity: item.quantity === null || item.quantity === undefined ? '' : String(item.quantity),
                 price: parseFloat(item.price) || 0,
+                stock_quantity: null
             })) || [],
             _method: 'PUT',
-            deleted_item_ids: [], // Always reset deleted_item_ids on prop change
+            deleted_item_ids: [], 
         });
-    }, [normaladjustment, setData, reset]); // `setData` and `reset` from `useForm` are stable
+    }, [normaladjustment, setData, reset]); 
 
 
     const handleNormalAdjustmentItemChange = (index, field, value) => {
@@ -135,6 +153,26 @@ export default function EditNormalAdjustment({ auth, normaladjustment, stores: i
                 if (field === 'quantity') {
                     const parsedValue = parseFloat(value);
                     processedValue = isNaN(parsedValue) ? '' : parsedValue;
+
+                    // --- STOCK VALIDATION ---
+                    // Only check if stock data is available (newly added items via search)
+                    const allowNegative = facilityOptions?.allownegativestock ?? false;
+                    const hasStockData = item.stock_quantity !== undefined && item.stock_quantity !== null;
+
+                    // Check if: Negative Stock Disallowed AND Stock Data Exists AND User input is negative (deduction)
+                    if (!allowNegative && hasStockData && parsedValue < 0) {
+                        const currentStock = parseFloat(item.stock_quantity);
+                        const deductionAmount = Math.abs(parsedValue);
+
+                        if (deductionAmount > currentStock) {
+                            toast.error(`Insufficient stock for "${item.item_name}". Available: ${currentStock}, Trying to deduct: ${deductionAmount}`, {
+                                autoClose: 5000
+                            });
+                            // Prevent the change (reset to 0)
+                            processedValue = 0; 
+                        }
+                    }
+                    // ------------------------
                 }
                 return { ...item, [field]: processedValue };
             }
@@ -145,13 +183,21 @@ export default function EditNormalAdjustment({ auth, normaladjustment, stores: i
     const addNormalAdjustmentItem = (selectedItem) => {
         if (!isEditable || !selectedItem || !selectedItem.id) return;
         if (data.normaladjustmentitems.some(item => item.item_id === selectedItem.id)) {
-            showAppModal('Item Already Added', `"${selectedItem.name}" is already in the list.`);
+            toast.info(`"${selectedItem.name}" is already in the list.`);
             return;
         }
+        
         const newItem = {
-            id: null, _listId: `adjitem-new-${Date.now()}`, item_name: selectedItem.name,
-            item_id: selectedItem.id, quantity: '', price: parseFloat(selectedItem.price) || 0,
+            id: null, 
+            _listId: `adjitem-new-${Date.now()}`, 
+            item_name: selectedItem.name,
+            item_id: selectedItem.id, 
+            quantity: '', 
+            price: parseFloat(selectedItem.price) || 0,
+            // Capture stock quantity
+            stock_quantity: selectedItem.stock_quantity !== undefined ? parseFloat(selectedItem.stock_quantity) : 0
         };
+        
         setData('normaladjustmentitems', [...data.normaladjustmentitems, newItem]);
         setItemSearchQuery(''); setItemSearchResults([]); setShowItemDropdown(false);
         itemSearchInputRef.current?.focus();
@@ -160,23 +206,21 @@ export default function EditNormalAdjustment({ auth, normaladjustment, stores: i
     const confirmRemoveNormalAdjustmentItem = (indexToRemove) => {
         if (!isEditable) return;
         const itemBeingRemoved = data.normaladjustmentitems[indexToRemove];
-        showAppModal('Confirm Removal', `Remove "${itemBeingRemoved?.item_name || 'this item'}"?`, false, 'Yes, Remove',
-            () => {
-                if (itemBeingRemoved.id) {
-                    setData('deleted_item_ids', [...data.deleted_item_ids, itemBeingRemoved.id]);
-                }
-                setData('normaladjustmentitems', data.normaladjustmentitems.filter((_, idx) => idx !== indexToRemove));
-                setUiFeedbackModal(prev => ({ ...prev, isOpen: false }));
+        if(window.confirm(`Remove "${itemBeingRemoved?.item_name || 'this item'}"?`)) {
+            if (itemBeingRemoved.id) {
+                setData('deleted_item_ids', [...data.deleted_item_ids, itemBeingRemoved.id]);
             }
-        );
+            setData('normaladjustmentitems', data.normaladjustmentitems.filter((_, idx) => idx !== indexToRemove));
+            toast.success("Item removed.");
+        }
     };
     
     const validateAdjustmentForm = (isCommitting = false) => {
         clearErrors();
         let isValid = true;
-        if (!data.store_id) { setError('store_id', 'Store is required.'); if(isValid) showAppModal("Validation Error", "Please select a store."); isValid = false; }
-        if (!data.adjustment_reason_id) { setError('adjustment_reason_id', 'Reason is required.'); if(isValid) showAppModal("Validation Error", "Please select an adjustment reason."); isValid = false; }
-        if (data.normaladjustmentitems.length === 0) { if(isValid) showAppModal("Validation Error", "At least one item is required."); isValid = false; }
+        if (!data.store_id) { setError('store_id', 'Store is required.'); if(isValid) toast.error("Please select a store."); isValid = false; }
+        if (!data.adjustment_reason_id) { setError('adjustment_reason_id', 'Reason is required.'); if(isValid) toast.error("Please select an adjustment reason."); isValid = false; }
+        if (data.normaladjustmentitems.length === 0) { if(isValid) toast.error("At least one item is required."); isValid = false; }
         
         let itemLineError = false;
         data.normaladjustmentitems.forEach((item, index) => {
@@ -189,12 +233,11 @@ export default function EditNormalAdjustment({ auth, normaladjustment, stores: i
             }
         });
         if (itemLineError && isValid) { 
-            showAppModal("Validation Error", "All items require valid, non-zero quantity and non-negative price.");
+            toast.error("All items require valid, non-zero quantity and non-negative price.");
         }
 
         if (isCommitting && !data.remarks.trim()) {
             setError('remarks', 'Remarks are required for committing.');
-            // This error will be displayed within the commit modal.
             isValid = false;
         }
         return isValid;
@@ -204,58 +247,48 @@ export default function EditNormalAdjustment({ auth, normaladjustment, stores: i
         e.preventDefault();
         if (!isEditable || !validateAdjustmentForm(false)) return;
 
-        // Payload explicitly sets stage to 1, sends all current form data
-        //const payload = { ...data, stage: 1 };
-
-        setData(prevData => ({ ...prevData, stage: 1 })); // Ensure stage is 1 for draft
+        setData(prevData => ({ ...prevData, stage: 1 })); 
         
         put(route('inventory3.normal-adjustment.update', normaladjustment.id),{
             preserveScroll: true,
             onSuccess: () => {
-                showAppModal("Success", "Adjustment draft updated successfully!");
-                // `normaladjustment` prop update will trigger useEffect to re-sync form
+                toast.success("Adjustment draft updated successfully!");
             },
             onError: (pageErrors) => {
                 console.error("Update draft errors:", pageErrors);
                 const errorMsg = Object.values(pageErrors).flat().join(' ') || 'Failed to update draft.';
-                showAppModal("Update Error", errorMsg);
+                toast.error(errorMsg);
             },
         });
     };
 
     const openCommitConfirmationModal = () => {
         if (!isEditable || !validateAdjustmentForm(false)) return;
-        // Remarks from the main form (if any) will pre-fill the modal's remarks field.
-        // Stage is not changed in `data` yet, only in the payload for the PUT request.
-        setData(prevData => ({ ...prevData, stage: 2, remarks: '' })); // Set stage for commit, clear remarks for modal
+        setData(prevData => ({ ...prevData, stage: 2, remarks: '' })); 
         setCommitConfirmationModal({ isOpen: true, isLoading: false, isSuccess: false });
     };
 
     const handleCommitWithRemarks = () => {       
-
-        // Validate remarks specifically for the commit modal
         if (!data.remarks.trim()) {
             setError('remarks', 'Remarks are required for committing.');
-            return; // Let the modal show the error for its remarks field
+            return; 
         }
-        clearErrors('remarks'); // Clear if previously set
+        clearErrors('remarks'); 
 
         setCommitConfirmationModal(prev => ({ ...prev, isLoading: true }));
-        // Construct payload with stage 2 for commit
-        //const payload = { ...data, stage: 2 };      
 
         put(route('inventory3.normal-adjustment.update', normaladjustment.id), {
             preserveScroll: true,
             onSuccess: () => {
                 setCommitConfirmationModal({ isOpen: true, isLoading: false, isSuccess: true });
-                // After success, `normaladjustment` prop updates -> useEffect re-syncs form -> `isEditable` becomes false.
+                toast.success("Stock adjustment committed successfully!");
             },
             onError: (pageErrors) => {
                 setCommitConfirmationModal(prev => ({ ...prev, isLoading: false, isSuccess: false }));
                 console.error("Commit errors:", pageErrors);
                 const errorMsg = pageErrors.message || Object.values(pageErrors).flat().join(' ') || 'Commit failed.';
-                // Set a general error for the commit modal, or rely on specific field errors if backend returns them
                 setData(prevData => ({ ...prevData, errors: { ...prevData.errors, commitError: errorMsg } }));
+                toast.error("Commit failed. Please check errors.");
             },
         });
     };
@@ -433,23 +466,13 @@ export default function EditNormalAdjustment({ auth, normaladjustment, stores: i
                 </div>
             </div>
 
-            {/* General UI Feedback Modal */}
-            <Modal isOpen={uiFeedbackModal.isOpen} onClose={() => setUiFeedbackModal(prev => ({ ...prev, isOpen: false }))}
-                onConfirm={uiFeedbackModal.onConfirmAction} title={uiFeedbackModal.title} message={uiFeedbackModal.message}
-                isAlert={uiFeedbackModal.isAlert} confirmButtonText={uiFeedbackModal.confirmText} />
-
             {/* Commit Confirmation Modal */}
             <Modal isOpen={commitConfirmationModal.isOpen}
                 onClose={() => {
                     setCommitConfirmationModal({ isOpen: false, isLoading: false, isSuccess: false });
-                    // If commit was successful, the `normaladjustment` prop would have changed,
-                    // and the useEffect would re-initialize the form, making `isEditable` false.
-                    // No need to manually change `data.stage` here if the commit was cancelled/failed
-                    // because the form data still holds the original `stage` (or it's re-synced from props).
                 }}
                 onConfirm={commitConfirmationModal.isSuccess ? () => {
                     setCommitConfirmationModal({ isOpen: false, isLoading: false, isSuccess: false });
-                    // Optionally, redirect to index after successful commit, or just let the page update
                     // inertiaRouter.visit(route('inventory3.normal-adjustment.index'));
                 } : handleCommitWithRemarks}
                 title={commitConfirmationModal.isSuccess ? "Adjustment Committed" : "Commit Stock Adjustment"}

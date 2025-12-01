@@ -15,6 +15,13 @@ class BILInvoicePaymentDetail extends Model
     protected $table = 'bil_invoicepaymentdetails';
 
     protected $fillable = ['receiptno', 'invoiceno','totaldue', 'totalpaid'];   
+
+    // Add this relationship to access the Invoice and its Items
+    public function invoice()
+    {
+        // Link the Payment Detail to the Invoice using the string 'invoiceno'
+        return $this->belongsTo(BILInvoice::class, 'invoiceno', 'invoiceno');
+    }
   
 
 }

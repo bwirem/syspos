@@ -125,10 +125,10 @@ const iconMap = {
 };
 
 // SidebarNavLink Component
-function SidebarNavLink({ href, icon, children }) {
+function SidebarNavLink({ href, icon, children, ...props }) {
     return (
         <li>
-            <Link href={href} className={navLinkClasses}>
+            <Link href={href} className={navLinkClasses} {...props}>
                 {icon && <FontAwesomeIcon icon={icon} className="mr-2" />}
                 <span className="sidebar-normal">{children}</span>
             </Link>
@@ -366,6 +366,7 @@ export default function AuthenticatedLayout({ header, children }) {
                                     method="post"
                                     href={route('logout')}
                                     as="button"
+                                    onClick={clearPermissions} // <--- Added this to match desktop behavior
                                 >
                                     <FontAwesomeIcon icon={faSignOutAlt} className="mr-2" /> Log Out
                                 </SidebarNavLink>

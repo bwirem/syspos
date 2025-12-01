@@ -1,38 +1,42 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, Link,useForm, router } from '@inertiajs/react';
-import { useState, useEffect, useCallback } from 'react';
+import { Head, Link, useForm, router } from '@inertiajs/react';
+import { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faMoneyBill, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
 import Modal from '@/Components/CustomModal.jsx';
+import axios from 'axios'; // IMPORT AXIOS
 
 export default function PayBills({ auth, debtor, payment_types }) {
-    // The controller now guarantees that only payable, non-voided invoices are received.
     const initialDebtorInvoices = debtor?.customer?.invoices || [];
 
+    // We still use useForm for state management, but we won't use its 'post' method for submission
     const {
         data: formData,
         setData: setFormData,
-        post: processPayment,
         errors: formErrors,
-        processing,
         clearErrors,
+        setError, // We need this to manually set errors from Axios
     } = useForm({
         customer_id: debtor?.customer_id || null,
         total: 0,
         debtorItems: [],
         payment_method: '',
         paid_amount: '',
-        total_paid: '', // This should mirror paid_amount for the backend
+        total_paid: '', 
     });
 
     const [selectedInvoicesMask, setSelectedInvoicesMask] = useState(
         new Array(initialDebtorInvoices.length).fill(true)
     );
     const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+    
+    // Manual processing state since we aren't using form.post
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    
     const [alertModal, setAlertModal] = useState({ isOpen: false, message: '' });
 
-    // Effect to recalculate total and update form data when invoice selection changes
+    // Effect to recalculate total
     useEffect(() => {
         const currentlySelectedInvoices = initialDebtorInvoices.filter(
             (_, index) => selectedInvoicesMask[index]
@@ -52,15 +56,14 @@ export default function PayBills({ auth, debtor, payment_types }) {
             })),
             customer_id: prevData.customer_id || debtor?.customer_id || null,
         }));
-    }, [selectedInvoicesMask, initialDebtorInvoices, setFormData, debtor?.customer_id]);
-
+    }, [selectedInvoicesMask, initialDebtorInvoices]); // Removed dependencies that cause loops
 
     const showAlert = (message) => setAlertModal({ isOpen: true, message });
     const closeAlertModal = () => setAlertModal({ isOpen: false, message: '' });
 
     const handlePayBillsClick = () => {
         if (formData.debtorItems.length === 0 || parseFloat(formData.total) <= 0) {
-            showAlert("No items selected or total due is zero. Please select invoices to pay.");
+            showAlert("No items selected or total due is zero.");
             return;
         }
         clearErrors();
@@ -75,31 +78,59 @@ export default function PayBills({ auth, debtor, payment_types }) {
 
     const handlePaymentModalClose = () => setPaymentModalOpen(false);
 
+    // ---- UPDATED SUBMIT LOGIC ----
     const handlePaymentModalConfirm = () => {
-        // Basic client-side checks; the backend will perform the definitive validation
+        // Client-side validation
+        let hasError = false;
         if (!formData.payment_method) {
-            setFormData('errors', { ...formErrors, payment_method: 'Payment method is required.' });
-            return;
+            setError('payment_method', 'Payment method is required.');
+            hasError = true;
         }
         if (!formData.paid_amount || parseFloat(formData.paid_amount) <= 0) {
-            setFormData('errors', { ...formErrors, paid_amount: 'Paid amount must be greater than zero.' });
-            return;
+            setError('paid_amount', 'Paid amount must be greater than zero.');
+            hasError = true;
         }
+        if (hasError) return;
 
-        processPayment(route('billing2.pay'), {
-            preserveScroll: true,
-            onSuccess: (page) => {
-                setPaymentModalOpen(false);
-                const successMessage = page.props.flash?.success || 'Payment processed successfully!';
-                showAlert(successMessage);
-                // After showing success, redirect back to the main debtors list
-                setTimeout(() => router.get(route('billing2.index'), {}, { replace: true }), 1500);
-            },
-            onError: (pageErrors) => {
-                console.error('Payment processing failed:', pageErrors);
-                // formErrors are automatically populated by Inertia's useForm hook
-            },
-        });
+        setIsSubmitting(true);
+
+        // Use Axios to handle the JSON response containing the printing logic
+        axios.post(route('billing2.pay'), formData)
+            .then(response => {
+                if (response.data.success) {
+                    setPaymentModalOpen(false);
+                    
+                    // 1. Handle Printing (Preview)
+                    if (response.data.invoice_url) {
+                        // Open PDF in new tab
+                        window.open(response.data.invoice_url, '_blank');
+                    }
+
+                    // 2. Show Success
+                    showAlert(response.data.message || 'Payment processed successfully!');
+
+                    // 3. Redirect after short delay
+                    setTimeout(() => {
+                        router.visit(route('billing2.index'));
+                    }, 1500);
+                }
+            })
+            .catch(error => {
+                console.error('Payment error:', error);
+                
+                if (error.response && error.response.status === 422) {
+                    // Validation errors from Laravel
+                    const serverErrors = error.response.data.errors;
+                    Object.keys(serverErrors).forEach(key => {
+                        setError(key, serverErrors[key][0]);
+                    });
+                } else {
+                    showAlert(error.response?.data?.message || 'An error occurred while processing the payment.');
+                }
+            })
+            .finally(() => {
+                setIsSubmitting(false);
+            });
     };
 
     const handlePaidAmountChange = (e) => {
@@ -131,6 +162,7 @@ export default function PayBills({ auth, debtor, payment_types }) {
                 <div className="mx-auto max-w-5xl sm:px-6 lg:px-8">
                     <div className="overflow-hidden bg-white p-6 shadow-sm sm:rounded-lg">
                         <div className="space-y-6">
+                            {/* Debtor Info Block */}
                             <div className="mb-6 rounded-md border border-gray-200 bg-gray-50 p-4">
                                 <h3 className="text-lg font-medium leading-6 text-gray-900">Debtor Information</h3>
                                 <div className="mt-2 grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
@@ -195,12 +227,12 @@ export default function PayBills({ auth, debtor, payment_types }) {
                                 </Link>
                                 <button
                                     type="button"
-                                    disabled={processing || formData.debtorItems.length === 0 || parseFloat(formData.total) <= 0}
+                                    disabled={isSubmitting || formData.debtorItems.length === 0 || parseFloat(formData.total) <= 0}
                                     className="inline-flex items-center justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
                                     onClick={handlePayBillsClick}
                                 >
                                     <FontAwesomeIcon icon={faMoneyBill} className="mr-2" />
-                                    Pay Selected Bills
+                                    {isSubmitting ? 'Processing...' : 'Pay Selected Bills'}
                                 </button>
                             </div>
                         </div>
@@ -217,8 +249,8 @@ export default function PayBills({ auth, debtor, payment_types }) {
                 onClose={handlePaymentModalClose}
                 onConfirm={handlePaymentModalConfirm}
                 title="Process Payment"
-                confirmButtonText={processing ? 'Processing...' : 'Confirm Payment'}
-                isProcessing={processing}
+                confirmButtonText={isSubmitting ? 'Processing...' : 'Confirm Payment'}
+                isProcessing={isSubmitting}
             >
                 <div className="space-y-4 p-1">
                     <div>
@@ -232,7 +264,7 @@ export default function PayBills({ auth, debtor, payment_types }) {
                             value={formData.payment_method}
                             onChange={(e) => setFormData('payment_method', e.target.value)}
                             className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm ${formErrors.payment_method ? 'border-red-500' : ''}`}
-                            disabled={processing}
+                            disabled={isSubmitting}
                         >
                             <option value="" disabled>Select Payment Method</option>
                             {payment_types.map((method) => (
@@ -250,7 +282,7 @@ export default function PayBills({ auth, debtor, payment_types }) {
                             onChange={handlePaidAmountChange}
                             placeholder="Enter amount paid"
                             className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm ${formErrors.paid_amount ? 'border-red-500' : ''}`}
-                            disabled={processing}
+                            disabled={isSubmitting}
                             step="0.01"
                         />
                         {formErrors.paid_amount && <p className="mt-1 text-sm text-red-600">{formErrors.paid_amount}</p>}

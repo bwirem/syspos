@@ -7,6 +7,7 @@ import '@fortawesome/fontawesome-svg-core/styles.css';
 import axios from 'axios'; 
 import Modal from '../../Components/CustomModal.jsx';
 import { toast } from 'react-toastify';
+import Swal from 'sweetalert2'; // Add this at the top
 
 const debounce = (func, delay) => {
     let timeout;
@@ -56,7 +57,7 @@ export default function ProcessPayment({ auth, orderData, facilityoption, paymen
     const [alertModal, setAlertModal] = useState({ isOpen: false, message: '' });
     const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [paymentConfirmationModal, setPaymentConfirmationModal] = useState({ isOpen: false });
-
+    
     // Badges Logic
     const showStoreBadge = useMemo(() => {
         if (!data.orderitems || data.orderitems.length === 0) return false;
@@ -270,8 +271,24 @@ export default function ProcessPayment({ auth, orderData, facilityoption, paymen
             return; 
         }
 
-        proceedWithSubmission();
+        // 2. SweetAlert2 Popup (Replaces your <Modal>)
+        Swal.fire({
+            title: 'Are you sure?',
+            text: "Do you want to process this payment?",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#16a34a', // Matches Tailwind green-600
+            cancelButtonColor: '#d33',
+            confirmButtonText: 'Yes, process it!',
+            cancelButtonText: 'No, cancel'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                proceedWithSubmission();
+            }
+        });
+        
     };
+   
 
     return (
         <AuthenticatedLayout user={auth.user} header={<h2 className="text-xl font-semibold leading-tight text-gray-800 dark:text-gray-200">Process Order Payment</h2>}>
@@ -456,6 +473,7 @@ export default function ProcessPayment({ auth, orderData, facilityoption, paymen
                 <p className="text-sm text-gray-600 dark:text-gray-300">The amount paid is less than the total due.<br /><br />Do you want to proceed by changing the Sale Type to 'Partial Payment'?</p>
             </Modal>
             <Modal isOpen={alertModal.isOpen} onClose={() => setAlertModal({ isOpen: false, message: '' })} onConfirm={() => setAlertModal({ isOpen: false, message: '' })} title="Alert" message={alertModal.message} isAlert={true} confirmButtonText="OK" />
+           
         </AuthenticatedLayout>
     );
 }

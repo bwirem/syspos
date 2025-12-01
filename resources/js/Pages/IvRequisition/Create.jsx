@@ -2,9 +2,10 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, useForm, Link, router as inertiaRouter } from '@inertiajs/react';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimesCircle, faTrash, faSave, faCheck, faPlus, faSpinner } from '@fortawesome/free-solid-svg-icons';
+import { faTimesCircle, faTrash, faSave, faCheck, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
 import axios from 'axios';
+import { toast } from 'react-toastify'; 
 
 import Modal from '@/Components/CustomModal.jsx';
 
@@ -19,7 +20,7 @@ const debounce = (func, delay) => {
 
 const defaultStores = [];
 
-export default function Create({ auth, fromstore: initialFromStore = defaultStores, tostore: initialToStore = defaultStores }) {
+export default function Create({ auth, fromstore: initialFromStore = defaultStores, tostore: initialToStore = defaultStores, facilityOptions }) {
     const fromstore = Array.isArray(initialFromStore) ? initialFromStore : defaultStores;
     const tostore = Array.isArray(initialToStore) ? initialToStore : defaultStores;
 
@@ -38,17 +39,7 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
     const [isItemSearchLoading, setIsItemSearchLoading] = useState(false);
     const itemDropdownRef = useRef(null);
     const itemSearchInputRef = useRef(null);
-    const isInitialMount = useRef(true); // +++ ADDED +++ For tracking initial render
-
-    const [uiFeedbackModal, setUiFeedbackModal] = useState({
-        isOpen: false,
-        message: '',
-        isAlert: true,
-        itemIndexToRemove: null,
-        onConfirmAction: null,
-        title: 'Alert',
-        confirmText: 'OK'
-    });
+    const isInitialMount = useRef(true);
 
     const [submitConfirmationModal, setSubmitConfirmationModal] = useState({
         isOpen: false,
@@ -56,15 +47,7 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
         isSuccess: false
     });
     
-    const showGeneralAlert = (title, message) => {
-        setUiFeedbackModal({
-            isOpen: true, title: title, message: message, isAlert: true, confirmText: 'OK',
-            onConfirmAction: () => setUiFeedbackModal(prev => ({ ...prev, isOpen: false, itemIndexToRemove: null, onConfirmAction: null })),
-            itemIndexToRemove: null
-        });
-    };
-
-    // --- MODIFIED ---: Replaced old fetchItems with the more generic fetchData pattern
+    // --- Data Fetching ---
     const fetchData = useCallback(async (endpoint, query, setLoading, setResults, setShowDropdown, entityName) => {
         if (!query.trim()) {
             setResults([]);
@@ -75,12 +58,10 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
 
         const params = { query };
 
-        // This is the key change: conditionally add the selected store_id to the request
         if (data.from_store_id) {
             params.store_id = data.from_store_id;
         } else {
-             // If no store is selected, we should not proceed with a search.
-            showGeneralAlert("Selection Required", "Please select a 'From Store' before searching for items.");
+            toast.warn("Please select a 'From Store' before searching for items.");
             setLoading(false);
             setResults([]);
             setShowDropdown(false);
@@ -93,37 +74,31 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
             setShowDropdown(true);
         } catch (error) {
             console.error(`Error fetching ${entityName}:`, error);
-            showGeneralAlert('Fetch Error', `Failed to fetch ${entityName}.`);
+            toast.error(`Failed to fetch ${entityName}.`);
             setResults([]);
             setShowDropdown(false);
         } finally {
             setLoading(false);
         }
-    }, [data.from_store_id]); // Dependency on from_store_id is crucial
+    }, [data.from_store_id]);
 
-    // --- MODIFIED ---: Simplified fetchItems to use the new fetchData function
     const fetchItems = useCallback((query) => fetchData('systemconfiguration2.products.search', query, setIsItemSearchLoading, setItemSearchResults, setShowItemDropdown, 'products'), [fetchData]);
-
     const debouncedItemSearch = useMemo(() => debounce(fetchItems, 350), [fetchItems]);
     
-    // +++ ADDED +++: Effect to clear items when the source store changes for data consistency.
+    // --- Effects ---
+
+    // Clear items when source store changes
     useEffect(() => {
-        // Skip this effect on the initial render of the component
         if (isInitialMount.current) {
             isInitialMount.current = false;
             return;
         }
         
-        // If the item list is not empty, clear it and notify the user.
         if (data.requistionitems.length > 0) {
             setData('requistionitems', []);
-            showGeneralAlert(
-                'Store Changed',
-                'The "From Store" has been changed. The item list has been cleared to ensure stock accuracy.'
-            );
+            toast.info('The "From Store" has been changed. The item list was cleared to ensure stock accuracy.');
         }
     }, [data.from_store_id]);
-
 
     useEffect(() => {
         if (itemSearchQuery.trim()) {
@@ -132,7 +107,6 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
             setShowItemDropdown(false);
         }
     }, [itemSearchQuery, debouncedItemSearch]);
-
 
     useEffect(() => {
         const calculatedTotal = data.requistionitems.reduce(
@@ -152,29 +126,55 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    // --- Item Management Logic ---
+
     const handleRequistionItemChange = (index, field, value) => {
         setData(prevData => {
-            const updatedItems = prevData.requistionitems.map((item, i) => {
-                if (i === index) {
-                    let processedValue = value;
-                    if (field === 'quantity' || field === 'price') {
-                        const parsedValue = parseFloat(value);
-                        if (field === 'quantity') {
-                            processedValue = isNaN(parsedValue) || parsedValue < 1 ? 1 : parsedValue;
-                        } else {
-                            processedValue = isNaN(parsedValue) || parsedValue < 0 ? 0 : parsedValue;
-                        }
+            const updatedItems = [...prevData.requistionitems];
+            const item = { ...updatedItems[index] };
+            
+            let processedValue = value;
+            const parsedValue = parseFloat(value);
+
+            if (field === 'quantity') {
+                processedValue = isNaN(parsedValue) || parsedValue < 1 ? 1 : parsedValue;
+
+                // --- Stock Validation on Quantity Change ---
+                const allowNegative = facilityOptions?.allownegativestock ?? false;
+                const hasStockData = item.stock_quantity !== undefined && item.stock_quantity !== null;
+                
+                if (!allowNegative && hasStockData) {
+                    const maxStock = parseFloat(item.stock_quantity);
+                    if (processedValue > maxStock) {
+                        toast.error(`Insufficient stock! Available: ${maxStock}`);
+                        processedValue = maxStock > 0 ? maxStock : 1; 
                     }
-                    return { ...item, [field]: processedValue };
                 }
-                return item;
-            });
+            } else if (field === 'price') {
+                processedValue = isNaN(parsedValue) || parsedValue < 0 ? 0 : parsedValue;
+            }
+
+            item[field] = processedValue;
+            updatedItems[index] = item;
+            
             return { ...prevData, requistionitems: updatedItems };
         });
     };
 
     const addRequistionItemFromSelection = (selectedItem) => {
-        if (!selectedItem || !selectedItem.id) {
+        if (!selectedItem || !selectedItem.id) return;
+
+        // --- Initial Stock Validation ---
+        const allowNegative = facilityOptions?.allownegativestock ?? false;
+        const currentStock = parseFloat(selectedItem.stock_quantity) || 0;
+
+        if (!allowNegative && currentStock <= 0) {
+            toast.error(`"${selectedItem.name}" is out of stock in the selected store.`);
+            return;
+        }
+
+        if (data.requistionitems.some(item => item.item_id === selectedItem.id)) {
+            toast.warning(`"${selectedItem.name}" is already in the list. You can adjust its quantity.`);
             return;
         }
 
@@ -184,18 +184,8 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
             item_id: selectedItem.id,
             quantity: 1,
             price: parseFloat(selectedItem.price) || 0,
+            stock_quantity: currentStock 
         };
-
-        if (data.requistionitems.some(item => item.item_id === newItem.item_id)) {
-            setUiFeedbackModal({
-                isOpen: true,
-                message: `"${newItem.item_name}" is already in the list. You can adjust its quantity.`,
-                isAlert: true, title: 'Item Already Added', confirmText: 'OK',
-                onConfirmAction: () => setUiFeedbackModal(prev => ({ ...prev, isOpen: false, itemIndexToRemove: null, onConfirmAction: null })),
-                itemIndexToRemove: null
-            });
-            return;
-        }
 
         setData(prevData => ({
             ...prevData,
@@ -208,67 +198,48 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
         itemSearchInputRef.current?.focus();
     };
     
-    const handleRemoveItemConfirmed = (indexToRemove) => {
-        if (indexToRemove !== null && typeof indexToRemove === 'number') {
+    const removeRequistionItem = (index) => {
+        if(window.confirm(`Remove "${data.requistionitems[index]?.item_name}"?`)) {
             setData(prevData => {
-                const updatedItems = prevData.requistionitems.filter((_, idx) => idx !== indexToRemove);
+                const updatedItems = prevData.requistionitems.filter((_, idx) => idx !== index);
                 return { ...prevData, requistionitems: updatedItems };
             });
+            toast.success("Item removed.");
         }
-        setUiFeedbackModal(prev => ({ 
-            ...prev, 
-            isOpen: false, 
-            itemIndexToRemove: null, 
-            onConfirmAction: null,
-            message: '',
-            isAlert: true,
-            title: 'Alert',
-            confirmText: 'OK'
-        }));
     };
 
-    const confirmRemoveRequistionItem = (index) => {
-        setUiFeedbackModal({
-            isOpen: true,
-            message: `Are you sure you want to remove "${data.requistionitems[index]?.item_name || 'this item'}"?`,
-            isAlert: false, 
-            itemIndexToRemove: index,
-            onConfirmAction: () => handleRemoveItemConfirmed(index),
-            title: 'Confirm Removal', 
-            confirmText: 'Yes, Remove'
-        });
-    };
+    // --- Submission Logic ---
 
     const handleSaveDraft = (e) => {
         e.preventDefault();
         clearErrors();
         setData('stage', 1);
 
-        if (!data.from_store_id) { showGeneralAlert("Validation Error", "Please select 'From Store'."); return; }
-        if (!data.to_store_id) { showGeneralAlert("Validation Error", "Please select 'To Store'."); return; }
-        if (data.requistionitems.length === 0) { showGeneralAlert("Validation Error", "Please add at least one item."); return; }
+        if (!data.from_store_id) { toast.error("Please select 'From Store'."); return; }
+        if (!data.to_store_id) { toast.error("Please select 'To Store'."); return; }
+        if (data.from_store_id == data.to_store_id) { toast.error("From Store and To Store cannot be the same."); return; } // +++ Added Check
+        if (data.requistionitems.length === 0) { toast.error("Please add at least one item."); return; }
 
         post(route('inventory0.store'), {
             preserveScroll: true,
-            onSuccess: () => {
-                showGeneralAlert("Success", "Requisition saved as draft successfully!");
-            },
+            onSuccess: () => toast.success("Requisition saved as draft successfully!"),
             onError: (pageErrors) => {
                 console.error("Save draft errors:", pageErrors);
-                showGeneralAlert("Save Error", pageErrors.message || 'Failed to save draft. Please check for errors above.');
+                toast.error(pageErrors.message || 'Failed to save draft. Check errors.');
             },
         });
     };
 
     const openSubmitConfirmationModal = () => {
         clearErrors();
-        if (!data.from_store_id) { showGeneralAlert("Validation Error", "Please select 'From Store'."); return; }
-        if (!data.to_store_id) { showGeneralAlert("Validation Error", "Please select 'To Store'."); return; }
-        if (data.requistionitems.length === 0) { showGeneralAlert("Validation Error", "Please add at least one item before submitting."); return; }
+        if (!data.from_store_id) { toast.error("Please select 'From Store'."); return; }
+        if (!data.to_store_id) { toast.error("Please select 'To Store'."); return; }
+        if (data.from_store_id == data.to_store_id) { toast.error("From Store and To Store cannot be the same."); return; } // +++ Added Check
+        if (data.requistionitems.length === 0) { toast.error("Please add at least one item."); return; }
 
         const hasInvalidItems = data.requistionitems.some(item => !(item.quantity > 0) || !(item.price >= 0) || !item.item_id);
         if (hasInvalidItems) {
-            showGeneralAlert("Validation Error", "Some items have invalid quantities, prices, or were not selected from search. Please correct them.");
+            toast.error("Some items have invalid details. Please correct them.");
             return;
         }
 
@@ -279,7 +250,7 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
 
     const handleSubmitWithRemarks = () => {
         if (!data.remarks.trim()) {
-            setData(prev => ({ ...prev, errors: { ...prev.errors, remarks: 'Remarks are required for submission.' } }));
+            setData(prev => ({ ...prev, errors: { ...prev.errors, remarks: 'Remarks are required.' } }));
             return;
         }
         clearErrors('remarks');
@@ -290,10 +261,11 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
             onSuccess: () => {
                 setSubmitConfirmationModal({ isOpen: true, isLoading: false, isSuccess: true });
                 reset();
+                toast.success("Requisition Submitted!");
             },
             onError: (pageErrors) => {
                 setSubmitConfirmationModal(prev => ({ ...prev, isLoading: false, isSuccess: false }));
-                console.error("Submission errors:", pageErrors);
+                toast.error("Submission failed.");
             },
         });
     };
@@ -303,7 +275,6 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
         if (isNaN(parsedAmount)) return '0.00 ' + currencyCode;
         return parsedAmount.toLocaleString(undefined, { style: 'currency', currency: currencyCode, minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
-
 
     return (
         <AuthenticatedLayout
@@ -326,12 +297,28 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
                                             id="from_store_id"
                                             name="from_store_id"
                                             value={data.from_store_id}
-                                            onChange={(e) => setData("from_store_id", e.target.value)}
+                                            // +++ Logic Change: Clear To Store if it equals new From Store +++
+                                            onChange={(e) => {
+                                                const newVal = e.target.value;
+                                                setData(prev => ({
+                                                    ...prev,
+                                                    from_store_id: newVal,
+                                                    to_store_id: newVal == prev.to_store_id ? '' : prev.to_store_id
+                                                }));
+                                            }}
                                             className={`block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 ${errors.from_store_id ? "ring-red-500" : ""}`}
                                         >
                                             <option value="">Select From Store...</option>
                                             {fromstore.map(store => (
-                                                <option key={store.id} value={store.id}>{store.name}</option>
+                                                <option 
+                                                    key={store.id} 
+                                                    value={store.id}
+                                                    // +++ Disable if selected in To Store +++
+                                                    disabled={String(store.id) === String(data.to_store_id)}
+                                                    className={String(store.id) === String(data.to_store_id) ? "text-gray-400 bg-gray-100" : ""}
+                                                >
+                                                    {store.name} {String(store.id) === String(data.to_store_id) ? "(Selected as Destination)" : ""}
+                                                </option>
                                             ))}
                                         </select>
                                         {errors.from_store_id && <p className="mt-1 text-sm text-red-600">{errors.from_store_id}</p>}
@@ -346,12 +333,28 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
                                             id="to_store_id"
                                             name="to_store_id"
                                             value={data.to_store_id}
-                                            onChange={(e) => setData("to_store_id", e.target.value)}
+                                            // +++ Logic Change: Prevent selection if same as From Store +++
+                                            onChange={(e) => {
+                                                const newVal = e.target.value;
+                                                if (newVal == data.from_store_id) {
+                                                    toast.error("Source and Destination cannot be the same.");
+                                                    return;
+                                                }
+                                                setData("to_store_id", newVal);
+                                            }}
                                             className={`block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 ${errors.to_store_id ? "ring-red-500" : ""}`}
                                         >
                                             <option value="">Select To Store...</option>
                                             {tostore.map(store => (
-                                                <option key={store.id} value={store.id}>{store.name}</option>
+                                                <option 
+                                                    key={store.id} 
+                                                    value={store.id}
+                                                    // +++ Disable if selected in From Store +++
+                                                    disabled={String(store.id) === String(data.from_store_id)}
+                                                    className={String(store.id) === String(data.from_store_id) ? "text-gray-400 bg-gray-100" : ""}
+                                                >
+                                                    {store.name} {String(store.id) === String(data.from_store_id) ? "(Selected as Source)" : ""}
+                                                </option>
                                             ))}
                                         </select>
                                         {errors.to_store_id && <p className="mt-1 text-sm text-red-600">{errors.to_store_id}</p>}
@@ -359,7 +362,7 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
                                 </div>
                             </div>
 
-                            {/* Item Search & Add */}
+                            {/* ... (Rest of the component remains unchanged) ... */}
                             <div className="border-t border-gray-200 pt-6">
                                 <label htmlFor="item-search" className="block text-sm font-medium leading-6 text-gray-900">
                                     Add Items to Requisition
@@ -463,7 +466,7 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
                                                     <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-center text-sm font-medium sm:pr-3">
                                                         <button
                                                             type="button"
-                                                            onClick={() => confirmRemoveRequistionItem(index)}
+                                                            onClick={() => removeRequistionItem(index)}
                                                             className="text-red-500 hover:text-red-700"
                                                             title="Remove item"
                                                         >
@@ -487,7 +490,7 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
                             )}
                             {errors.requistionitems && typeof errors.requistionitems === 'string' && <p className="mt-1 text-sm text-red-600">{errors.requistionitems}</p>}
 
-                            {/* Actions: Save Draft, Submit, Cancel */}
+                            {/* Actions */}
                             <div className="mt-8 flex items-center justify-end gap-x-4 border-t border-gray-200 pt-6">
                                 <Link
                                     href={route('inventory0.index')}
@@ -519,28 +522,6 @@ export default function Create({ auth, fromstore: initialFromStore = defaultStor
                     </div>
                 </div>
             </div>
-
-            {/* General UI Feedback Modal (for item removal confirmation & alerts) */}
-            <Modal
-                isOpen={uiFeedbackModal.isOpen}
-                onClose={() => {
-                    console.log('[Modal onClose] Closing UI feedback modal.');
-                    setUiFeedbackModal(prev => ({ ...prev, isOpen: false, itemIndexToRemove: null, onConfirmAction: null }));
-                }}
-                onConfirm={() => {
-                    console.log('[Modal onConfirm] Confirming action for UI feedback modal.');
-                    if (uiFeedbackModal.onConfirmAction) {
-                        uiFeedbackModal.onConfirmAction(); // This will execute `() => handleRemoveItemConfirmed(index)`
-                    } else {
-                        console.warn('[Modal onConfirm] onConfirmAction was null. Closing modal.');
-                        setUiFeedbackModal(prev => ({ ...prev, isOpen: false, itemIndexToRemove: null, onConfirmAction: null }));
-                    }
-                }}
-                title={uiFeedbackModal.title}
-                message={uiFeedbackModal.message}
-                isAlert={uiFeedbackModal.isAlert}
-                confirmButtonText={uiFeedbackModal.confirmText}
-            />
 
             {/* Modal for Final Submission with Remarks */}
             <Modal

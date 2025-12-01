@@ -7,11 +7,11 @@ import {
     faEdit,
     faPlus,
     faTrash,
-    // faFilter, // Keep if you use it for an icon
     faTimesCircle, // For clearing filters
     faEye, // For 'Preview' action
 } from "@fortawesome/free-solid-svg-icons";
 import "@fortawesome/fontawesome-svg-core/styles.css";
+import { toast } from 'react-toastify'; 
 
 import Modal from '@/Components/CustomModal.jsx';
 // import Pagination from '@/Components/Pagination'; // Uncomment if you have this
@@ -27,11 +27,10 @@ const defaultStageColor = "bg-gray-400";
 
 export default function Index({ auth, receives = { data: [] }, filters = {}, tostoreList = [], flash }) {
     const {
-        data, // Renamed from filterData for consistency with example
+        data, 
         setData,
         delete: deleteReceiveAction, // For delete operation
         processing, // For loading states on delete/actions
-        errors: formErrors, // To display any form-specific errors if they occur
         clearErrors,
     } = useForm({
         search: filters.search || "", // For searching tostore name
@@ -39,13 +38,12 @@ export default function Index({ auth, receives = { data: [] }, filters = {}, tos
         selected_tostore_id: filters.tostore || "", // Local state for dropdown, maps to 'tostore' backend param
     });
 
+    // Confirmation Modal State (Only for Delete Confirmation now)
     const [modalState, setModalState] = useState({
         isOpen: false,
         title: 'Alert',
         message: '',
-        isAlert: true, // Defaulting to alert for flash messages or simple notifications
-        type: 'info',
-        receiveToDeleteId: null, // For delete confirmation
+        receiveToDeleteId: null, 
         onConfirmAction: null,
     });
 
@@ -70,13 +68,13 @@ export default function Index({ auth, receives = { data: [] }, filters = {}, tos
         });
     }, [data.search, data.stage, data.selected_tostore_id]);
 
-    // Handle flash messages
+    // Handle flash messages with Toastify
     useEffect(() => {
         if (flash?.success) {
-            showAlert(flash.success, 'Success', 'success');
+            toast.success(flash.success);
         }
         if (flash?.error) {
-            showAlert(flash.error, 'Error', 'error');
+            toast.error(flash.error);
         }
     }, [flash]);
 
@@ -99,23 +97,11 @@ export default function Index({ auth, receives = { data: [] }, filters = {}, tos
             stage: "",
             selected_tostore_id: ""
         });
-        clearErrors(); // Clear any errors from useForm if they were set
+        clearErrors(); 
     };
 
     const handleModalClose = () => {
-        setModalState({ isOpen: false, title: 'Alert', message: '', isAlert: true, type: 'info', receiveToDeleteId: null, onConfirmAction: null });
-    };
-
-    const showAlert = (message, title = "Alert", type = "info") => {
-        setModalState({
-            isOpen: true,
-            title: title,
-            message: message,
-            isAlert: true,
-            type: type,
-            receiveToDeleteId: null,
-            onConfirmAction: handleModalClose, // Default confirm for alert is just to close
-        });
+        setModalState({ isOpen: false, title: 'Alert', message: '', receiveToDeleteId: null, onConfirmAction: null });
     };
 
     const handleDeleteClick = useCallback((id, toStoreName) => {
@@ -123,33 +109,25 @@ export default function Index({ auth, receives = { data: [] }, filters = {}, tos
             isOpen: true,
             title: 'Confirm Deletion',
             message: `Are you sure you want to delete the receive for "${toStoreName || 'this store'}"? This action cannot be undone.`,
-            isAlert: false, // This is a confirmation, not just an alert
-            type: 'confirmation',
             receiveToDeleteId: id,
-            onConfirmAction: () => confirmDelete(), // Will call confirmDelete when modal's confirm is clicked
+            onConfirmAction: () => confirmDelete(), 
         });
-    }, []); // Empty dependency array as it doesn't depend on changing state/props
+    }, []); 
 
-    const confirmDelete = () => { // Renamed from handleModalConfirm for clarity
+    const confirmDelete = () => { 
         if (modalState.receiveToDeleteId) {
             deleteReceiveAction(route("inventory2.destroy", modalState.receiveToDeleteId), {
                 preserveScroll: true,
                 onSuccess: () => {
                     handleModalClose();
-                    // Success flash message from backend will be handled by the useEffect for flash
+                    toast.success("Record deleted successfully.");
                 },
                 onError: (errorResponse) => {
                     console.error("Failed to delete receive:", errorResponse);
                     const messageFromServer = errorResponse?.message || (typeof errorResponse === 'object' ? Object.values(errorResponse).join(' ') : errorResponse) || 'Please try again.';
-                    // Keep the confirmation modal open but update its message to show the error
-                    setModalState(prev => ({
-                        ...prev,
-                        title: 'Deletion Failed',
-                        message: `Failed to delete receive: ${messageFromServer}`,
-                        isAlert: true, // Change to alert style
-                        type: 'error',
-                        onConfirmAction: handleModalClose, // Now confirm just closes
-                    }));
+                    
+                    handleModalClose(); // Close the modal
+                    toast.error(`Failed to delete receive: ${messageFromServer}`); // Show error toast
                 },
             });
         }
@@ -244,8 +222,7 @@ export default function Index({ auth, receives = { data: [] }, filters = {}, tos
                                         </button>
                                     )}
                                 </div>
-                                {/* Create Button - Removed as per implicit instruction (like approval list) */}
-                                {/* If needed, add it back here, aligned to the right */}
+                                {/* Create Button */}
                                 <div className="md:col-span-1 lg:col-span-1 flex justify-start md:justify-end items-end">
                                     <Link
                                         href={route("inventory2.create")}
@@ -292,6 +269,7 @@ export default function Index({ auth, receives = { data: [] }, filters = {}, tos
                                     <table className="min-w-full divide-y divide-gray-300">
                                         <thead className="bg-gray-50">
                                             <tr>
+                                                <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Date</th>
                                                 <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-3">From Store</th>
                                                 <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">To Store</th>
                                                 <th scope="col" className="px-3 py-3.5 text-right text-sm font-semibold text-gray-900">Total Value</th>
@@ -305,6 +283,7 @@ export default function Index({ auth, receives = { data: [] }, filters = {}, tos
                                                     const stageInfo = receiveStageConfig[receive.stage?.toString()] || { label: `Stage ${receive.stage}`, color: defaultStageColor, actionLabel: 'View', actionIcon: faEye };
                                                     return (
                                                         <tr key={receive.id} className="hover:bg-gray-50">
+                                                            <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">{new Date(receive.created_at).toLocaleDateString()}</td>                                                     
                                                             <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-gray-700 sm:pl-3">{getFromStoreName(receive)}</td>
                                                             <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-700">{receive.tostore?.name || "N/A"}</td>
                                                             <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-gray-700">{formatCurrency(receive.total, receive.currency_code)}</td>
@@ -340,7 +319,7 @@ export default function Index({ auth, receives = { data: [] }, filters = {}, tos
                                                 })
                                             ) : (
                                                 <tr>
-                                                    <td colSpan="5" className="whitespace-nowrap py-10 px-3 text-center text-sm text-gray-500">
+                                                    <td colSpan="6" className="whitespace-nowrap py-10 px-3 text-center text-sm text-gray-500">
                                                         No receives found matching your criteria.
                                                     </td>
                                                 </tr>
@@ -359,16 +338,15 @@ export default function Index({ auth, receives = { data: [] }, filters = {}, tos
                     </div>
                 </div>
             </div>
+            {/* Modal for Confirmation only */}
             <Modal
                 isOpen={modalState.isOpen}
                 onClose={handleModalClose}
-                onConfirm={modalState.isAlert ? handleModalClose : modalState.onConfirmAction} // Call onConfirmAction for non-alerts
+                onConfirm={modalState.onConfirmAction} 
                 title={modalState.title}
                 message={modalState.message}
-                isAlert={modalState.isAlert}
-                type={modalState.type}
-                confirmButtonText={modalState.isAlert ? "OK" : (processing && modalState.receiveToDeleteId ? "Deleting..." : "Confirm")}
-                isProcessing={processing && modalState.receiveToDeleteId !== null} // For delete button loading state
+                confirmButtonText={processing && modalState.receiveToDeleteId ? "Deleting..." : "Confirm"}
+                isProcessing={processing && modalState.receiveToDeleteId !== null} 
             />
         </AuthenticatedLayout>
     );

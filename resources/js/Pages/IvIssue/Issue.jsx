@@ -5,12 +5,11 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTimesCircle, faCheck, faTruckRampBox } from '@fortawesome/free-solid-svg-icons';
 import '@fortawesome/fontawesome-svg-core/styles.css';
 import Modal from '../../Components/CustomModal.jsx';
+import { toast } from 'react-toastify'; // 1. Import Toast
 
 export default function Issue({ auth, requistion }) {
-    // The form only needs to manage the data for THIS specific action.
     const { data, setData, put, errors, processing, clearErrors } = useForm({
-        remarks: '', // This is the only user-editable field for this action.
-        // We must include the other fields so the backend validation passes.
+        remarks: '', 
         tostore_type: requistion.tostore_type,
         from_store_id: requistion.fromstore_id,
         to_store_id: requistion.tostore_id,
@@ -24,7 +23,6 @@ export default function Issue({ auth, requistion }) {
         isOpen: false, isLoading: false, isSuccess: false,
     });
 
-    // Correctly finds the approval remarks from the history.
     const approvalRemarks = useMemo(() => {
         if (requistion?.history && Array.isArray(requistion.history)) {
             const historyEntry = requistion.history.find(h => h.stage === 3);
@@ -33,7 +31,6 @@ export default function Issue({ auth, requistion }) {
         return 'History not available.';
     }, [requistion]);
 
-    // Derived state for display purposes.
     const displayData = {        
         from_store_name: requistion.fromstore?.name || 'N/A',
         to_store_name: requistion.tostore?.name ||
@@ -66,10 +63,26 @@ export default function Issue({ auth, requistion }) {
             preserveScroll: true,
             onSuccess: () => {
                 setIssueConfirmationModal(prev => ({ ...prev, isLoading: false, isSuccess: true }));
+                toast.success('Goods Issued Successfully'); // Optional success toast
             },
             onError: (pageErrors) => {
                 setIssueConfirmationModal(prev => ({ ...prev, isLoading: false, isSuccess: false }));
                 console.error("Issuance errors:", pageErrors);
+
+                // 2. Iterate through errors and display toast for specific backend validation messages
+                if (pageErrors.requistionitems) {
+                    // Check if requistionitems error is an array (Laravel 422 standard) or string
+                    const message = Array.isArray(pageErrors.requistionitems) 
+                        ? pageErrors.requistionitems[0] 
+                        : pageErrors.requistionitems;
+                        
+                    toast.error(message, { autoClose: 7000 }); // Show the stock error
+                } else {
+                     // Fallback for other errors
+                    Object.values(pageErrors).forEach(errorMsg => {
+                         toast.error(errorMsg);
+                    });
+                }
             },
         });
     };
@@ -226,6 +239,11 @@ export default function Issue({ auth, requistion }) {
                             />
                             {errors.remarks && <p className="mt-1 text-sm text-red-600">{errors.remarks}</p>}
                         </div>
+                        {/* 
+                           Even though we use Toastify, we can keep inline error display for general form errors 
+                           if `errors.message` is returned generically. 
+                           The stock error specifically targets 'requistionitems', which we handle in onError above.
+                        */}
                         {errors.message && <p className="mt-2 text-sm text-red-600">{errors.message}</p>}
                     </div>
                 )}

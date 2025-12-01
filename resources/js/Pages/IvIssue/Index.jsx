@@ -1,41 +1,38 @@
 import React, { useEffect, useState } from "react";
-import { Head, Link, useForm, router } from "@inertiajs/react"; // router is already imported
+import { Head, Link, useForm, router } from "@inertiajs/react"; 
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faSearch, faEdit, faEye, faFilter, faTimesCircle } from "@fortawesome/free-solid-svg-icons";
 import "@fortawesome/fontawesome-svg-core/styles.css";
+import { toast } from 'react-toastify'; 
 
-import Modal from '../../Components/CustomModal.jsx';
 // import Pagination from '@/Components/Pagination'; // Uncomment if you implement pagination
 
-export default function Index({ auth, requistions, fromstore: fromStoreOptionsProp, filters }) {
-    // Use a different name for the prop to avoid conflict if 'fromstore' is also a filter key
-    // const fromStoreOptions = fromStoreOptionsProp; // Or just use fromStoreOptionsProp directly
-
-    const { data, setData, get, errors, clearErrors } = useForm({
+export default function Index({ auth, requistions, fromstore: fromStoreOptionsProp, filters, flash }) {
+    
+    const { data, setData, errors, clearErrors } = useForm({
         search: filters.search || "",
         stage: filters.stage || "",
-        // Use a distinct name for the local state variable for the "from store" filter
-        // to avoid confusion with the 'fromstore' parameter key sent to the backend.
-        selected_fromstore_id: filters.fromstore || "", // Match the key returned in 'filters' from backend
+        selected_fromstore_id: filters.fromstore || "", 
     });
 
-    const [modalState, setModalState] = useState({
-        isOpen: false,
-        message: '',
-        isAlert: false,
-    });
+    // Handle Flash Messages using Toast
+    useEffect(() => {
+        if (flash?.success) {
+            toast.success(flash.success);
+        }
+        if (flash?.error) {
+            toast.error(flash.error);
+        }
+    }, [flash]);
 
     useEffect(() => {
         const params = {
             search: data.search,
             stage: data.stage,
-            // Conditionally add 'fromstore' to params if selected_fromstore_id has a value
             ...(data.selected_fromstore_id && { fromstore: data.selected_fromstore_id }),
         };
 
-        // Remove empty/null params to keep URL clean - already implicitly handled by spread syntax above if value is empty string
-        // For explicit cleanup if needed:
         const cleanedParams = {};
         for (const key in params) {
             if (params[key] !== '' && params[key] !== null && params[key] !== undefined) {
@@ -43,13 +40,12 @@ export default function Index({ auth, requistions, fromstore: fromStoreOptionsPr
             }
         }
 
-        // Using router.get for Inertia-driven requests, 'get' from useForm is for form submissions.
         router.get(route("inventory1.index"), cleanedParams, {
             preserveState: true,
             preserveScroll: true,
             replace: true,
         });
-    }, [data.search, data.stage, data.selected_fromstore_id]); // Depend on the local state variable
+    }, [data.search, data.stage, data.selected_fromstore_id]); 
 
 
     const handleSearchChange = (e) => {
@@ -61,34 +57,21 @@ export default function Index({ auth, requistions, fromstore: fromStoreOptionsPr
     };
 
     const handleFromStoreFilterChange = (e) => {
-        setData("selected_fromstore_id", e.target.value); // Update the local state variable
+        setData("selected_fromstore_id", e.target.value); 
     };
 
     const resetFilters = () => {
         setData({
             search: "",
             stage: "",
-            selected_fromstore_id: "" // Reset the local state variable
+            selected_fromstore_id: "" 
         });
         clearErrors();
     };
 
-    const handleModalClose = () => {
-        setModalState({ isOpen: false, message: '', isAlert: false });
-    };
-
-    const showAlert = (message, title = "Alert") => {
-        setModalState({
-            isOpen: true,
-            title: title,
-            message: message,
-            isAlert: true,
-        });
-    };
-
     const requistionStageInfo = {
-        2: { label: 'Checked (Pending Approval)', color: 'bg-yellow-500' },
-        3: { label: 'Approved (Pending Issue)', color: 'bg-blue-500' },
+        2: { label: 'Pending Approval', color: 'bg-yellow-500' },
+        3: { label: 'Pending Issue', color: 'bg-blue-500' },
         4: { label: 'Issued', color: 'bg-green-500' },
     };
 
@@ -128,7 +111,7 @@ export default function Index({ auth, requistions, fromstore: fromStoreOptionsPr
                                     <select
                                         id="selected_fromstore_id"
                                         name="selected_fromstore_id"
-                                        value={data.selected_fromstore_id} // Use the local state variable
+                                        value={data.selected_fromstore_id} 
                                         onChange={handleFromStoreFilterChange}
                                         className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2"
                                     >
@@ -205,7 +188,7 @@ export default function Index({ auth, requistions, fromstore: fromStoreOptionsPr
                                     <table className="min-w-full divide-y divide-gray-300">
                                         <thead className="bg-gray-50">
                                             <tr>
-                                                <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-3">ID</th>
+                                                <th scope="col" className="px-4 py-3.5 text-left text-sm font-semibold text-gray-900">Date</th>
                                                 <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">From Store</th>
                                                 <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">To Store/Customer</th>
                                                 <th scope="col" className="px-3 py-3.5 text-center text-sm font-semibold text-gray-900">Total</th>
@@ -220,7 +203,7 @@ export default function Index({ auth, requistions, fromstore: fromStoreOptionsPr
                                             {requistions.data.length > 0 ? (
                                                 requistions.data.map((requistion) => (
                                                     <tr key={requistion.id}>
-                                                        <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-3">{requistion.id}</td>
+                                                        <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">{new Date(requistion.created_at).toLocaleDateString()}</td>  
                                                         <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{requistion.fromstore?.name || 'N/A'}</td>
                                                         <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{getToStoreName(requistion)}</td>
                                                         <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-gray-500">{formatCurrency(requistion.total)}</td>
@@ -262,15 +245,6 @@ export default function Index({ auth, requistions, fromstore: fromStoreOptionsPr
                     </div>
                 </div>
             </div>
-            <Modal
-                isOpen={modalState.isOpen}
-                onClose={handleModalClose}
-                onConfirm={handleModalClose} // Default confirm action is just to close for alerts
-                title={modalState.title}
-                message={modalState.message}
-                isAlert={modalState.isAlert}
-                confirmButtonText="OK"
-            />
         </AuthenticatedLayout>
     );
 }

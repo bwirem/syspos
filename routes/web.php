@@ -73,6 +73,9 @@ use App\Http\Controllers\Reports\ProcurementReportsController;
 use App\Http\Controllers\Reports\InventoryReportsController;
 
 use App\Models\FacilityOption; // Import your model
+use App\Models\IVNormalAdjustment; // Import your model
+use App\Models\IVPhysicalInventory; // Import your model
+
 use App\Models\SIV_Store; 
 use App\Models\SIV_ProductCategory;
 use App\Models\SIV_Packaging; // Assuming this is 'Units'
@@ -166,7 +169,8 @@ Route::middleware('auth')->group(function () {
         // New Route for handling Payments
         Route::post('/pay', [BilPayController::class, 'pay'])->name('pay');  // POST route with no parameter
         Route::put('/pay/{debtor}', [BilPayController::class, 'pay'])->name('pay_update');  // PUT route with {order} param and a different name.
-    
+        // --- ADD THIS LINE ---
+        Route::get('/receipt-preview', [BilPayController::class, 'receiptPreview'])->name('receipt_preview');
     });
 
 
@@ -290,8 +294,13 @@ Route::middleware('auth')->group(function () {
     //routes for Inventory Reconciliation (Version 3)
     Route::prefix('inventory3')->name('inventory3.')->group(function () {
 
-        // Main index route
-        Route::get('/', [IVReconciliationController::class, 'index'])->name('index');
+        // Inventory Reconciliation Index Route
+        Route::get('/', function () {
+            return Inertia::render('IvReconciliation/Index', [
+                'normalAdjustmentCount'      => IVNormalAdjustment::count(),
+                'physicalInventoryCount'   => IVPhysicalInventory::count(),                
+            ]);
+        })->name('index');
 
         // --- Normal Adjustment Routes ---
         Route::prefix('normal-adjustment')->name('normal-adjustment.')->group(function () {

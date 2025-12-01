@@ -2,31 +2,42 @@ import React, { useEffect, useState } from "react";
 import { Head, Link, useForm, router } from "@inertiajs/react";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faSearch, faPlus, faTimesCircle as faClose, faEdit, faTrash, faFilter, faTimesCircle } from "@fortawesome/free-solid-svg-icons"; // Renamed faTimes, added faFilter, faTimesCircle
+import { faSearch, faPlus, faTimesCircle as faClose, faEdit, faTrash, faTimesCircle } from "@fortawesome/free-solid-svg-icons"; 
 import "@fortawesome/fontawesome-svg-core/styles.css";
+import { toast } from 'react-toastify'; 
 
 import Modal from '@/Components/CustomModal.jsx';
 // import Pagination from '@/Components/Pagination'; // Uncomment for pagination
 
-export default function IndexNormalAdjustment({ auth, normaladjustments, filters }) { // Renamed component
-    const { data, setData, errors, clearErrors } = useForm({ // Removed 'get' from useForm
+export default function IndexNormalAdjustment({ auth, normaladjustments, filters, flash }) { 
+    const { data, setData, clearErrors } = useForm({ 
         search: filters.search || "",
         stage: filters.stage || "1", // Default to 'Draft'
     });
 
+    // Simplified Modal State for Delete Confirmation
     const [modalState, setModalState] = useState({
         isOpen: false,
         message: '',
-        isAlert: false,
         normaladjustmentToDeleteId: null,
-        title: 'Alert',
-        confirmText: 'OK',
-        onConfirmAction: null,
     });
+
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    // Handle Flash Messages using Toast
+    useEffect(() => {
+        if (flash?.success) {
+            toast.success(flash.success);
+        }
+        if (flash?.error) {
+            toast.error(flash.error);
+        }
+    }, [flash]);
 
     useEffect(() => {
         const params = { search: data.search, stage: data.stage };
         Object.keys(params).forEach(key => (params[key] === '' || params[key] === null) && delete params[key]);
+        
         router.get(route("inventory3.normal-adjustment.index"), params, {
             preserveState: true, preserveScroll: true, replace: true,
         });
@@ -40,35 +51,30 @@ export default function IndexNormalAdjustment({ auth, normaladjustments, filters
         setModalState({
             isOpen: true,
             message: "Are you sure you want to delete this normal adjustment record? This action cannot be undone.",
-            isAlert: false, normaladjustmentToDeleteId: id,
-            title: "Confirm Deletion", confirmText: "Yes, Delete",
-            onConfirmAction: handleDeleteConfirmed,
+            normaladjustmentToDeleteId: id,
         });
     };
 
     const handleModalClose = () => {
-        setModalState(prev => ({ ...prev, isOpen: false, normaladjustmentToDeleteId: null, onConfirmAction: null }));
+        setModalState({ isOpen: false, message: '', normaladjustmentToDeleteId: null });
+        setIsDeleting(false);
     };
 
-    const handleDeleteConfirmed = async () => {
+    const handleDeleteConfirmed = () => {
         if (!modalState.normaladjustmentToDeleteId) return;
-        try {
-            await router.delete(route("inventory3.normal-adjustment.destroy", modalState.normaladjustmentToDeleteId), { // Corrected route
-                onSuccess: () => showAlert("Success", "Normal adjustment record deleted successfully."),
-                onError: () => showAlert("Delete Error", "Failed to delete record. Please try again."),
-            });
-        } catch (error) {
-            console.error("Unexpected error during delete:", error);
-            showAlert("Error", "An unexpected error occurred.");
-        }
-        handleModalClose();
-    };
+        
+        setIsDeleting(true);
 
-    const showAlert = (title, message) => {
-        setModalState({
-            isOpen: true, title: title, message: message, isAlert: true,
-            confirmText: "OK", onConfirmAction: handleModalClose,
-            normaladjustmentToDeleteId: null,
+        router.delete(route("inventory3.normal-adjustment.destroy", modalState.normaladjustmentToDeleteId), { 
+            onSuccess: () => {
+                handleModalClose();
+                toast.success("Normal adjustment record deleted successfully.");
+            },
+            onError: () => {
+                handleModalClose();
+                toast.error("Failed to delete record. Please try again.");
+            },
+            onFinish: () => setIsDeleting(false)
         });
     };
 
@@ -121,7 +127,7 @@ export default function IndexNormalAdjustment({ auth, normaladjustments, filters
                                         className="rounded-md bg-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-300 flex items-center" title="Reset filters">
                                         <FontAwesomeIcon icon={faTimesCircle} className="mr-2 h-4 w-4" />Reset Filters
                                     </button>
-                                    <Link href={route("inventory3.index")} // Main dashboard or relevant inventory page
+                                    <Link href={route("inventory3.index")} 
                                         className="rounded-md bg-gray-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-500 flex items-center">
                                         <FontAwesomeIcon icon={faClose} className="mr-2 h-4 w-4" />Close
                                     </Link>
@@ -177,7 +183,7 @@ export default function IndexNormalAdjustment({ auth, normaladjustments, filters
                                                                 className="rounded-md bg-yellow-500 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-yellow-400" title="Edit">
                                                                 <FontAwesomeIcon icon={faEdit} />
                                                             </Link>
-                                                            {adj.stage === 1 && ( // Allow delete only for 'Draft' stage
+                                                            {adj.stage === 1 && ( 
                                                                 <button onClick={() => confirmDelete(adj.id)}
                                                                     className="rounded-md bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-red-500" title="Delete">
                                                                     <FontAwesomeIcon icon={faTrash} />
@@ -208,11 +214,11 @@ export default function IndexNormalAdjustment({ auth, normaladjustments, filters
             <Modal
                 isOpen={modalState.isOpen}
                 onClose={handleModalClose}
-                onConfirm={modalState.onConfirmAction || handleModalClose} // Default to close for simple alerts
-                title={modalState.title}
+                onConfirm={handleDeleteConfirmed} 
+                title="Confirm Deletion"
                 message={modalState.message}
-                isAlert={modalState.isAlert}
-                confirmButtonText={modalState.confirmText}
+                confirmButtonText={isDeleting ? "Deleting..." : "Yes, Delete"}
+                isProcessing={isDeleting}
             />
         </AuthenticatedLayout>
     );
