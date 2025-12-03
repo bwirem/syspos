@@ -164,8 +164,40 @@ export default function ProcessExistingOrderPayment({ auth, orderData, originalO
                 toast.success("Payment Successful!");
 
                 sessionStorage.removeItem(STORAGE_KEY);
-                if (response.data.invoice_url) {
-                    window.open(response.data.invoice_url, '_blank');
+                if (response.data.success) {                    
+                                     
+                    const { invoice_url, auto_print, backend_printed } = response.data;
+
+                    // Scenario 1: Server handled it (SumatraPDF)
+                    if (backend_printed) {
+                        console.log("Printed via Server/SumatraPDF");
+                        // Just show the alert, no window opening needed
+                    } 
+                    // Scenario 2: Cloud/Browser needs to print
+                    else if (invoice_url) {
+                        if (auto_print) {
+                            // Scenario 2a: Silent/Auto Print Configured (Iframe)
+                            const iframe = document.createElement('iframe');
+                            iframe.style.display = 'none';
+                            iframe.src = invoice_url;
+                            document.body.appendChild(iframe);
+
+                            iframe.onload = function() {
+                                try {
+                                    iframe.contentWindow.focus();
+                                    iframe.contentWindow.print();
+                                } catch (e) {
+                                    console.error(e);
+                                }
+                                // Cleanup
+                                setTimeout(() => document.body.removeChild(iframe), 60000);
+                            };
+                        } else {
+                            // Scenario 2b: Preview Configured (New Tab)
+                            window.open(invoice_url, '_blank');
+                        }
+                    }                  
+                    
                 }
                 setShowSuccessModal(true);
                 reset();

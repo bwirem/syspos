@@ -86,7 +86,9 @@ class BilPayController extends Controller
      */
     public function pay(Request $request)
     {
+        // 1. Validation
         $validated = $request->validate([
+            // ... keep your existing validation ...
             'debtorItems' => 'required|array|min:1',
             'debtorItems.*.invoiceno' => 'required|string|exists:bil_invoices,invoiceno',
             'debtorItems.*.balancedue' => 'required|numeric',
@@ -96,107 +98,173 @@ class BilPayController extends Controller
         ]);
 
         try {
-            // 1. Database Transaction (Save Payment)
-            // We capture the Receipt Number returned by payInvoices
+            // 2. Process Payment Transaction
             $receiptNo = DB::transaction(function () use ($validated) {
                 return $this->payInvoices($validated);
             });
             
-            // Store receipt number in session for the Preview route
             session(['latest_receipt_no' => $receiptNo]);
 
             // ============================================================
-            // 2. PRINTING LOGIC START
+            // 3. HYBRID PRINTING LOGIC
             // ============================================================
             
-            // Get Context: Current User Group & Machine Name
             $userGroupId = Auth::user()->usergroup_id;
             $machineName = gethostname(); 
 
-            // Query Configuration
-            // Note: We use 'receipt' or 'invoice' depending on your DB config. 
-            // Assuming 'receipt' for debt payments, but strictly matching logic to PostController:
+            // Query Printer Configuration
             $printerConfig = UserGroupPrinter::where('usergroup_id', $userGroupId)
-                ->where('documenttypecode', 'receipt') // Changed to receipt, or use 'invoice' if you share the printer
+                ->where('documenttypecode', 'receipt') 
                 ->where('autoprint', true) 
                 ->where(function ($query) use ($machineName) {
-                    $query->where('machinename', $machineName)
-                          ->orWhere('machinename', '')
+                    $query->where('machinename', $machineName) // Matches specific local server
+                          ->orWhere('machinename', '')         // Fallback
                           ->orWhereNull('machinename');
                 })
                 ->orderByRaw('LENGTH(machinename) DESC') 
                 ->first();
 
-            $shouldPrintSilently = false;
-            $targetPrinterName = null;
+            $backendPrinted = false;
+            $frontendAutoPrint = false;
+            $receiptUrl = route('billing2.receipt_preview'); // Default URL
 
+            // IF Configuration exists
             if ($printerConfig) {
-                $targetPrinterName = $printerConfig->printername;
-                $shouldPrintSilently = !$printerConfig->printtoscreen;
-            }
-
-            // ------------------------------------------------------------
-            // HANDLE SILENT BACKEND PRINTING
-            // ------------------------------------------------------------
-            if ($shouldPrintSilently) {
                 
-                // A. Prepare Data for PDF
-                $paymentRecord = BILInvoicePayment::with([
-                                    'items.invoice.items.item', 
-                                    'customer'
-                                ])->where('receiptno', $receiptNo)->first();
+                // CASE 1: Silent Print Requested (!printtoscreen)
+                if (!$printerConfig->printtoscreen) {
+                    
+                    // Attempt Backend Printing (SumatraPDF)
+                    // This creates the PDF temporarily on the server
+                    $tempPdfPath = $this->generateTempPdf($receiptNo);
+                    
+                    if ($this->printToBackendPrinter($tempPdfPath, $printerConfig->printername)) {
+                        // SUCCESS: Server printed it physically (Local Deployment)
+                        $backendPrinted = true;
+                        $receiptUrl = null; // No need to show PDF in browser
+                    } else {
+                        // FAIL: Server couldn't print (Cloud Deployment or missing EXE)
+                        // Fallback: Tell Frontend to Auto-Print via Iframe
+                        $frontendAutoPrint = true;
+                    }
 
-                // B. Generate PDF
-                // Note: You need to create 'pdfs.payment_receipt' or reuse your invoice view
-                $pdf = Pdf::loadView('pdfs.payment_receipt', [
-                    'payment' => $paymentRecord,
-                    'facility' => $facility,
-                ]);
-
-                // C. Save to Temp File
-                $fileName = 'receipt_' . $receiptNo . '_' . time() . '.pdf';
-                $directory = storage_path('app/public/temp_receipts');
-                
-                if (!file_exists($directory)) {
-                    mkdir($directory, 0755, true);
+                } else {
+                    // CASE 2: Preview Requested (printtoscreen = 1)
+                    // Frontend will open New Tab
+                    $frontendAutoPrint = false; 
                 }
-                
-                $filePath = $directory . '/' . $fileName;
-                $pdf->save($filePath);
-
-                // D. Send to Printer (SumatraPDF)
-                $this->printToBackendPrinter($filePath, $targetPrinterName);
             }
 
             // ============================================================
-            // 3. RETURN RESPONSE
+            // 4. RETURN RESPONSE
             // ============================================================
-
-            // If silent print, url is null. If preview needed, return route.
-            $receiptUrl = $shouldPrintSilently ? null : route('billing2.receipt_preview');
             
             $msg = 'Payment processed successfully.';
-            if ($shouldPrintSilently) {
-                $msg .= ' Sent to printer: ' . $targetPrinterName;
+            if ($backendPrinted) {
+                $msg .= ' Sent to server printer: ' . $printerConfig->printername;
             }
 
-            // Return JSON so frontend can handle the logic (redirect or open window)
             return response()->json([
                 'success' => true,
-                'invoice_url' => $receiptUrl, // Frontend looks for this
+                'invoice_url' => $receiptUrl,
+                'auto_print' => $frontendAutoPrint, // True = Iframe, False = New Tab
+                'backend_printed' => $backendPrinted, // True = Done on server
                 'message' => $msg,
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error during invoice payment processing:', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'request_data' => $request->all(),
-            ]);
-
-            // Return JSON error for consistency
-            return response()->json(['message' => 'An unexpected error occurred: ' . $e->getMessage()], 500);
+            Log::error('Payment Error: ' . $e->getMessage());
+            return response()->json(['message' => 'Error: ' . $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Tries to print using SumatraPDF. Returns TRUE if successful, FALSE if not found.
+     */
+    private function printToBackendPrinter($filePath, $printerName)
+    {
+        // 1. Check if SumatraPDF exists (Only exists on Local Windows Deployments)
+        $printerExe = public_path('SumatraPDF.exe');
+        
+        if (!file_exists($printerExe) && strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+            Log::warning("SumatraPDF.exe missing. Falling back to browser print.");
+            return false;
+        }
+
+        // 2. Check for Linux 'lp' (Only exists on Linux servers with CUPS configured)
+        // If on DigitalOcean without CUPS, this usually fails or does nothing useful for client printers
+        if (strtoupper(substr(PHP_OS, 0, 3)) !== 'WIN') {
+             // Optional: If you have a specific setup for Linux local servers
+             // exec("lp ...", $output, $returnVar);
+             // return $returnVar === 0;
+             return false; // Default to Browser Print on Linux/Cloud
+        }
+
+        // 3. Execute Windows Print Command
+        try {
+            $command = "start /B \"\" \"{$printerExe}\" -print-to \"{$printerName}\" -silent \"{$filePath}\"";
+            pclose(popen($command, "r"));
+            return true;
+        } catch (\Exception $e) {
+            Log::error("Backend print failed: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Generates a temporary PDF file for backend printing
+     */
+    private function generateTempPdf($receiptNo)
+    {
+        $paymentRecord = BILInvoicePayment::with(['items.invoice.items.item', 'customer'])
+                        ->where('receiptno', $receiptNo)->first();
+        $facility = FacilityOption::first();
+
+        $pdf = Pdf::loadView('pdfs.payment_receipt', [
+            'payment' => $paymentRecord,
+            'facility' => $facility,
+        ]);
+
+        $fileName = 'receipt_' . $receiptNo . '_' . time() . '.pdf';
+        $directory = storage_path('app/public/temp_receipts');
+        
+        if (!file_exists($directory)) {
+            mkdir($directory, 0755, true);
+        }
+        
+        $filePath = $directory . '/' . $fileName;
+        $pdf->save($filePath);
+        
+        return $filePath;
+    }
+
+     /**
+     * Preview the Receipt (Used if not silent printing)
+     */
+    public function receiptPreview()
+    {
+        $receiptNo = session('latest_receipt_no');
+        
+        if (!$receiptNo) {
+            return redirect()->route('billing2.index')->with('error', 'No receipt to display.');
+        }
+       
+        $paymentRecord = BILInvoicePayment::with([
+                            'items.invoice.items.item', 
+                            'customer'
+                        ])->where('receiptno', $receiptNo)->first();                       
+
+        $facility = FacilityOption::first();
+
+        // Ensure you have this view created 'pdfs.payment_receipt'
+        $pdf = Pdf::loadView('pdfs.payment_receipt', [
+            'payment' => $paymentRecord,
+            'facility' => $facility,
+        ]);
+
+        return response($pdf->output(), 200)
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'inline; filename="receipt_' . $receiptNo . '.pdf"');
     }
 
     /**
@@ -266,55 +334,6 @@ class BilPayController extends Controller
         return $receiptNo; // Return the generated receipt number
     }
 
-    /**
-     * Helper: Executes the printing command
-     */
-    private function printToBackendPrinter($filePath, $printerName)
-    {
-        $printerExe = public_path('SumatraPDF.exe');
-        
-        if (!file_exists($printerExe)) {
-            Log::error("SumatraPDF.exe not found at: " . $printerExe);
-            return; 
-        }
-
-        if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
-            // WINDOWS FIX: start /B "" "Path" Arguments
-            $command = "start /B \"\" \"{$printerExe}\" -print-to \"{$printerName}\" -silent \"{$filePath}\"";
-            pclose(popen($command, "r"));
-        } else {
-            // Linux/Mac fallback
-            $linuxCmd = "lp -d \"{$printerName}\" \"{$filePath}\"";
-            exec($linuxCmd);
-        }
-    }
-
-    /**
-     * Preview the Receipt (Used if not silent printing)
-     */
-    public function receiptPreview()
-    {
-        $receiptNo = session('latest_receipt_no');
-        
-        if (!$receiptNo) {
-            return redirect()->route('billing2.index')->with('error', 'No receipt to display.');
-        }
-       
-        $paymentRecord = BILInvoicePayment::with([
-                            'items.invoice.items.item', 
-                            'customer'
-                        ])->where('receiptno', $receiptNo)->first();                       
-
-        $facility = FacilityOption::first();
-
-        // Ensure you have this view created 'pdfs.payment_receipt'
-        $pdf = Pdf::loadView('pdfs.payment_receipt', [
-            'payment' => $paymentRecord,
-            'facility' => $facility,
-        ]);
-
-        return response($pdf->output(), 200)
-            ->header('Content-Type', 'application/pdf')
-            ->header('Content-Disposition', 'inline; filename="receipt_' . $receiptNo . '.pdf"');
-    }
+    
+   
 }

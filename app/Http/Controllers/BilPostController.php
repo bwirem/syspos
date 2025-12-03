@@ -307,59 +307,53 @@ class BilPostController extends Controller
                 ->orderByRaw('LENGTH(machinename) DESC') 
                 ->first();
 
-            $shouldPrintSilently = false;
-            $targetPrinterName = null;
+            $backendPrinted = false;
+            $frontendAutoPrint = false;           
+            $invoiceUrl = route('billing1.invoice_preview');// Default URL
 
+            
+             // IF Configuration exists
             if ($printerConfig) {
-                $targetPrinterName = $printerConfig->printername;
-                // If printtoscreen is FALSE (0), we print silently in backend
-                // If printtoscreen is TRUE (1), we send URL to frontend
-                $shouldPrintSilently = !$printerConfig->printtoscreen;
-            }
-
-            // ------------------------------------------------------------
-            // HANDLE SILENT BACKEND PRINTING
-            // ------------------------------------------------------------
-            if ($shouldPrintSilently) {
                 
-                // A. Generate PDF
-                $facility = FacilityOption::first();
-                $pdf = Pdf::loadView('pdfs.sale_invoice', [
-                    'sale' => $sale,
-                    'facility' => $facility,
-                ]);
+                // CASE 1: Silent Print Requested (!printtoscreen)
+                if (!$printerConfig->printtoscreen) {
+                    
+                    // Attempt Backend Printing (SumatraPDF)
+                    // This creates the PDF temporarily on the server
+                    $tempPdfPath = $this->generateTempPdf($sale);
+                    
+                    if ($this->printToBackendPrinter($tempPdfPath, $printerConfig->printername)) {
+                        // SUCCESS: Server printed it physically (Local Deployment)
+                        $backendPrinted = true;
+                        $receiptUrl = null; // No need to show PDF in browser
+                    } else {
+                        // FAIL: Server couldn't print (Cloud Deployment or missing EXE)
+                        // Fallback: Tell Frontend to Auto-Print via Iframe
+                        $frontendAutoPrint = true;
+                    }
 
-                // B. Save to Temp File
-                $fileName = 'invoice_' . $sale->id . '_' . time() . '.pdf';
-                $directory = storage_path('app/public/temp_invoices');
-                
-                if (!file_exists($directory)) {
-                    mkdir($directory, 0755, true);
+                } else {
+                    // CASE 2: Preview Requested (printtoscreen = 1)
+                    // Frontend will open New Tab
+                    $frontendAutoPrint = false; 
                 }
-                
-                $filePath = $directory . '/' . $fileName;
-                $pdf->save($filePath);
-
-                // C. Send to Printer (SumatraPDF)
-                $this->printToBackendPrinter($filePath, $targetPrinterName);
-            }
-
+            }  
+           
+               
             // ============================================================
             // 5. RETURN RESPONSE
             // ============================================================
 
-            // If we printed silently, invoice_url is null (frontend does nothing).
-            // If we need preview, invoice_url is the route.
-            $invoiceUrl = $shouldPrintSilently ? null : route('billing1.invoice_preview');
-            
             $msg = 'Payment processed successfully.';
-            if ($shouldPrintSilently) {
-                $msg .= ' Sent to printer: ' . $targetPrinterName;
+            if ($backendPrinted) {
+                $msg .= ' Sent to server printer: ' . $printerConfig->printername;
             }
 
             return response()->json([
                 'success' => true,
                 'invoice_url' => $invoiceUrl,
+                'auto_print' => $frontendAutoPrint, // True = Iframe, False = New Tab
+                'backend_printed' => $backendPrinted, // True = Done on server
                 'message' => $msg,
             ]);
 
@@ -376,34 +370,84 @@ class BilPostController extends Controller
         }
     }
 
-    /**
-     * Helper: Executes the printing command
-     */
-    /**
-     * Helper: Executes the printing command
+     /**
+     * Tries to print using SumatraPDF. Returns TRUE if successful, FALSE if not found.
      */
     private function printToBackendPrinter($filePath, $printerName)
     {
+        // 1. Check if SumatraPDF exists (Only exists on Local Windows Deployments)
         $printerExe = public_path('SumatraPDF.exe');
         
-        if (!file_exists($printerExe)) {
-            Log::error("SumatraPDF.exe not found at: " . $printerExe);
-            return; 
+        if (!file_exists($printerExe) && strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+            Log::warning("SumatraPDF.exe missing. Falling back to browser print.");
+            return false;
         }
 
-        if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
-            // WINDOWS FIX: 
-            // The syntax is: start /B "" "PathToExe" Arguments
-            // We add an empty pair of quotes "" after /B so Windows knows the next quoted string is the command, not the title.
-            
-            $command = "start /B \"\" \"{$printerExe}\" -print-to \"{$printerName}\" -silent \"{$filePath}\"";
-            
-            pclose(popen($command, "r"));
-        } else {
-            // Linux/Mac fallback
-            $linuxCmd = "lp -d \"{$printerName}\" \"{$filePath}\"";
-            exec($linuxCmd);
+        // 2. Check for Linux 'lp' (Only exists on Linux servers with CUPS configured)
+        // If on DigitalOcean without CUPS, this usually fails or does nothing useful for client printers
+        if (strtoupper(substr(PHP_OS, 0, 3)) !== 'WIN') {
+             // Optional: If you have a specific setup for Linux local servers
+             // exec("lp ...", $output, $returnVar);
+             // return $returnVar === 0;
+             return false; // Default to Browser Print on Linux/Cloud
         }
+
+        // 3. Execute Windows Print Command
+        try {
+            $command = "start /B \"\" \"{$printerExe}\" -print-to \"{$printerName}\" -silent \"{$filePath}\"";
+            pclose(popen($command, "r"));
+            return true;
+        } catch (\Exception $e) {
+            Log::error("Backend print failed: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Generates a temporary PDF file for backend printing
+     */
+    private function generateTempPdf($sale)
+    {
+        // A. Generate PDF
+        $facility = FacilityOption::first();
+        $pdf = Pdf::loadView('pdfs.sale_invoice', [
+            'sale' => $sale,
+            'facility' => $facility,
+        ]);
+
+        // B. Save to Temp File
+        $fileName = 'invoice_' . $sale->id . '_' . time() . '.pdf';
+        $directory = storage_path('app/public/temp_invoices');
+        
+        if (!file_exists($directory)) {
+            mkdir($directory, 0755, true);
+        }
+        
+        $filePath = $directory . '/' . $fileName;
+        $pdf->save($filePath);
+        
+        return $filePath;
+    }
+
+    public function invoicePreview()
+    {
+        $saleId = session('latest_sale_id');
+        if (!$saleId) {
+            return redirect()->route('billing1.index')->with('error', 'No sale to display.');
+        }
+
+        $sale = BILSale::findOrFail($saleId);
+        $facility = FacilityOption::first();
+
+        $pdf = Pdf::loadView('pdfs.sale_invoice', [
+            'sale' => $sale,
+            'facility' => $facility,
+        ]);
+
+        // Send PDF with correct headers so browser opens it
+        return response($pdf->output(), 200)
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'inline; filename="invoice_' . ($sale->invoiceno ?? $sale->receiptno) . '.pdf"');
     }
 
     //--------------------------------------------------------------------------
@@ -744,30 +788,7 @@ class BilPostController extends Controller
             'user_id' => Auth::id(),
             $paymentMethodColumn => $data['paid_amount'],
         ]);
-    }
-
-
-
-    public function invoicePreview()
-    {
-        $saleId = session('latest_sale_id');
-        if (!$saleId) {
-            return redirect()->route('billing1.index')->with('error', 'No sale to display.');
-        }
-
-        $sale = BILSale::findOrFail($saleId);
-        $facility = FacilityOption::first();
-
-        $pdf = Pdf::loadView('pdfs.sale_invoice', [
-            'sale' => $sale,
-            'facility' => $facility,
-        ]);
-
-        // Send PDF with correct headers so browser opens it
-        return response($pdf->output(), 200)
-            ->header('Content-Type', 'application/pdf')
-            ->header('Content-Disposition', 'inline; filename="invoice_' . ($sale->invoiceno ?? $sale->receiptno) . '.pdf"');
-    }
+    }   
 
 
 }
