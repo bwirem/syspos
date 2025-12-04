@@ -224,8 +224,27 @@ export default function ProcessPayment({ auth, orderData, facilityoption, paymen
                     else if (invoice_url) {
                         if (auto_print) {
                             // Scenario 2a: Silent/Auto Print Configured (Iframe)
+
+                            // "Silent" Printing Note
+                            // Even with auto_print set to true, browsers will still pop up the Print Preview dialog by default. Javascript cannot bypass the print dialog for security reasons.
+                            // If you want truly silent printing (no dialog, prints immediately) via the browser, you must configure the browser launch arguments on the client machine (Kiosk Mode):
+                            // For Chrome/Edge shortcut:
+                            // --kiosk-printing
+                            // If you cannot change browser settings on the client machine, the standard Print Dialog pop-up is unavoidable with this Javascript method.
+                                    
                             const iframe = document.createElement('iframe');
                             iframe.style.display = 'none';
+
+                            // --- CRITICAL CHANGE HERE ---
+                            // Don't use display: none. Move it off-screen instead.
+                            // iframe.style.position = 'fixed';
+                            // iframe.style.right = '0';
+                            // iframe.style.bottom = '0';
+                            // iframe.style.width = '0';
+                            // iframe.style.height = '0';
+                            // iframe.style.border = '0';
+                            // -----------------------------
+
                             iframe.src = invoice_url;
                             document.body.appendChild(iframe);
 
