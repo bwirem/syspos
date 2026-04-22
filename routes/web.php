@@ -95,19 +95,19 @@ use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
+// --- Public Routes ---
 Route::get('/', function () {
-     // Fetch the options (assuming there is only 1 row for facility options)
+    $showRegisterButton = true;
     $options = FacilityOption::first();
-    
-    // Check if DB setting is 1 (true). Default to false if no record exists.
-    $showRegisterButton = $options ? ($options->show_register_button === 1) : false;
+    if($options){
+        $showRegisterButton = $options->show_register_button === 1;
+    } 
 
     return Inertia::render('Welcome', [
         'canLogin' => Route::has('login'),
         'canRegister' => Route::has('register') && $showRegisterButton,        
     ]);
 });
-
 
 Route::get('/dashboard', DashboardController::class)->middleware(['auth', 'verified'])->name('dashboard');
 
