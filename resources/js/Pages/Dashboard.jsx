@@ -144,9 +144,9 @@ export default function Dashboard({
                     <section>
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-2xl font-semibold text-gray-800 dark:text-gray-100">Sales Overview</h3>
-                            <Link href={urls.salesHub} className="text-sm text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium flex items-center group">
+                             {/* <Link href={urls.salesHub} className="text-sm text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium flex items-center group">
                                 Go to Sales Hub <FontAwesomeIcon icon={faArrowRight} className="ml-1.5 h-3 w-3 transition-transform duration-200 group-hover:translate-x-1" />
-                            </Link>
+                            </Link>*/}
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                             <SummaryCard
@@ -183,9 +183,9 @@ export default function Dashboard({
                     <section>
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-2xl font-semibold text-gray-800 dark:text-gray-100">Procurement Overview</h3>
-                            <Link href={urls.procurementHub} className="text-sm text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium flex items-center group">
+                            {/*<Link href={urls.procurementHub} className="text-sm text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium flex items-center group">
                                 Go to Procurement Hub <FontAwesomeIcon icon={faArrowRight} className="ml-1.5 h-3 w-3 transition-transform duration-200 group-hover:translate-x-1" />
-                            </Link>
+                            </Link>*/}
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                             <SummaryCard
@@ -223,9 +223,9 @@ export default function Dashboard({
                     <section>
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-2xl font-semibold text-gray-800 dark:text-gray-100">Inventory Overview</h3>
-                            <Link href={urls.inventoryHub} className="text-sm text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium flex items-center group">
+                            {/*<Link href={urls.inventoryHub} className="text-sm text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium flex items-center group">
                                 Go to Inventory Hub <FontAwesomeIcon icon={faArrowRight} className="ml-1.5 h-3 w-3 transition-transform duration-200 group-hover:translate-x-1" />
-                            </Link>
+                            </Link>*/}
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                             <SummaryCard
@@ -262,9 +262,9 @@ export default function Dashboard({
                     <section>
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-2xl font-semibold text-gray-800 dark:text-gray-100">Expenses Overview</h3>
-                            <Link href={urls.expensesHub} className="text-sm text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium flex items-center group">
+                            {/*<Link href={urls.expensesHub} className="text-sm text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium flex items-center group">
                                 Go to Expenses Hub <FontAwesomeIcon icon={faArrowRight} className="ml-1.5 h-3 w-3 transition-transform duration-200 group-hover:translate-x-1" />
-                            </Link>
+                            </Link>*/}
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                             <SummaryCard
@@ -301,9 +301,9 @@ export default function Dashboard({
                     <section>
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-2xl font-semibold text-gray-800 dark:text-gray-100">Financial Accounting</h3>
-                            <Link href={urls.accountingHub} className="text-sm text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium flex items-center group">
+                            {/*<Link href={urls.accountingHub} className="text-sm text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium flex items-center group">
                                 Go to Accounting Hub <FontAwesomeIcon icon={faArrowRight} className="ml-1.5 h-3 w-3 transition-transform duration-200 group-hover:translate-x-1" />
-                            </Link>
+                            </Link>*/}
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                             <SummaryCard

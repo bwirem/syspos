@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Enums\StoreType;
 use App\Http\Controllers\Traits\ManagesItems;
+use App\Http\Controllers\Traits\GeneratesUniqueNumbers;
+
+use App\Models\IVIssue;
 use App\Models\IVNormalAdjustment;
 use App\Models\SIV_AdjustmentReason;
 use App\Models\SIV_Store;
@@ -18,6 +21,9 @@ class IVNormalAdjustmentController extends Controller
 {
     // Use our trait for handling the create/update/delete of related items
     use ManagesItems;
+    // Use our trait for generating unique numbers for documents
+    use GeneratesUniqueNumbers;
+
 
     /**
      * Display a listing of normal adjustments.
@@ -198,6 +204,7 @@ class IVNormalAdjustmentController extends Controller
 
         $reason = $adjustment->adjustmentreason;
         $storeId = $adjustment->store_id;
+        $deliveryNo = $this->generateUniqueNumber(IVIssue::class, 'delivery_no', 'ADJ');
 
         $items = $adjustment->normaladjustmentitems->map(fn($item) => [
             'product_id' => $item->product_id,
@@ -225,7 +232,8 @@ class IVNormalAdjustmentController extends Controller
                 // AFTER:
                 StoreType::AdjustmentReason->value, // Provides the integer 4
                 $reason->name,
-                $items
+                $items,
+                $deliveryNo,
             );
         }
     }
