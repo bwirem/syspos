@@ -71,7 +71,7 @@ export default function FacilitySetupIndex({
                         {/* If '/addorlistexpense/view' is an Inertia route, use Link. Otherwise, 'a' is fine. */}
                         {/* For consistency, I'll assume it could be an Inertia route and use Link with a placeholder name. */}
                         {/* If it's an external or non-Inertia link, revert to 'a' tag. */}
-                        <Link
+                        {/*<Link
                             //href={route('')} // Placeholder route name, adjust as needed
                              href="/addorlistexpense/view" // Use this if it's not an Inertia named route
                             className="block bg-white overflow-hidden shadow-sm sm:rounded-lg hover:shadow-lg transition-shadow duration-300 ease-in-out group"
@@ -107,7 +107,7 @@ export default function FacilitySetupIndex({
                                     </div>
                                 </div>
                             </div>
-                        </Link>
+                        </Link>*/}
                         
                         {/* You can add more cards here following the same pattern */}
 
