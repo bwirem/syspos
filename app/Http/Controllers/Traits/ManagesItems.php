@@ -66,6 +66,14 @@ trait ManagesItems
             $mappedData['expectedqty'] = $item['expectedqty'];
         }
 
+        // ADDED: Map expiry date and batch number
+        if (array_key_exists('expirydate', $item)) {
+            $mappedData['expirydate'] = $item['expirydate'];
+        }
+        if (array_key_exists('butchno', $item)) {
+            $mappedData['butchno'] = $item['butchno'];
+        }
+
         return $mappedData;
     }
 }

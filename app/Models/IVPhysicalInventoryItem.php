@@ -14,7 +14,7 @@ class IVPhysicalInventoryItem extends Model
      */
     protected $table = 'iv_physicalinventoryitems';
 
-    protected $fillable = ['physicalinventory_id', 'product_id','butchno','countedqty','expectedqty','price'];
+    protected $fillable = ['physicalinventory_id', 'product_id','butchno','countedqty','expectedqty','price','expirydate'];
 
     public function physicalinventory()
     {

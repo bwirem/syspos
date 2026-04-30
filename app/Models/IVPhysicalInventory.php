@@ -15,7 +15,7 @@ class IVPhysicalInventory extends Model
     protected $table = 'iv_physicalinventory';
   
 
-    protected $fillable = ['transdate', 'store_id','description','stage', 'user_id'];
+    protected $fillable = ['transdate','calculateddate', 'closeddate', 'store_id','description','stage', 'user_id'];
 
 
     public function physicalinventoryitems()

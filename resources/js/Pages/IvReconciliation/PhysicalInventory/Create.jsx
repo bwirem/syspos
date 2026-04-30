@@ -165,6 +165,8 @@ export default function CreatePhysicalInventory({ auth, stores: initialStores = 
                     countedqty: '', // Leave blank so user is forced to input
                     expectedqty: parseFloat(p.stock_quantity) || 0,
                     price: parseFloat(p.price) || 0,
+                    expirydate: '', // Added
+                    butchno: '',    // Added
                 }));
 
             // Combine existing and new
@@ -404,6 +406,8 @@ export default function CreatePhysicalInventory({ auth, stores: initialStores = 
                                                         <th scope="col" className="w-32 px-3 py-3.5 text-center text-sm font-semibold text-gray-900">Counted Qty <span className="text-red-500">*</span></th>
                                                         <th scope="col" className="w-32 px-3 py-3.5 text-center text-sm font-semibold text-gray-900">Unit Price</th>
                                                         <th scope="col" className="w-36 px-3 py-3.5 text-right text-sm font-semibold text-gray-900">Counted Value</th>
+                                                        <th scope="col" className="w-32 px-3 py-3.5 text-center text-sm font-semibold text-gray-900">Batch No</th>
+                                                        <th scope="col" className="w-36 px-3 py-3.5 text-center text-sm font-semibold text-gray-900">Expiry Date</th>
                                                         <th scope="col" className="w-20 relative py-3.5 pl-3 pr-4 sm:pr-3 text-center"><span className="sr-only">Remove</span></th>
                                                     </tr>
                                                 </thead>
@@ -429,10 +433,21 @@ export default function CreatePhysicalInventory({ auth, stores: initialStores = 
                                                             <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-gray-500">
                                                                 {formatCurrency((parseFloat(item.countedqty) || 0) * (parseFloat(item.price) || 0))}
                                                             </td>
+                                                            <td className="whitespace-nowrap px-3 py-4 text-sm">
+                                                                <input type="text" value={item.butchno}
+                                                                    onChange={(e) => handlePhysicalInventoryItemChange(index, 'butchno', e.target.value)}
+                                                                    className="w-full rounded-md shadow-sm border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-center"
+                                                                    placeholder="Batch #" />
+                                                            </td>
+                                                            <td className="whitespace-nowrap px-3 py-4 text-sm">
+                                                                <input type="date" value={item.expirydate}
+                                                                    onChange={(e) => handlePhysicalInventoryItemChange(index, 'expirydate', e.target.value)}
+                                                                    className="w-full rounded-md shadow-sm border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm text-center" />
+                                                            </td>
                                                             <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-center text-sm font-medium sm:pr-3">
                                                                 <button type="button" onClick={() => confirmRemovePhysicalInventoryItem(index)}
                                                                     className="text-red-500 hover:text-red-700" title="Remove item"><FontAwesomeIcon icon={faTrash} /></button>
-                                                            </td>
+                                                            </td>                                                            
                                                         </tr>
                                                     ))}
                                                 </tbody>
